@@ -397,15 +397,21 @@ function checkNonSecretEnv(name: string, entry?: ParsedEnvEntry): CloudRunDeploy
     );
   }
 
-  if (manualReviewEnv.has(name) && value !== "true") {
+  if (manualReviewEnv.has(name)) {
+    const attested = value === "true";
+
     return envCheck(
       name,
       categoryForEnv(name),
       "manual-review",
       false,
       value,
-      "Human attestation is intentionally not confirmed in the template.",
-      "Set true only after private evidence exists and the responsible owner approves."
+      attested
+        ? "Human attestation is set true; Cloud Run manifest review must still verify the private evidence packet."
+        : "Human attestation is intentionally not confirmed in the template.",
+      attested
+        ? "Confirm the linked private evidence exists before relying on this deployment flag in XPRIZE materials."
+        : "Set true only after private evidence exists and the responsible owner approves."
     );
   }
 

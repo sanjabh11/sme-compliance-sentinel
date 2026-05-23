@@ -96,6 +96,68 @@ describe("Cloud Run deployment evidence verifier", () => {
     );
   });
 
+  it("keeps true XPRIZE attestation flags in manual review instead of treating claims as proof", () => {
+    const attestedManifest = renderProductionCandidateManifest()
+      .replace('name: XPRIZE_REPOSITORY_ACCESS_CONFIGURED\n              value: "false"', 'name: XPRIZE_REPOSITORY_ACCESS_CONFIGURED\n              value: "true"')
+      .replace(
+        'name: XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED\n              value: "false"',
+        'name: XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED\n              value: "true"'
+      )
+      .replace(
+        'name: XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED\n              value: "false"',
+        'name: XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED\n              value: "true"'
+      )
+      .replace(
+        'name: XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED\n              value: "false"',
+        'name: XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED\n              value: "true"'
+      );
+    const evidence = buildCloudRunDeploymentEvidence(attestedManifest);
+    const checksByName = Object.fromEntries(evidence.envChecks.map((check) => [check.name, check]));
+
+    expect(evidence.overallStatus).toBe("ready-to-dry-run");
+    expect(evidence.manualReviewFlags).toEqual(
+      expect.arrayContaining([
+        "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
+        "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
+        "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
+        "XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED"
+      ])
+    );
+    expect(checksByName.XPRIZE_REPOSITORY_ACCESS_CONFIGURED).toMatchObject({
+      status: "manual-review",
+      currentValue: "true",
+      evidence: expect.stringContaining("private evidence packet")
+    });
+    expect(checksByName.XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED).toMatchObject({
+      status: "manual-review",
+      currentValue: "true",
+      fix: expect.stringContaining("Confirm the linked private evidence")
+    });
+    expect(checksByName.XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED).toMatchObject({
+      status: "manual-review",
+      currentValue: "true",
+      secret: false
+    });
+
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-cloudrun-attested-"));
+    const manifestPath = join(tempDir, "cloudrun.attested.yaml");
+    writeFileSync(manifestPath, attestedManifest, "utf8");
+    try {
+      const cliReport = JSON.parse(execFileSync("node", ["scripts/verify-cloudrun-deployment.mjs", `--manifest=${manifestPath}`], {
+        cwd: process.cwd(),
+        encoding: "utf8"
+      })) as { envChecks: Array<{ name: string; status: string; currentValue: string }> };
+      const cliChecksByName = Object.fromEntries(cliReport.envChecks.map((check) => [check.name, check]));
+
+      expect(cliChecksByName.XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED).toMatchObject({
+        status: "manual-review",
+        currentValue: "true"
+      });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("blocks rendered manifests when Cloud Run secret lookup annotations are missing", () => {
     const evidence = buildCloudRunDeploymentEvidence(
       renderProductionCandidateManifest().replace(/\n\s+run\.googleapis\.com\/secrets: "[^"]+"/u, "")

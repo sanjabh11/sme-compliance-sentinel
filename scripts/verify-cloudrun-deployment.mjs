@@ -327,8 +327,19 @@ function checkNonSecret(name, entry) {
   if (hasPlaceholder(entry.value)) {
     return check(name, "needs-value", entry.value, "Value still contains a template placeholder.", "Replace with production value.");
   }
-  if (manualReviewEnv.has(name) && entry.value !== "true") {
-    return check(name, "manual-review", entry.value, "Human attestation is not confirmed.", "Set true only after private proof exists.");
+  if (manualReviewEnv.has(name)) {
+    const attested = entry.value === "true";
+    return check(
+      name,
+      "manual-review",
+      entry.value,
+      attested
+        ? "Human attestation is set true; Cloud Run manifest review must still verify the private evidence packet."
+        : "Human attestation is not confirmed.",
+      attested
+        ? "Confirm the linked private evidence exists before relying on this deployment flag in XPRIZE materials."
+        : "Set true only after private proof exists."
+    );
   }
   return check(name, "passed", entry.value, "Value is present.", "No action.");
 }
