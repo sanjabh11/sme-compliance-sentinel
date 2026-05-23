@@ -37,6 +37,7 @@ import type {
   FrameworkEvidencePack,
   FrameworkEvidenceAudience,
   FrameworkName,
+  HostedEvidenceCapturePacket,
   MarketPositioningCommandCenter,
   PersistenceVerificationResult,
   PilotConsentPacket,
@@ -130,6 +131,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
   const [productionLaunch, setProductionLaunch] = useState<ProductionLaunchCommandCenter | null>(null);
   const [productionProvisioning, setProductionProvisioning] = useState<ProductionProvisioningPack | null>(null);
   const [cloudRunDeploymentEvidence, setCloudRunDeploymentEvidence] = useState<CloudRunDeploymentEvidence | null>(null);
+  const [hostedEvidenceCapture, setHostedEvidenceCapture] = useState<HostedEvidenceCapturePacket | null>(null);
   const [productionGeminiProof, setProductionGeminiProof] = useState<ProductionGeminiProofResult | null>(null);
   const [marketPositioning, setMarketPositioning] = useState<MarketPositioningCommandCenter | null>(null);
   const [pilotForm, setPilotForm] = useState({
@@ -1024,6 +1026,28 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
     }
   }
 
+  async function checkHostedEvidenceCapture() {
+    setActionState("running");
+    setLastMessage("Building hosted production evidence capture packet...");
+
+    try {
+      const response = await fetch("/api/production/hosted-evidence");
+      const payload = (await response.json()) as HostedEvidenceCapturePacket;
+      setHostedEvidenceCapture(payload);
+      setActionState(payload.overallStatus === "blocked" ? "error" : "idle");
+      setLastMessage(
+        payload.overallStatus === "ready-to-capture"
+          ? "Hosted evidence capture packet is complete on current proof."
+          : payload.overallStatus === "needs-hosted-proof"
+            ? `Hosted evidence still needs ${payload.checks.filter((check) => check.status !== "captured").length} production artifact(s).`
+            : `Hosted evidence capture has ${payload.blockers.length} blocker(s).`
+      );
+    } catch (error) {
+      setActionState("error");
+      setLastMessage(error instanceof Error ? error.message : "Unable to build hosted evidence capture packet.");
+    }
+  }
+
   async function runProductionGeminiSmoke() {
     setActionState("running");
     setLastMessage("Running synthetic production Gemini proof smoke...");
@@ -1913,6 +1937,10 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
             <FileSearch size={16} aria-hidden="true" />
             Cloud Run evidence
           </button>
+          <button type="button" className="secondary" onClick={checkHostedEvidenceCapture} disabled={actionState === "running"}>
+            <FileSearch size={16} aria-hidden="true" />
+            Hosted evidence
+          </button>
           <button type="button" className="secondary" onClick={runProductionGeminiSmoke} disabled={actionState === "running"}>
             <Sparkles size={16} aria-hidden="true" />
             Gemini proof smoke
@@ -2080,6 +2108,48 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               <article>
                 <strong>Dry-run</strong>
                 <p>{cloudRunDeploymentEvidence.dryRunCommand}</p>
+              </article>
+            </div>
+          ) : null}
+          {hostedEvidenceCapture ? (
+            <div className="verification-list">
+              <span data-status={hostedEvidenceCapture.overallStatus}>
+                {hostedEvidenceCapture.overallStatus.replaceAll("-", " ")}
+              </span>
+              <article>
+                <strong>Proof boundary</strong>
+                <p>
+                  {hostedEvidenceCapture.evidenceMode} evidence · {hostedEvidenceCapture.storageMode} storage ·{" "}
+                  {hostedEvidenceCapture.productUrl}
+                </p>
+              </article>
+              <article>
+                <strong>Capture status</strong>
+                <p>
+                  {hostedEvidenceCapture.checks.filter((check) => check.status === "captured").length} captured ·{" "}
+                  {hostedEvidenceCapture.checks.filter((check) => check.status === "mock-only").length} mock-only ·{" "}
+                  {hostedEvidenceCapture.checks.filter((check) => check.status === "missing").length} missing
+                </p>
+              </article>
+              {hostedEvidenceCapture.checks
+                .filter((check) => check.status !== "captured")
+                .slice(0, 4)
+                .map((check) => (
+                  <article key={check.id}>
+                    <strong>{check.label}</strong>
+                    <p>{check.fix}</p>
+                  </article>
+                ))}
+              <article>
+                <strong>First capture command</strong>
+                <p>{hostedEvidenceCapture.captureCommands[0]?.command}</p>
+              </article>
+              <article>
+                <strong>Private template</strong>
+                <p>
+                  {hostedEvidenceCapture.privateArtifactTemplates[0]?.label}:{" "}
+                  {hostedEvidenceCapture.privateArtifactTemplates[0]?.registrationHint}
+                </p>
               </article>
             </div>
           ) : null}

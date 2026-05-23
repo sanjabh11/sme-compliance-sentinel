@@ -31,6 +31,15 @@ const readOnlyChecks = [
     })
   },
   {
+    id: "hosted-evidence-capture",
+    method: "GET",
+    path: "/api/production/hosted-evidence",
+    summarize: (payload) => ({
+      status: payload?.overallStatus ?? "unknown",
+      detail: `${payload?.checks?.filter?.((check) => check?.status !== "captured")?.length ?? "unknown"} pending production artifact(s); ${payload?.blockers?.length ?? "unknown"} blocker(s).`
+    })
+  },
+  {
     id: "gemini-proof-status",
     method: "GET",
     path: "/api/production/gemini-smoke",
@@ -304,6 +313,7 @@ function isBlockedStatus(status) {
     "blocked",
     "missing",
     "external-required",
+    "needs-hosted-proof",
     "template-needs-values",
     "needs-review",
     "ready-for-review",

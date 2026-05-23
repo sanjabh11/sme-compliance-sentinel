@@ -51,6 +51,7 @@
 - [x] Local repo tests verify that Cloud Run credential values use Secret Manager references and that `GOOGLE_CLOUD_ACCESS_TOKEN` is not committed into the Cloud Run manifest.
 - [x] Local MVP exposes `/api/production/provisioning` with non-secret Google Cloud setup commands, API enablement, service-account/IAM sequence, Secret Manager secret names, Cloud Run dry-run/deploy commands, verification sequence, and private-handling rules.
 - [x] Local MVP exposes `/api/production/deployment-evidence` and `npm run verify:cloudrun-deployment` to validate Cloud Run manifest placeholders, pinned Secret Manager references, manual attestation flags, dry-run commands, and post-deploy verification steps before applying the manifest.
+- [x] Local MVP exposes `/api/production/hosted-evidence` to separate local/mock proof from hosted Cloud Run, live Gemini, GCP persistence, Workspace sync, Cloud Billing, paid-pilot, judge-access, demo-video, and Evidence Vault capture requirements.
 - [x] Local MVP exposes `/api/production/gemini-smoke` to run a synthetic non-customer Gemini proof flow and block readiness unless `provider=gemini-api` is recorded.
 - [x] Local MVP exposes a Market Positioning Command Center comparing Sentinel against Vanta, Drata, and Secureframe with USP wedge, differentiators, parity gaps, buyer narrative, and proof actions.
 - [ ] Working product URL available to judges.
@@ -180,6 +181,7 @@
 - [ ] Run Claim Guard before final Devpost copy, demo video script, judge export, and hosted release.
 - [ ] Run the XPRIZE Submission Gate before final Devpost submission and clear every blocker with real evidence.
 - [ ] Run `/api/production/launch-readiness` from the hosted app and clear each workstream with production proof before final submission.
+- [ ] Run `/api/production/hosted-evidence` from the hosted app and attach the resulting capture packet to the private judge binder after every required artifact is redacted and checksummed.
 - [ ] Run `npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --strict --include-write-checks` after Cloud Run/GCP credentials are configured and attach the JSON output to the private judge packet.
 - [ ] Run `/api/market/positioning` before final pitch copy and verify the story remains a focused Workspace risk-scan wedge, not a broad GRC replacement claim.
 - [ ] Run `/api/pilots/conversion-kit` before each outreach sprint and before final submission so paid-pilot revenue, active-user proof, and customer-consent gaps are visible.

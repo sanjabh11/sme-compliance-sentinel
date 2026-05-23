@@ -1512,6 +1512,57 @@ export interface ProductionLaunchCommandCenter {
   disclaimer: string;
 }
 
+export type HostedEvidenceCaptureStatus = "ready-to-capture" | "needs-hosted-proof" | "blocked";
+
+export type HostedEvidenceArtifactStatus = "captured" | "missing" | "mock-only" | "needs-redaction";
+
+export interface HostedEvidenceArtifactCheck {
+  id: string;
+  label: string;
+  status: HostedEvidenceArtifactStatus;
+  source: string;
+  requiredFor: XPrizeGateCheck["criterion"] | "Production Launch";
+  ownerRole: SubmissionEvidenceArtifact["ownerRole"];
+  evidence: string;
+  fix: string;
+  privateHandling: string;
+}
+
+export interface HostedEvidenceArtifactTemplate {
+  id: string;
+  label: string;
+  ownerRole: SubmissionEvidenceArtifact["ownerRole"];
+  requiredFor: XPrizeGateCheck["criterion"] | "Production Launch";
+  acceptedProof: string[];
+  redactionRules: string[];
+  storageTarget: string;
+  registrationHint: string;
+}
+
+export interface HostedEvidenceCaptureCommand {
+  id: string;
+  label: string;
+  command: string;
+  mutatesProduction: boolean;
+  expectedArtifact: string;
+  privateHandling: string;
+}
+
+export interface HostedEvidenceCapturePacket {
+  generatedAt: string;
+  overallStatus: HostedEvidenceCaptureStatus;
+  productUrl: string;
+  evidenceMode: EvidenceVault["evidenceMode"];
+  storageMode: string;
+  checks: HostedEvidenceArtifactCheck[];
+  privateArtifactTemplates: HostedEvidenceArtifactTemplate[];
+  captureCommands: HostedEvidenceCaptureCommand[];
+  blockers: string[];
+  nextActions: string[];
+  privateHandling: string[];
+  disclaimer: string;
+}
+
 export type ProductionProvisioningStatus = "ready-to-run" | "needs-values" | "external-required";
 
 export interface ProductionProvisioningChecklistItem {
