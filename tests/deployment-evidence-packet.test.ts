@@ -38,6 +38,7 @@ describe("deployment evidence packet", () => {
         "cloudrun-dry-run-log",
         "cloudrun-deploy-log",
         "cloudrun-describe-json",
+        "cloudrun-deployment-transcript-packet-json",
         "verify-production-readonly-json",
         "verify-production-write-json",
         "hosted-evidence-json",
@@ -55,6 +56,7 @@ describe("deployment evidence packet", () => {
         "cloudrun-dry-run-packet-verify",
         "cloudrun-dry-run",
         "cloudrun-deploy",
+        "cloudrun-deployment-transcript-collect",
         "hosted-readonly",
         "hosted-write-through",
         "vault-import",
@@ -80,6 +82,12 @@ describe("deployment evidence packet", () => {
     );
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-dry-run")?.command).toContain(
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-deployment-transcript-collect")?.command).toContain(
+      "npm run collect:cloudrun-deployment"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-deployment-transcript-collect")?.expectedArtifactId).toBe(
+      "cloudrun-deployment-transcript-packet-json"
     );
     expect(packet.commandSequence.find((command) => command.id === "vault-import")?.command).toContain(
       "$SENTINEL_ADMIN_ACTION_TOKEN"
@@ -122,6 +130,19 @@ describe("deployment evidence packet", () => {
       ])
     );
     expect(packet.runbook[2].stopCondition).toContain("dry-run fails");
+    expect(packet.runbook[2].requiredArtifactIds).toEqual(
+      expect.arrayContaining([
+        "cloudrun-dry-run-log",
+        "cloudrun-deploy-log",
+        "cloudrun-describe-json",
+        "cloudrun-deployment-transcript-packet-json"
+      ])
+    );
+    expect(packet.runbook[2].proofFiles).toEqual(
+      expect.arrayContaining([
+        "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-deployment-transcript-packet.json"
+      ])
+    );
     expect(packet.runbook[3].stopCondition).toContain("provider=gemini-api");
     expect(packet.runbook[4].redactionCheck).toContain("checksums");
     expect(packet.runbook.filter((step) => step.externalProofRequired)).toHaveLength(3);

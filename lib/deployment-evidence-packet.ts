@@ -131,9 +131,9 @@ function buildRunbook(input: {
       phase: "cloud-deploy",
       label: "Dry-run, deploy, and capture Cloud Run revision",
       ownerRole: "engineering",
-      commandIds: commandIds("cloudrun-dry-run", "cloudrun-deploy", "cloudrun-describe"),
-      requiredArtifactIds: ["cloudrun-dry-run-log", "cloudrun-deploy-log", "cloudrun-describe-json"],
-      proofFiles: proofFiles("cloudrun-dry-run-log", "cloudrun-deploy-log", "cloudrun-describe-json"),
+      commandIds: commandIds("cloudrun-dry-run", "cloudrun-deploy", "cloudrun-describe", "cloudrun-deployment-transcript-collect"),
+      requiredArtifactIds: ["cloudrun-dry-run-log", "cloudrun-deploy-log", "cloudrun-describe-json", "cloudrun-deployment-transcript-packet-json"],
+      proofFiles: proofFiles("cloudrun-dry-run-log", "cloudrun-deploy-log", "cloudrun-describe-json", "cloudrun-deployment-transcript-packet-json"),
       stopCondition: "Stop if dry-run fails, if the deployed revision uses a different image or service account, or if Secret Manager refs are missing.",
       redactionCheck: "Redact unrelated project metadata and any accidental env dumps; never include admin tokens, OAuth secrets, Gemini key values, or judge credentials.",
       nextStep: "Use the deployed URL for hosted read-only and write-through verification.",
@@ -319,6 +319,21 @@ function buildArtifactManifest(input: {
       nextAction: "Capture the deployed service identity, URL, revision, image, and Secret Manager references."
     }),
     artifact({
+      id: "cloudrun-deployment-transcript-packet-json",
+      label: "Redacted Cloud Run deployment transcript packet",
+      ownerRole: "engineering",
+      status: "external-required",
+      sourceCommand:
+        "npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log /secure/local/cloudrun-dry-run.log --deploy-log /secure/local/cloudrun-deploy.log --describe-json /secure/local/cloudrun-describe.json --out-dir artifacts/deployment --strict",
+      privateStorePath: `${basePath}/cloudrun-deployment-transcript-packet.json`,
+      evidenceVaultTarget: "cloud-run-proof",
+      redactionRules: [
+        "Keep raw gcloud logs private; share only the redacted packet after reviewing project ids, service accounts, revision names, and env names.",
+        "Do not import this as hosted proof until verify:production and hosted write-through checks have also run."
+      ],
+      nextAction: "Collect, redact, and checksum dry-run/deploy/describe outputs before hosted verification."
+    }),
+    artifact({
       id: "verify-production-readonly-json",
       label: "Hosted read-only production verification JSON",
       ownerRole: "engineering",
@@ -469,6 +484,15 @@ function buildCommandSequence(input: {
       false,
       "cloudrun-describe-json",
       "Review env metadata before sharing outside the private judge packet."
+    ),
+    command(
+      "cloudrun-deployment-transcript-collect",
+      "Collect redacted Cloud Run deployment transcript packet",
+      "npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log /secure/local/cloudrun-dry-run.log --deploy-log /secure/local/cloudrun-deploy.log --describe-json /secure/local/cloudrun-describe.json --out-dir artifacts/deployment --strict",
+      false,
+      false,
+      "cloudrun-deployment-transcript-packet-json",
+      "Writes a redacted, checksummed transcript packet from operator-saved gcloud dry-run/deploy/describe outputs."
     ),
     command(
       "hosted-readonly",

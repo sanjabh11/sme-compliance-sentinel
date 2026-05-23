@@ -145,6 +145,15 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
         "Test output showing required Cloud Run env, Secret Manager placeholders, and private render safety checks are present."
       ),
       command(
+        "collect-cloudrun-deployment-transcript",
+        "Collect redacted Cloud Run deployment transcript",
+        "npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log /secure/local/cloudrun-dry-run.log --deploy-log /secure/local/cloudrun-deploy.log --describe-json /secure/local/cloudrun-describe.json --out-dir artifacts/deployment --strict",
+        "engineering",
+        false,
+        false,
+        "Private cloudrun-deployment-transcript-packet.json with SHA-256 hashes and redacted dry-run, deploy, and describe evidence."
+      ),
+      command(
         "hosted-smoke",
         "Hosted production smoke",
         "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --strict",
@@ -178,6 +187,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
       `Use ${renderValuesTemplatePath} only as a non-secret starting point; filled render values belong in a private path such as ${privateRenderValuesPath}.`,
       "Run npm run audit:cloudrun-values against the filled private values file before rendering; stop if the audit is not ready-to-render.",
       "Run npm run prepare:cloudrun-dry-run and npm run verify:cloudrun-dry-run-packet before gcloud dry-run; preserve both JSON outputs in the private evidence store.",
+      "Run npm run collect:cloudrun-deployment after Cloud Run dry-run, deploy, and describe; keep raw gcloud logs private and share only the redacted transcript packet.",
       "Use Secret Manager for the runtime secrets and grant access only to the Cloud Run runtime service account.",
       "Use Devpost private testing instructions for judge credentials; keep public README and video free of login secrets.",
       "Use the admin action token only from private operator tooling when importing hosted proof JSON.",
