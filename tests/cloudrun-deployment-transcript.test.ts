@@ -47,6 +47,7 @@ describe("Cloud Run deployment transcript collector", () => {
     const dryRunLogPath = join(inputDir, "cloudrun-dry-run.log");
     const deployLogPath = join(inputDir, "cloudrun-deploy.log");
     const describeJsonPath = join(inputDir, "cloudrun-describe.json");
+    const fakeGoogleApiKey = ["AI", "za", "SyA", "1".repeat(36)].join("");
 
     writeFileSync(
       dryRunLogPath,
@@ -55,7 +56,7 @@ describe("Cloud Run deployment transcript collector", () => {
     );
     writeFileSync(
       deployLogPath,
-      "Deploying container to Cloud Run service [sme-workspace-sentinel].\nGEMINI_API_KEY=AIzaSyA111111111111111111111111111111111111\nDone.\n",
+      `Deploying container to Cloud Run service [sme-workspace-sentinel].\nGEMINI_API_KEY=${fakeGoogleApiKey}\nDone.\n`,
       "utf8"
     );
     writeFileSync(
@@ -125,7 +126,7 @@ describe("Cloud Run deployment transcript collector", () => {
       expect(packet.inputs.every((input) => input.status === "captured" && input.sha256)).toBe(true);
       expect(packet.inputs.reduce((total, input) => total + input.redactionCount, 0)).toBeGreaterThan(0);
       expect(packetText).not.toContain("ya29.private-access-token");
-      expect(packetText).not.toContain("AIzaSyA111111111111111111111111111111111111");
+      expect(packetText).not.toContain(fakeGoogleApiKey);
       expect(packetText).toContain("[REDACTED_GOOGLE_ACCESS_TOKEN]");
       expect(packetText).toContain("GEMINI_API_KEY=[REDACTED]");
       expect(packet.inputs.find((input) => input.role === "cloudrun-deploy-log")?.redactionCount).toBeGreaterThan(0);
