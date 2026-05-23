@@ -11,11 +11,11 @@ const manifestPath = "cloudrun.service.yaml";
 const renderedManifestPath = "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml";
 const projectId = sentinelConfig.googleCloudProject || "PROJECT_ID";
 const projectNumber = sentinelConfig.googleCloudProjectNumber || "PROJECT_NUMBER";
-const region = "REGION";
+const imageTag = sentinelConfig.releaseId ? dockerTag(sentinelConfig.releaseId) : "$SENTINEL_RELEASE_ID";
 const runtimeServiceAccount = `sentinel-runtime@${projectId}.iam.gserviceaccount.com`;
 const workspacePushServiceAccount = `workspace-push@${projectId}.iam.gserviceaccount.com`;
 const pubSubServiceAgent = `service-${projectNumber}@gcp-sa-pubsub.iam.gserviceaccount.com`;
-const imageUrl = `${region}-docker.pkg.dev/${projectId}/sentinel/web:latest`;
+const imageUrl = `${recommendedRegion}-docker.pkg.dev/${projectId}/sentinel/web:${imageTag}`;
 
 const requiredApis = [
   "run.googleapis.com",
@@ -343,7 +343,7 @@ function buildCommands(dryRunCommand: string, deployCommand: string): Production
     command(
       "create-artifact-repository",
       "Create Artifact Registry repository",
-      `gcloud artifacts repositories create sentinel --repository-format=docker --location ${region} --project ${projectId}`,
+      `gcloud artifacts repositories create sentinel --repository-format=docker --location ${recommendedRegion} --project ${projectId}`,
       "engineering",
       false,
       true,
@@ -454,4 +454,14 @@ function command(
     mutatesCloudResources,
     expectedProof
   };
+}
+
+function dockerTag(value: string) {
+  return (
+    String(value || "latest")
+      .toLowerCase()
+      .replace(/[^a-z0-9_.-]+/gu, "-")
+      .replace(/^-+|-+$/gu, "")
+      .slice(0, 120) || "latest"
+  );
 }

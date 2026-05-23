@@ -43,6 +43,12 @@ describe("production provisioning pack", () => {
     );
     expect(pack.dryRunCommand).toContain("--dry-run");
     expect(pack.deployCommand).toContain("gcloud run services replace artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml");
+    expect(pack.commands.find((command) => command.id === "build-container")?.command).toContain(
+      "us-central1-docker.pkg.dev/PROJECT_ID/sentinel/web:$SENTINEL_RELEASE_ID"
+    );
+    expect(pack.commands.find((command) => command.id === "create-artifact-repository")?.command).toContain(
+      "--location us-central1"
+    );
     expect(pack.verificationSequence.map((command) => command.id)).toEqual(
       expect.arrayContaining(["local-quality-gates", "render-cloudrun-manifest", "manifest-regression", "hosted-smoke", "write-through-smoke"])
     );
@@ -59,6 +65,8 @@ describe("production provisioning pack", () => {
     expect(allCommands).not.toContain("SENTINEL_EVIDENCE_SIGNING_SECRET=");
     expect(allCommands).not.toContain("SENTINEL_ADMIN_ACTION_TOKEN=");
     expect(allCommands).not.toContain("GOOGLE_CLOUD_ACCESS_TOKEN");
+    expect(allCommands).not.toContain("REGION-docker.pkg.dev");
+    expect(allCommands).not.toContain("/web:latest");
     expect(pack.commands.filter((command) => command.requiresSecretInput).every((command) => command.command.includes("--data-file="))).toBe(true);
     expect(pack.verificationSequence.find((command) => command.id === "import-hosted-proof")?.command).toContain(
       "x-sentinel-admin-token: $SENTINEL_ADMIN_ACTION_TOKEN"

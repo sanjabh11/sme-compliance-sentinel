@@ -134,6 +134,10 @@ describe("Cloud Run deployment evidence verifier", () => {
         'name: WORKSPACE_PUBSUB_PUSH_AUDIENCE\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/api/webhooks/pubsub/gmail"',
         'name: WORKSPACE_PUBSUB_PUSH_AUDIENCE\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/api/webhooks/pubsub/drive"'
       )
+      .replace(
+        "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:release-20260523-001",
+        "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:latest"
+      )
       .replace('name: SENTINEL_GEMINI_MODEL_ALLOWLIST\n              value: "gemini-3.5-flash,gemini-2.5-flash,gemini-2.5-pro"', 'name: SENTINEL_GEMINI_MODEL_ALLOWLIST\n              value: "gemini-2.5-flash"')
       .replace('name: sentinel-admin-action-token\n                  key: "1"', 'name: sentinel-admin-action-token\n                  key: "latest"');
     const evidence = buildCloudRunDeploymentEvidence(driftedManifest);
@@ -143,6 +147,7 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(checksByName.INVALID_VALUE_SENTINEL_MOCK_MODE).toMatchObject({ status: "blocked" });
     expect(checksByName.MISMATCHED_GOOGLE_OAUTH_REDIRECT_URI).toMatchObject({ status: "blocked" });
     expect(checksByName.MISMATCHED_WORKSPACE_PUBSUB_PUSH_AUDIENCE).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_CLOUD_RUN_IMAGE_TAG).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_GEMINI_MODEL_ALLOWLIST).toMatchObject({ status: "blocked" });
     expect(checksByName.SENTINEL_ADMIN_ACTION_TOKEN).toMatchObject({ status: "blocked" });
     expect(JSON.stringify(evidence)).not.toContain("private-admin-token");
@@ -180,6 +185,9 @@ describe("Cloud Run deployment evidence verifier", () => {
       renderProductionCandidateManifest().replace(
         'name: SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE\n              value: "oidc"',
         'name: SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE\n              value: "demo"'
+      ).replace(
+        "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:release-20260523-001",
+        "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:latest"
       ),
       "utf8"
     );
@@ -193,6 +201,7 @@ describe("Cloud Run deployment evidence verifier", () => {
 
       expect(report.overallStatus).toBe("blocked");
       expect(report.blockers.join(" ")).toContain("INVALID_VALUE_SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE");
+      expect(report.blockers.join(" ")).toContain("INVALID_CLOUD_RUN_IMAGE_TAG");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -219,7 +228,7 @@ function addEnv(source: string, entries: Array<[string, string]>) {
 
 function renderProductionCandidateManifest() {
   return manifest
-    .replace("REGION-docker.pkg.dev/PROJECT_ID/sentinel/web:latest", "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:latest")
+    .replace("REGION-docker.pkg.dev/PROJECT_ID/sentinel/web:latest", "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:release-20260523-001")
     .replace("sentinel-runtime@PROJECT_ID.iam.gserviceaccount.com", "sentinel-runtime@sentinel-prod.iam.gserviceaccount.com")
     .replaceAll("https://YOUR-SERVICE-URL", "https://sme-workspace-sentinel-abc-uc.a.run.app")
     .replace("https://youtu.be/YOUR_VIDEO", "https://youtu.be/sentinel-demo")
