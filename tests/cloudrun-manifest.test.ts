@@ -79,6 +79,8 @@ describe("Cloud Run deployment manifest", () => {
       "SENTINEL_GEMINI_DAILY_REQUEST_QUOTA",
       "SENTINEL_GEMINI_DAILY_TOKEN_QUOTA",
       "SENTINEL_GEMINI_QUOTA_EVIDENCE_CONFIRMED",
+      "GEMINI_INPUT_PER_1K_USD",
+      "GEMINI_OUTPUT_PER_1K_USD",
       "SENSITIVE_DATA_PROTECTION_ENABLED"
     ].forEach(expectEnv);
 
@@ -100,6 +102,8 @@ describe("Cloud Run deployment manifest", () => {
     expectEnvValue("XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED", "false");
     expectEnvValue("XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED", "false");
     expectEnvValue("SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE", "oidc");
+    expectEnvValue("GEMINI_INPUT_PER_1K_USD", "0.000075");
+    expectEnvValue("GEMINI_OUTPUT_PER_1K_USD", "0.0003");
     expectEnvValue("SENSITIVE_DATA_PROTECTION_ENABLED", "true");
   });
 

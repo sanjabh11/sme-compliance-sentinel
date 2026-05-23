@@ -143,6 +143,11 @@ describe("Cloud Run deployment evidence verifier", () => {
   it("blocks rendered manifests with unsafe production-mode, callback, model, or secret-version drift", () => {
     const driftedManifest = renderProductionCandidateManifest()
       .replace('name: SENTINEL_MOCK_MODE\n              value: "false"', 'name: SENTINEL_MOCK_MODE\n              value: "true"')
+      .replace("https://youtu.be/sentinel-demo", "https://example.com/sentinel-demo")
+      .replace('name: XPRIZE_ENTRANT_TYPE\n              value: "team"', 'name: XPRIZE_ENTRANT_TYPE\n              value: "vendor"')
+      .replace("123456789012-abcdef.apps.googleusercontent.com", "client-id")
+      .replace('name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS\n              value: "34.10.10.10"', 'name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS\n              value: "0.0.0.0/0"')
+      .replace('name: SENTINEL_GEMINI_MONTHLY_BUDGET_USD\n              value: "50"', 'name: SENTINEL_GEMINI_MONTHLY_BUDGET_USD\n              value: "0"')
       .replace(
         'name: GOOGLE_OAUTH_REDIRECT_URI\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/api/oauth/google/callback"',
         'name: GOOGLE_OAUTH_REDIRECT_URI\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/wrong/oauth/callback"'
@@ -167,6 +172,11 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(checksByName.INVALID_VALUE_SENTINEL_MOCK_MODE).toMatchObject({ status: "blocked" });
     expect(checksByName.MISMATCHED_GOOGLE_OAUTH_REDIRECT_URI).toMatchObject({ status: "blocked" });
     expect(checksByName.MISMATCHED_WORKSPACE_PUBSUB_PUSH_AUDIENCE).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_XPRIZE_DEMO_VIDEO_URL_HOST).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_XPRIZE_ENTRANT_TYPE).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_GOOGLE_OAUTH_CLIENT_ID).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_NUMBER_SENTINEL_GEMINI_MONTHLY_BUDGET_USD).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_CLOUD_RUN_IMAGE_TAG).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_SENTINEL_SOURCE_COMMIT).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_SENTINEL_SOURCE_COMMIT_AT).toMatchObject({ status: "blocked" });
@@ -213,6 +223,12 @@ describe("Cloud Run deployment evidence verifier", () => {
         'name: SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE\n              value: "oidc"',
         'name: SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE\n              value: "demo"'
       ).replace(
+        'name: XPRIZE_ENTRANT_TYPE\n              value: "team"',
+        'name: XPRIZE_ENTRANT_TYPE\n              value: "contractor"'
+      ).replace(
+        'name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS\n              value: "34.10.10.10"',
+        'name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS\n              value: "anywhere"'
+      ).replace(
         "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:release-20260523-001",
         "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:latest"
       ),
@@ -228,6 +244,8 @@ describe("Cloud Run deployment evidence verifier", () => {
 
       expect(report.overallStatus).toBe("blocked");
       expect(report.blockers.join(" ")).toContain("INVALID_VALUE_SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE");
+      expect(report.blockers.join(" ")).toContain("INVALID_XPRIZE_ENTRANT_TYPE");
+      expect(report.blockers.join(" ")).toContain("INVALID_SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS");
       expect(report.blockers.join(" ")).toContain("INVALID_CLOUD_RUN_IMAGE_TAG");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });

@@ -171,6 +171,8 @@ const fixedProductionEnvValues = {
   SENSITIVE_DATA_PROTECTION_ENABLED: "true"
 };
 
+const allowedEntrantTypes = new Set(["individual", "team", "organization"]);
+
 const placeholderPatterns = [
   /PROJECT_ID/u,
   /PROJECT_NUMBER/u,
@@ -182,7 +184,8 @@ const placeholderPatterns = [
   /RELEASE_ID/u,
   /SOURCE_COMMIT/u,
   /SOURCE_COMMIT_AT/u,
-  /SOURCE_BRANCH/u
+  /SOURCE_BRANCH/u,
+  /STATIC_EGRESS_IPS/u
 ];
 
 const unsafeRawValuePatterns = [
@@ -425,6 +428,9 @@ function checkProductionValueInvariants(envByName, image, runtimeServiceAccount)
   const releaseId = cleanEnvValue(envByName, "SENTINEL_RELEASE_ID");
   const sourceCommit = cleanEnvValue(envByName, "SENTINEL_SOURCE_COMMIT");
   const sourceCommitAt = cleanEnvValue(envByName, "SENTINEL_SOURCE_COMMIT_AT");
+  const demoVideoUrl = cleanEnvValue(envByName, "XPRIZE_DEMO_VIDEO_URL");
+  const entrantType = cleanEnvValue(envByName, "XPRIZE_ENTRANT_TYPE");
+  const oauthClientId = cleanEnvValue(envByName, "GOOGLE_OAUTH_CLIENT_ID");
 
   for (const [name, expectedValue] of Object.entries(fixedProductionEnvValues)) {
     const value = cleanEnvValue(envByName, name);
@@ -458,6 +464,42 @@ function checkProductionValueInvariants(envByName, image, runtimeServiceAccount)
     ...checkHttpsUrl(envByName, "GOOGLE_OAUTH_REDIRECT_URI"),
     ...checkHttpsUrl(envByName, "WORKSPACE_PUBSUB_PUSH_AUDIENCE")
   );
+
+  if (demoVideoUrl && isHttpsUrl(demoVideoUrl) && !isAllowedDemoVideoHost(demoVideoUrl)) {
+    checks.push(
+      check(
+        "INVALID_XPRIZE_DEMO_VIDEO_URL_HOST",
+        "blocked",
+        demoVideoUrl,
+        "XPRIZE_DEMO_VIDEO_URL must point to YouTube, Vimeo, or Youku for the final public demo video.",
+        "Use the final public YouTube, Vimeo, or Youku video URL before Cloud Run dry-run."
+      )
+    );
+  }
+
+  if (entrantType && !allowedEntrantTypes.has(entrantType)) {
+    checks.push(
+      check(
+        "INVALID_XPRIZE_ENTRANT_TYPE",
+        "blocked",
+        entrantType,
+        "XPRIZE_ENTRANT_TYPE must be individual, team, or organization.",
+        "Set XPRIZE_ENTRANT_TYPE to individual, team, or organization after eligibility review."
+      )
+    );
+  }
+
+  if (oauthClientId && !/^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/u.test(oauthClientId)) {
+    checks.push(
+      check(
+        "INVALID_GOOGLE_OAUTH_CLIENT_ID",
+        "blocked",
+        oauthClientId,
+        "GOOGLE_OAUTH_CLIENT_ID does not match the expected Google OAuth web-client id shape.",
+        "Use the hosted Google OAuth web client id ending in .apps.googleusercontent.com."
+      )
+    );
+  }
 
   if (productUrl && isHttpsUrl(productUrl)) {
     checks.push(
@@ -531,6 +573,16 @@ function checkProductionValueInvariants(envByName, image, runtimeServiceAccount)
     }
   }
 
+  checks.push(
+    ...checkGeminiServerIpAllowlist(envByName),
+    ...checkPositiveNumberEnv(envByName, "SENTINEL_GEMINI_MONTHLY_BUDGET_USD"),
+    ...checkPositiveNumberEnv(envByName, "SENTINEL_GEMINI_MAX_CONTENT_BYTES_PER_EVENT", true),
+    ...checkPositiveNumberEnv(envByName, "SENTINEL_GEMINI_DAILY_REQUEST_QUOTA", true),
+    ...checkPositiveNumberEnv(envByName, "SENTINEL_GEMINI_DAILY_TOKEN_QUOTA", true),
+    ...checkPositiveNumberEnv(envByName, "GEMINI_INPUT_PER_1K_USD"),
+    ...checkPositiveNumberEnv(envByName, "GEMINI_OUTPUT_PER_1K_USD")
+  );
+
   return checks;
 }
 
@@ -567,6 +619,51 @@ function checkExpectedValue(envByName, name, expectedValue) {
   }
 
   return [check(`MISMATCHED_${name}`, "blocked", value, `${name} does not match the deployment contract.`, `Set ${name} to ${expectedValue}.`)];
+}
+
+function checkPositiveNumberEnv(envByName, name, integer = false) {
+  const value = cleanEnvValue(envByName, name);
+  if (!value) {
+    return [];
+  }
+
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue <= 0 || (integer && !Number.isInteger(numberValue))) {
+    return [
+      check(
+        `INVALID_NUMBER_${name}`,
+        "blocked",
+        value,
+        `${name} must be a positive${integer ? " integer" : ""} value.`,
+        `Set ${name} to a reviewed positive${integer ? " integer" : ""} deployment value.`
+      )
+    ];
+  }
+
+  return [];
+}
+
+function checkGeminiServerIpAllowlist(envByName) {
+  const value = cleanEnvValue(envByName, "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS");
+  if (!value) {
+    return [];
+  }
+
+  const entries = value.split(",").map((item) => item.trim()).filter(Boolean);
+  const invalidEntries = entries.filter((entry) => !isValidIpv4OrCidr(entry) || entry === "0.0.0.0/0");
+  if (invalidEntries.length) {
+    return [
+      check(
+        "INVALID_SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
+        "blocked",
+        invalidEntries.join(","),
+        "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS must be a comma-separated allowlist of concrete IPv4 addresses or narrow CIDR ranges, not wildcards.",
+        "Use the reviewed static Cloud Run egress IP addresses configured on the Gemini API key restriction."
+      )
+    ];
+  }
+
+  return [];
 }
 
 function cleanEnvValue(envByName, name) {
@@ -608,6 +705,46 @@ function isHttpsUrl(value) {
   } catch {
     return false;
   }
+}
+
+function isAllowedDemoVideoHost(value) {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase().replace(/^www\./u, "");
+    return hostname === "youtu.be" || hostname === "youtube.com" || hostname === "vimeo.com" || hostname === "youku.com";
+  } catch {
+    return false;
+  }
+}
+
+function isValidIpv4OrCidr(value) {
+  const [address, prefix] = value.split("/");
+  const octets = address.split(".");
+  if (octets.length !== 4) {
+    return false;
+  }
+
+  if (
+    !octets.every((octet) => {
+      if (!/^[0-9]{1,3}$/u.test(octet)) {
+        return false;
+      }
+      const parsed = Number(octet);
+      return parsed >= 0 && parsed <= 255;
+    })
+  ) {
+    return false;
+  }
+
+  if (prefix === undefined) {
+    return true;
+  }
+
+  if (!/^[0-9]{1,2}$/u.test(prefix)) {
+    return false;
+  }
+
+  const parsedPrefix = Number(prefix);
+  return parsedPrefix >= 1 && parsedPrefix <= 32;
 }
 
 function trimTrailingSlash(value) {
