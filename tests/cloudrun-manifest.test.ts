@@ -67,6 +67,7 @@ describe("Cloud Run deployment manifest", () => {
     expectEnvValue("SENTINEL_STORAGE_MODE", "gcp-rest");
     expectEnvValue("SENTINEL_EVIDENCE_MODE", "production");
     expectEnvValue("SENTINEL_CLOUD_COST_CONTROLS_MODE", "production");
+    expectEnvValue("XPRIZE_REPOSITORY_URL", "https://github.com/sanjabh11/sme-compliance-sentinel");
     expectEnvValue("SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE", "oidc");
     expectEnvValue("SENSITIVE_DATA_PROTECTION_ENABLED", "true");
   });

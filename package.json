@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "AI DLP and SOC2 readiness evidence dashboard for seed-stage teams using Google Workspace.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sanjabh11/sme-compliance-sentinel.git"
+  },
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",

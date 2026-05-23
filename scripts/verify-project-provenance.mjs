@@ -38,12 +38,20 @@ function collectGitSignals() {
     .filter(Boolean).length;
 
   let commitCount = 0;
+  let headCommit;
+  let remoteUrl;
+  let upstreamBranch;
+  let remoteHeadCommit;
   let firstCommitAt;
   let headCommitAt;
   let error;
 
   try {
     commitCount = Number(runGit(["rev-list", "--count", "HEAD"])) || 0;
+    headCommit = runGit(["rev-parse", "HEAD"]) || undefined;
+    remoteUrl = runGit(["remote", "get-url", "origin"]) || undefined;
+    upstreamBranch = runOptionalGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]) || undefined;
+    remoteHeadCommit = upstreamBranch ? runOptionalGit(["rev-parse", upstreamBranch]) || undefined : undefined;
     firstCommitAt = runGit(["log", "--reverse", "--format=%cI", "--max-count=1"]) || undefined;
     headCommitAt = runGit(["log", "-1", "--format=%cI"]) || undefined;
   } catch (caught) {
@@ -53,6 +61,10 @@ function collectGitSignals() {
   return {
     gitAvailable: true,
     commitCount,
+    headCommit,
+    remoteUrl,
+    upstreamBranch,
+    remoteHeadCommit,
     firstCommitAt,
     headCommitAt,
     trackedFileCount,
@@ -61,11 +73,20 @@ function collectGitSignals() {
   };
 }
 
+function runOptionalGit(args) {
+  try {
+    return runGit(args);
+  } catch {
+    return "";
+  }
+}
+
 function buildReport() {
   const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
   const git = collectGitSignals();
   const firstCommitMs = git.firstCommitAt ? Date.parse(git.firstCommitAt) : Number.NaN;
   const firstCommitAfterStart = Number.isFinite(firstCommitMs) && firstCommitMs >= Date.parse(hackathonStartAt);
+  const repositoryUrl = normalizeRepositoryUrl(process.env.XPRIZE_REPOSITORY_URL ?? git.remoteUrl ?? "");
   const checks = [
     check("git-history-present", git.gitAvailable && git.commitCount > 0, `${git.commitCount} commit(s) found.`),
     check("first-commit-after-start", firstCommitAfterStart, git.firstCommitAt ?? "No first commit timestamp."),
@@ -73,6 +94,14 @@ function buildReport() {
       "source-tracked",
       git.trackedFileCount > 0 && git.untrackedPaths.length === 0,
       `${git.trackedFileCount} tracked file(s); ${git.untrackedPaths.length} untracked path(s).`
+    ),
+    check("repository-url", Boolean(repositoryUrl), repositoryUrl || "XPRIZE_REPOSITORY_URL and git origin remote are missing."),
+    check(
+      "repository-pushed",
+      Boolean(git.headCommit && git.remoteHeadCommit === git.headCommit),
+      git.headCommit
+        ? `HEAD ${git.headCommit}; upstream ${git.upstreamBranch ?? "missing"} ${git.remoteHeadCommit ?? "missing"}.`
+        : "No local HEAD commit."
     ),
     check(
       "pre-existing-work-disclosure",
@@ -88,6 +117,8 @@ function buildReport() {
     generatedAt: new Date().toISOString(),
     overallStatus: blocked.length ? "blocked" : warning.length ? "warning" : "passed",
     hackathonStartAt,
+    repositoryUrl,
+    repositoryUrlSource: process.env.XPRIZE_REPOSITORY_URL ? "env" : repositoryUrl ? "git-remote" : "missing",
     git,
     packageSummary: {
       runtimeDependencies: Object.keys(packageJson.dependencies ?? {}).sort(),
@@ -97,7 +128,7 @@ function buildReport() {
     nextActions: [
       ...(git.commitCount === 0 ? ["Create the first commit before relying on repository-history proof."] : []),
       ...(git.untrackedPaths.length ? ["Add intended source files to Git and keep secrets/private evidence excluded."] : []),
-      "Push or share the repository for judges.",
+      ...(git.headCommit && git.remoteHeadCommit === git.headCommit ? [] : ["Push or share the repository for judges."]),
       "Human-review the Devpost disclosure before setting XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED=true."
     ],
     disclosureDraft: [
@@ -107,6 +138,18 @@ function buildReport() {
       "Private customer evidence, secrets, judge credentials, invoices, and raw security findings are excluded from the source repository."
     ]
   };
+}
+
+function normalizeRepositoryUrl(url) {
+  if (!url) {
+    return "";
+  }
+
+  if (url.startsWith("git@github.com:")) {
+    return `https://github.com/${url.slice("git@github.com:".length).replace(/\.git$/u, "")}`;
+  }
+
+  return url.replace(/\.git$/u, "");
 }
 
 function check(id, passed, evidence, forcedStatus) {

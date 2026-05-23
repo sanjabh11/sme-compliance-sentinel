@@ -34,12 +34,20 @@ function collectGitSignals(): ProjectProvenanceGitSignals {
     .filter(Boolean).length;
 
   let commitCount = 0;
+  let headCommit: string | undefined;
+  let remoteUrl: string | undefined;
+  let upstreamBranch: string | undefined;
+  let remoteHeadCommit: string | undefined;
   let firstCommitAt: string | undefined;
   let headCommitAt: string | undefined;
   let error: string | undefined;
 
   try {
     commitCount = Number(runGit(["rev-list", "--count", "HEAD"])) || 0;
+    headCommit = runGit(["rev-parse", "HEAD"]).trim() || undefined;
+    remoteUrl = runGit(["remote", "get-url", "origin"]).trim() || undefined;
+    upstreamBranch = runOptionalGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]) || undefined;
+    remoteHeadCommit = upstreamBranch ? runOptionalGit(["rev-parse", upstreamBranch]) || undefined : undefined;
     firstCommitAt = runGit(["log", "--reverse", "--format=%cI", "--max-count=1"]).trim() || undefined;
     headCommitAt = runGit(["log", "-1", "--format=%cI"]).trim() || undefined;
   } catch (caught) {
@@ -49,6 +57,10 @@ function collectGitSignals(): ProjectProvenanceGitSignals {
   return {
     gitAvailable: true,
     commitCount,
+    headCommit,
+    remoteUrl,
+    upstreamBranch,
+    remoteHeadCommit,
     firstCommitAt,
     headCommitAt,
     trackedFileCount,
@@ -63,4 +75,12 @@ function runGit(args: string[]) {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
   }).trim();
+}
+
+function runOptionalGit(args: string[]) {
+  try {
+    return runGit(args);
+  } catch {
+    return "";
+  }
 }

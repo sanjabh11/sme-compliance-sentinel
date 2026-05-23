@@ -27,7 +27,9 @@ export function buildProjectProvenanceReport(
 ): ProjectProvenanceReport {
   const projectCreatedAfterStartConfirmed =
     options.projectCreatedAfterStartConfirmed ?? sentinelConfig.projectCreatedAfterStartConfirmed;
-  const repositoryUrl = options.repositoryUrl ?? sentinelConfig.repositoryUrl;
+  const configuredRepositoryUrl = options.repositoryUrl ?? sentinelConfig.repositoryUrl;
+  const repositoryUrl = configuredRepositoryUrl || normalizeRepositoryUrl(git.remoteUrl ?? "");
+  const repositoryUrlSource = configuredRepositoryUrl ? "env" : repositoryUrl ? "git-remote" : "missing";
   const disclosureItems = buildDisclosureItems();
   const checks = buildChecks(git, { projectCreatedAfterStartConfirmed, repositoryUrl });
   const summary = summarize(checks);
@@ -39,6 +41,7 @@ export function buildProjectProvenanceReport(
     hackathonStartAt: xprizeHackathonStartAt,
     projectCreatedAfterStartConfirmed,
     repositoryUrl,
+    repositoryUrlSource,
     git,
     checks,
     disclosureItems,
@@ -103,6 +106,16 @@ function buildChecks(
       "engineering"
     ),
     check(
+      "repository-pushed",
+      "Current source commit is present on the upstream branch",
+      git.headCommit && git.remoteHeadCommit === git.headCommit ? "passed" : "blocked",
+      git.headCommit
+        ? `HEAD ${git.headCommit}; upstream ${git.upstreamBranch ?? "missing"} ${git.remoteHeadCommit ?? "missing"}.`
+        : "No local HEAD commit is available.",
+      "Push the current source commit to the judge-accessible repository before treating source-code evidence as complete.",
+      "engineering"
+    ),
+    check(
       "human-attestation",
       "Project-created-after-start human attestation",
       options.projectCreatedAfterStartConfirmed ? "passed" : "blocked",
@@ -121,6 +134,18 @@ function buildChecks(
       "legal"
     )
   ];
+}
+
+function normalizeRepositoryUrl(url: string) {
+  if (!url) {
+    return "";
+  }
+
+  if (url.startsWith("git@github.com:")) {
+    return `https://github.com/${url.slice("git@github.com:".length).replace(/\.git$/u, "")}`;
+  }
+
+  return url.replace(/\.git$/u, "");
 }
 
 function check(

@@ -80,6 +80,7 @@ function scanFile(path) {
 function buildReport() {
   const status = parseStatus();
   const tracked = listTracked();
+  const commitCount = countCommits();
   const untracked = status.filter((item) => item.code === "??").map((item) => item.path);
   const candidateFiles = [...new Set([...tracked, ...untracked])].filter(
     (path) => !forbiddenTrackedPatterns.some((pattern) => pattern.test(path))
@@ -109,10 +110,12 @@ function buildReport() {
     )
   ];
   const blocked = checks.filter((item) => item.status === "blocked");
+  const overallStatus = blocked.length ? "blocked" : commitCount > 0 && untracked.length === 0 ? "published" : "ready-to-commit";
 
   return {
     generatedAt: new Date().toISOString(),
-    overallStatus: blocked.length ? "blocked" : "ready-to-commit",
+    overallStatus,
+    commitCount,
     trackedFileCount: tracked.length,
     untrackedFileCount: untracked.length,
     candidateFileCount: candidateFiles.length,
@@ -120,8 +123,18 @@ function buildReport() {
     secretFindings,
     nextActions: blocked.length
       ? blocked.map((item) => item.fix)
-      : ["Run full verification, stage intended source files, create the first commit, and rerun npm run verify:provenance."]
+      : overallStatus === "published"
+        ? ["Rerun npm run verify:provenance and keep the repository URL in the deployment environment."]
+        : ["Run full verification, stage intended source files, create the first commit, and rerun npm run verify:provenance."]
   };
+}
+
+function countCommits() {
+  try {
+    return Number(runGit(["rev-list", "--count", "HEAD"])) || 0;
+  } catch {
+    return 0;
+  }
 }
 
 function check(id, passed, evidence) {

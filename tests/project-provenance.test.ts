@@ -6,6 +6,10 @@ import type { ProjectProvenanceGitSignals } from "@/lib/types";
 const cleanGitSignals: ProjectProvenanceGitSignals = {
   gitAvailable: true,
   commitCount: 12,
+  headCommit: "abc123",
+  remoteUrl: "https://github.com/example/sme-workspace-sentinel.git",
+  upstreamBranch: "origin/main",
+  remoteHeadCommit: "abc123",
   firstCommitAt: "2026-05-20T10:00:00.000Z",
   headCommitAt: "2026-05-23T09:00:00.000Z",
   trackedFileCount: 80,
@@ -30,6 +34,7 @@ describe("project provenance disclosure report", () => {
         "first-commit-after-start",
         "source-tracked",
         "repository-url",
+        "repository-pushed",
         "human-attestation",
         "pre-existing-work-disclosure"
       ])
@@ -46,8 +51,19 @@ describe("project provenance disclosure report", () => {
 
     expect(report.overallStatus).toBe("warning");
     expect(report.checks.find((check) => check.id === "first-commit-after-start")?.status).toBe("passed");
+    expect(report.checks.find((check) => check.id === "repository-pushed")?.status).toBe("passed");
     expect(report.checks.find((check) => check.id === "pre-existing-work-disclosure")?.status).toBe("warning");
     expect(report.nextActions[0]).toContain("Human-review");
+  });
+
+  it("uses the git remote as repository evidence when the deployment env is not configured", () => {
+    const report = buildProjectProvenanceReport(cleanGitSignals, {
+      projectCreatedAfterStartConfirmed: true
+    });
+
+    expect(report.repositoryUrl).toBe("https://github.com/example/sme-workspace-sentinel");
+    expect(report.repositoryUrlSource).toBe("git-remote");
+    expect(report.checks.find((check) => check.id === "repository-url")?.status).toBe("passed");
   });
 
   it("keeps provenance language inside claim guard boundaries", () => {

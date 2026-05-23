@@ -1293,6 +1293,10 @@ export interface DemoVideoCompliancePack {
 export interface ProjectProvenanceGitSignals {
   gitAvailable: boolean;
   commitCount: number;
+  headCommit?: string;
+  remoteUrl?: string;
+  upstreamBranch?: string;
+  remoteHeadCommit?: string;
   firstCommitAt?: string;
   headCommitAt?: string;
   trackedFileCount: number;
@@ -1381,6 +1385,7 @@ export interface ProjectProvenanceReport {
   hackathonStartAt: string;
   projectCreatedAfterStartConfirmed: boolean;
   repositoryUrl: string;
+  repositoryUrlSource: "env" | "git-remote" | "missing";
   git: ProjectProvenanceGitSignals;
   checks: ProjectProvenanceCheck[];
   disclosureItems: ProjectProvenanceDisclosureItem[];
