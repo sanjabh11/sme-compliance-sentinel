@@ -1,4 +1,4 @@
-/* global console, process */
+/* global URL, console, process */
 
 import { readFileSync } from "node:fs";
 
@@ -131,6 +131,21 @@ const manualReviewEnv = new Set([
   "XPRIZE_THIRD_PARTY_REVIEW_APPROVED"
 ]);
 
+const booleanEnv = new Set([
+  "SENTINEL_MOCK_MODE",
+  "SENSITIVE_DATA_PROTECTION_ENABLED",
+  ...manualReviewEnv
+]);
+
+const fixedProductionEnvValues = {
+  SENTINEL_MOCK_MODE: "false",
+  SENTINEL_STORAGE_MODE: "gcp-rest",
+  SENTINEL_EVIDENCE_MODE: "production",
+  SENTINEL_CLOUD_COST_CONTROLS_MODE: "production",
+  SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE: "oidc",
+  SENSITIVE_DATA_PROTECTION_ENABLED: "true"
+};
+
 const placeholderPatterns = [
   /PROJECT_ID/u,
   /PROJECT_NUMBER/u,
@@ -140,6 +155,15 @@ const placeholderPatterns = [
   /BUDGET_ID/u,
   /GEMINI_API_KEY_ID/u,
   /RELEASE_ID/u
+];
+
+const unsafeRawValuePatterns = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/u,
+  /\bAIza[0-9A-Za-z_-]{20,}/u,
+  /\bya29\.[0-9A-Za-z._-]+/u,
+  /GOCSPX-[0-9A-Za-z_-]{20,}/u,
+  /Bearer\s+(?!\[REDACTED\])[\w.~+/=-]+/iu,
+  /\b(?:refresh_token|access_token|password|secret|api[_-]?key)\s*[:=]\s*[^,\s;]+/iu
 ];
 
 try {
@@ -162,9 +186,12 @@ function buildReport(manifest) {
     ...requiredNonSecretEnv.map((name) => checkNonSecret(name, envByName.get(name))),
     ...requiredSecretEnv.flatMap((name) => [
       checkSecret(name, envByName.get(name)),
-      checkSecretAnnotation(name, envByName.get(name), secretAnnotations)
+      checkSecretAnnotation(name, envByName.get(name), secretAnnotations, envByName.get("GOOGLE_CLOUD_PROJECT_NUMBER")?.value)
     ]),
-    ...prohibitedCredentialEnv.flatMap((item) => checkProhibitedCredentialEnv(item, envByName.get(item.name)))
+    ...prohibitedCredentialEnv.flatMap((item) => checkProhibitedCredentialEnv(item, envByName.get(item.name))),
+    ...checkProductionValueInvariants(envByName, image, runtimeServiceAccount),
+    ...checkDuplicateEnvEntries(envEntries),
+    ...checkUnsafeRawEnvValues(envEntries)
   ];
   const replacements = [
     ...resourceFinding("container image", image),
@@ -267,7 +294,7 @@ function checkNonSecret(name, entry) {
   return check(name, "passed", entry.value, "Value is present.", "No action.");
 }
 
-function checkSecretAnnotation(envName, entry, annotations) {
+function checkSecretAnnotation(envName, entry, annotations, projectNumber) {
   const lookupName = entry?.secretName || secretLookupNameByEnvName[envName];
   const annotationTarget = annotations.get(lookupName);
   const checkName = `${envName}_SECRET_ANNOTATION`;
@@ -302,6 +329,16 @@ function checkSecretAnnotation(envName, entry, annotations) {
     );
   }
 
+  if (projectNumber && !hasPlaceholder(projectNumber) && annotationTarget !== `projects/${projectNumber}/secrets/${lookupName}`) {
+    return check(
+      checkName,
+      "blocked",
+      annotationTarget,
+      "Cloud Run YAML secret lookup points at a different Google Cloud project number than GOOGLE_CLOUD_PROJECT_NUMBER.",
+      `Point ${lookupName} at projects/${projectNumber}/secrets/${lookupName}.`
+    );
+  }
+
   return check(
     checkName,
     "passed",
@@ -324,6 +361,9 @@ function checkSecret(name, entry) {
   if (entry.secretVersion === "latest") {
     return check(name, "blocked", `${entry.secretName}:latest`, "Secret reference uses latest.", "Pin a numeric version.");
   }
+  if (!/^[1-9][0-9]*$/u.test(entry.secretVersion)) {
+    return check(name, "blocked", `${entry.secretName}:invalid-version`, "Secret reference does not use a numeric reviewed version.", "Pin a numeric version.");
+  }
   return check(name, "passed", `${entry.secretName}:version-set`, "Secret reference uses an explicit version.", "No action.");
 }
 
@@ -341,6 +381,145 @@ function checkProhibitedCredentialEnv(item, entry) {
       item.fix
     )
   ];
+}
+
+function checkProductionValueInvariants(envByName, image, runtimeServiceAccount) {
+  const checks = [];
+  const projectId = cleanEnvValue(envByName, "GOOGLE_CLOUD_PROJECT");
+  const projectNumber = cleanEnvValue(envByName, "GOOGLE_CLOUD_PROJECT_NUMBER");
+  const region = cleanEnvValue(envByName, "SENTINEL_CLOUD_RUN_REGION");
+  const productUrl = cleanEnvValue(envByName, "NEXT_PUBLIC_PRODUCT_URL");
+  const billingAccountId = cleanEnvValue(envByName, "GOOGLE_CLOUD_BILLING_ACCOUNT_ID");
+  const geminiModel = cleanEnvValue(envByName, "GEMINI_MODEL");
+  const geminiAllowlist = cleanEnvValue(envByName, "SENTINEL_GEMINI_MODEL_ALLOWLIST");
+
+  for (const [name, expectedValue] of Object.entries(fixedProductionEnvValues)) {
+    const value = cleanEnvValue(envByName, name);
+    if (value && value !== expectedValue) {
+      checks.push(check(`INVALID_VALUE_${name}`, "blocked", value, `${name} must be ${expectedValue} for production Cloud Run.`, `Set ${name} to "${expectedValue}".`));
+    }
+  }
+
+  for (const name of booleanEnv) {
+    const value = cleanEnvValue(envByName, name);
+    if (value && value !== "true" && value !== "false") {
+      checks.push(check(`INVALID_BOOLEAN_${name}`, "blocked", value, `${name} must be the literal string true or false.`, `Set ${name} to "true" only after evidence exists, otherwise keep "false".`));
+    }
+  }
+
+  if (projectId && !/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/u.test(projectId)) {
+    checks.push(check("INVALID_GOOGLE_CLOUD_PROJECT", "blocked", projectId, "GOOGLE_CLOUD_PROJECT does not look like a valid Google Cloud project id.", "Use the real lower-case Google Cloud project id."));
+  }
+
+  if (projectNumber && !/^[1-9][0-9]{5,20}$/u.test(projectNumber)) {
+    checks.push(check("INVALID_GOOGLE_CLOUD_PROJECT_NUMBER", "blocked", projectNumber, "GOOGLE_CLOUD_PROJECT_NUMBER does not look like a numeric Google Cloud project number.", "Use the numeric Google Cloud project number."));
+  }
+
+  if (productUrl && !isHttpsUrl(productUrl)) {
+    checks.push(check("INVALID_NEXT_PUBLIC_PRODUCT_URL", "blocked", productUrl, "NEXT_PUBLIC_PRODUCT_URL must be a hosted HTTPS URL.", "Use the final Cloud Run HTTPS service URL."));
+  }
+
+  checks.push(
+    ...checkHttpsUrl(envByName, "XPRIZE_REPOSITORY_URL"),
+    ...checkHttpsUrl(envByName, "XPRIZE_DEMO_VIDEO_URL"),
+    ...checkHttpsUrl(envByName, "GOOGLE_OAUTH_REDIRECT_URI"),
+    ...checkHttpsUrl(envByName, "WORKSPACE_PUBSUB_PUSH_AUDIENCE")
+  );
+
+  if (productUrl && isHttpsUrl(productUrl)) {
+    checks.push(
+      ...checkExpectedValue(envByName, "GOOGLE_OAUTH_REDIRECT_URI", `${trimTrailingSlash(productUrl)}/api/oauth/google/callback`),
+      ...checkExpectedValue(envByName, "WORKSPACE_PUBSUB_PUSH_AUDIENCE", `${trimTrailingSlash(productUrl)}/api/webhooks/pubsub/gmail`)
+    );
+  }
+
+  if (projectId && !hasPlaceholder(projectId)) {
+    checks.push(
+      ...checkExpectedValue(envByName, "SENTINEL_BUDGET_PUBSUB_TOPIC", `projects/${projectId}/topics/sentinel-budget-alerts`),
+      ...checkExpectedValue(envByName, "WORKSPACE_GMAIL_TOPIC", `projects/${projectId}/topics/workspace-gmail-updates`),
+      ...checkExpectedValue(envByName, "WORKSPACE_GMAIL_SUBSCRIPTION", `projects/${projectId}/subscriptions/workspace-gmail-push`),
+      ...checkExpectedValue(envByName, "WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL", `workspace-push@${projectId}.iam.gserviceaccount.com`)
+    );
+
+    if (runtimeServiceAccount !== "missing" && !hasPlaceholder(runtimeServiceAccount) && runtimeServiceAccount !== `sentinel-runtime@${projectId}.iam.gserviceaccount.com`) {
+      checks.push(check("INVALID_CLOUD_RUN_SERVICE_ACCOUNT", "blocked", runtimeServiceAccount, "Cloud Run runtime service account does not match GOOGLE_CLOUD_PROJECT.", `Use sentinel-runtime@${projectId}.iam.gserviceaccount.com or update the verifier only with reviewed policy.`));
+    }
+  }
+
+  if (projectId && region && image !== "missing" && !hasPlaceholder(image) && !image.startsWith(`${region}-docker.pkg.dev/${projectId}/`)) {
+    checks.push(check("INVALID_CLOUD_RUN_IMAGE", "blocked", image, "Container image registry does not match SENTINEL_CLOUD_RUN_REGION and GOOGLE_CLOUD_PROJECT.", "Render the image as REGION-docker.pkg.dev/PROJECT_ID/sentinel/web:RELEASE_ID."));
+  }
+
+  if (billingAccountId && !/^[A-Z0-9]{6}-[A-Z0-9]{6}-[A-Z0-9]{6}$/u.test(billingAccountId)) {
+    checks.push(check("INVALID_GOOGLE_CLOUD_BILLING_ACCOUNT_ID", "blocked", billingAccountId, "GOOGLE_CLOUD_BILLING_ACCOUNT_ID does not match the expected billing-account id shape.", "Use the real billing account id or keep the template placeholder."));
+  }
+
+  if (billingAccountId) {
+    const budgetId = cleanEnvValue(envByName, "SENTINEL_GCP_BUDGET_ID");
+    if (budgetId && !budgetId.startsWith(`billingAccounts/${billingAccountId}/budgets/`)) {
+      checks.push(check("INVALID_SENTINEL_GCP_BUDGET_ID", "blocked", budgetId, "SENTINEL_GCP_BUDGET_ID does not belong to GOOGLE_CLOUD_BILLING_ACCOUNT_ID.", "Render the budget id from the same billing account."));
+    }
+  }
+
+  if (projectNumber) {
+    const geminiApiKeyId = cleanEnvValue(envByName, "SENTINEL_GEMINI_API_KEY_ID");
+    if (geminiApiKeyId && !new RegExp(`^projects/${escapeRegExp(projectNumber)}/locations/global/keys/[A-Za-z0-9_-]+$`, "u").test(geminiApiKeyId)) {
+      checks.push(check("INVALID_SENTINEL_GEMINI_API_KEY_ID", "blocked", geminiApiKeyId, "SENTINEL_GEMINI_API_KEY_ID does not match the expected Google API key resource path.", "Render SENTINEL_GEMINI_API_KEY_ID as projects/PROJECT_NUMBER/locations/global/keys/KEY_ID."));
+    }
+  }
+
+  if (geminiModel && geminiAllowlist) {
+    const allowed = geminiAllowlist.split(",").map((item) => item.trim()).filter(Boolean);
+    if (!allowed.includes(geminiModel)) {
+      checks.push(check("INVALID_GEMINI_MODEL_ALLOWLIST", "blocked", geminiAllowlist, "GEMINI_MODEL is not present in SENTINEL_GEMINI_MODEL_ALLOWLIST.", "Add the selected Gemini model to the allowlist or choose an allowed model."));
+    }
+  }
+
+  return checks;
+}
+
+function checkDuplicateEnvEntries(envEntries) {
+  const counts = new Map();
+  for (const entry of envEntries) {
+    counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([name, count]) => check(`DUPLICATE_ENV_${name}`, "blocked", `count:${count}`, "Cloud Run manifest contains duplicate env var names.", `Keep exactly one ${name} env entry.`));
+}
+
+function checkUnsafeRawEnvValues(envEntries) {
+  return envEntries
+    .filter((entry) => entry.value && unsafeRawValuePatterns.some((pattern) => pattern.test(entry.value ?? "")))
+    .map((entry) => check(`UNSAFE_RAW_VALUE_${entry.name}`, "blocked", "raw-value", "Cloud Run manifest env value appears to contain a raw credential or secret-shaped token.", `Move any secret material for ${entry.name} to Secret Manager or remove it.`));
+}
+
+function checkHttpsUrl(envByName, name) {
+  const value = cleanEnvValue(envByName, name);
+  if (!value || isHttpsUrl(value)) {
+    return [];
+  }
+
+  return [check(`INVALID_URL_${name}`, "blocked", value, `${name} must be an HTTPS URL before production deployment.`, `Set ${name} to a hosted HTTPS URL or keep the template placeholder.`)];
+}
+
+function checkExpectedValue(envByName, name, expectedValue) {
+  const value = cleanEnvValue(envByName, name);
+  if (!value || value === expectedValue) {
+    return [];
+  }
+
+  return [check(`MISMATCHED_${name}`, "blocked", value, `${name} does not match the deployment contract.`, `Set ${name} to ${expectedValue}.`)];
+}
+
+function cleanEnvValue(envByName, name) {
+  const value = envByName.get(name)?.value;
+  if (!value || hasPlaceholder(value)) {
+    return "";
+  }
+
+  return value;
 }
 
 function check(name, status, currentValue, evidence, fix) {
@@ -364,4 +543,21 @@ function extractScalar(manifest, key) {
 
 function hasPlaceholder(value) {
   return placeholderPatterns.some((pattern) => pattern.test(value));
+}
+
+function isHttpsUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function trimTrailingSlash(value) {
+  return value.replace(/\/+$/u, "");
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }

@@ -139,6 +139,21 @@ const manualReviewEnv = new Set([
   "XPRIZE_THIRD_PARTY_REVIEW_APPROVED"
 ]);
 
+const booleanEnv = new Set([
+  "SENTINEL_MOCK_MODE",
+  "SENSITIVE_DATA_PROTECTION_ENABLED",
+  ...manualReviewEnv
+]);
+
+const fixedProductionEnvValues: Record<string, string> = {
+  SENTINEL_MOCK_MODE: "false",
+  SENTINEL_STORAGE_MODE: "gcp-rest",
+  SENTINEL_EVIDENCE_MODE: "production",
+  SENTINEL_CLOUD_COST_CONTROLS_MODE: "production",
+  SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE: "oidc",
+  SENSITIVE_DATA_PROTECTION_ENABLED: "true"
+};
+
 const placeholderPatterns = [
   /PROJECT_ID/u,
   /PROJECT_NUMBER/u,
@@ -188,9 +203,10 @@ export function buildCloudRunDeploymentEvidence(
     ...requiredNonSecretEnv.map((name) => checkNonSecretEnv(name, envByName.get(name))),
     ...requiredSecretEnv.flatMap((name) => [
       checkSecretEnv(name, envByName.get(name)),
-      checkSecretAnnotation(name, envByName.get(name), secretAnnotations)
+      checkSecretAnnotation(name, envByName.get(name), secretAnnotations, envByName.get("GOOGLE_CLOUD_PROJECT_NUMBER")?.value)
     ]),
     ...prohibitedCredentialEnv.flatMap((item) => checkProhibitedCredentialEnv(item, envByName.get(item.name))),
+    ...checkProductionValueInvariants(envByName, image, runtimeServiceAccount),
     ...checkDuplicateEnvEntries(envEntries),
     ...checkUnsafeRawEnvValues(envEntries)
   ];
@@ -362,7 +378,8 @@ function checkNonSecretEnv(name: string, entry?: ParsedEnvEntry): CloudRunDeploy
 function checkSecretAnnotation(
   envName: (typeof requiredSecretEnv)[number],
   entry: ParsedEnvEntry | undefined,
-  annotations: Map<string, string>
+  annotations: Map<string, string>,
+  projectNumber?: string
 ): CloudRunDeploymentEnvCheck {
   const lookupName = entry?.secretName || secretLookupNameByEnvName[envName];
   const annotationTarget = annotations.get(lookupName);
@@ -401,6 +418,18 @@ function checkSecretAnnotation(
       annotationTarget,
       "Cloud Run YAML secret lookup points at a different Secret Manager resource.",
       `Point ${lookupName} at projects/PROJECT_NUMBER/secrets/${lookupName}.`
+    );
+  }
+
+  if (projectNumber && !hasPlaceholder(projectNumber) && annotationTarget !== `projects/${projectNumber}/secrets/${lookupName}`) {
+    return envCheck(
+      checkName,
+      "secret",
+      "blocked",
+      false,
+      annotationTarget,
+      "Cloud Run YAML secret lookup points at a different Google Cloud project number than GOOGLE_CLOUD_PROJECT_NUMBER.",
+      `Point ${lookupName} at projects/${projectNumber}/secrets/${lookupName}.`
     );
   }
 
@@ -453,6 +482,18 @@ function checkSecretEnv(name: string, entry?: ParsedEnvEntry): CloudRunDeploymen
       `${entry.secretName}:latest`,
       "Secret Manager reference uses latest.",
       "Pin a reviewed numeric secret version and deploy a new revision after rotation."
+    );
+  }
+
+  if (!/^[1-9][0-9]*$/u.test(entry.secretVersion)) {
+    return envCheck(
+      name,
+      "secret",
+      "blocked",
+      true,
+      `${entry.secretName}:invalid-version`,
+      "Secret Manager reference does not use a numeric reviewed version.",
+      "Pin a numeric Secret Manager version before Cloud Run dry-run."
     );
   }
 
@@ -524,6 +565,290 @@ function checkUnsafeRawEnvValues(envEntries: ParsedEnvEntry[]): CloudRunDeployme
         `Move any secret material for ${entry.name} to Secret Manager or remove it from the manifest.`
       )
     );
+}
+
+function checkProductionValueInvariants(
+  envByName: Map<string, ParsedEnvEntry>,
+  image: string,
+  runtimeServiceAccount: string
+): CloudRunDeploymentEnvCheck[] {
+  const checks: CloudRunDeploymentEnvCheck[] = [];
+  const projectId = cleanEnvValue(envByName, "GOOGLE_CLOUD_PROJECT");
+  const projectNumber = cleanEnvValue(envByName, "GOOGLE_CLOUD_PROJECT_NUMBER");
+  const region = cleanEnvValue(envByName, "SENTINEL_CLOUD_RUN_REGION");
+  const productUrl = cleanEnvValue(envByName, "NEXT_PUBLIC_PRODUCT_URL");
+  const billingAccountId = cleanEnvValue(envByName, "GOOGLE_CLOUD_BILLING_ACCOUNT_ID");
+  const geminiModel = cleanEnvValue(envByName, "GEMINI_MODEL");
+  const geminiAllowlist = cleanEnvValue(envByName, "SENTINEL_GEMINI_MODEL_ALLOWLIST");
+
+  for (const [name, expectedValue] of Object.entries(fixedProductionEnvValues)) {
+    const value = cleanEnvValue(envByName, name);
+    if (value && value !== expectedValue) {
+      checks.push(
+        envCheck(
+          `INVALID_VALUE_${name}`,
+          categoryForEnv(name),
+          "blocked",
+          false,
+          value,
+          `${name} must be ${expectedValue} for the production Cloud Run deployment template.`,
+          `Set ${name} to "${expectedValue}" before rendering the Cloud Run manifest.`
+        )
+      );
+    }
+  }
+
+  for (const name of booleanEnv) {
+    const value = cleanEnvValue(envByName, name);
+    if (value && value !== "true" && value !== "false") {
+      checks.push(
+        envCheck(
+          `INVALID_BOOLEAN_${name}`,
+          categoryForEnv(name),
+          "blocked",
+          false,
+          value,
+          `${name} must be the literal string true or false.`,
+          `Set ${name} to "true" only after evidence exists, otherwise keep "false".`
+        )
+      );
+    }
+  }
+
+  if (projectId && !/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/u.test(projectId)) {
+    checks.push(
+      envCheck(
+        "INVALID_GOOGLE_CLOUD_PROJECT",
+        "google-cloud",
+        "blocked",
+        false,
+        projectId,
+        "GOOGLE_CLOUD_PROJECT does not look like a valid Google Cloud project id.",
+        "Use the real lower-case Google Cloud project id before Cloud Run dry-run."
+      )
+    );
+  }
+
+  if (projectNumber && !/^[1-9][0-9]{5,20}$/u.test(projectNumber)) {
+    checks.push(
+      envCheck(
+        "INVALID_GOOGLE_CLOUD_PROJECT_NUMBER",
+        "google-cloud",
+        "blocked",
+        false,
+        projectNumber,
+        "GOOGLE_CLOUD_PROJECT_NUMBER does not look like a numeric Google Cloud project number.",
+        "Use the numeric Google Cloud project number used by Secret Manager lookups."
+      )
+    );
+  }
+
+  if (productUrl && !isHttpsUrl(productUrl)) {
+    checks.push(
+      envCheck(
+        "INVALID_NEXT_PUBLIC_PRODUCT_URL",
+        "runtime",
+        "blocked",
+        false,
+        productUrl,
+        "NEXT_PUBLIC_PRODUCT_URL must be a hosted HTTPS URL, not localhost or plain HTTP.",
+        "Use the final Cloud Run HTTPS service URL."
+      )
+    );
+  }
+
+  checks.push(
+    ...checkHttpsUrl(envByName, "XPRIZE_REPOSITORY_URL", "xprize"),
+    ...checkHttpsUrl(envByName, "XPRIZE_DEMO_VIDEO_URL", "xprize"),
+    ...checkHttpsUrl(envByName, "GOOGLE_OAUTH_REDIRECT_URI", "workspace"),
+    ...checkHttpsUrl(envByName, "WORKSPACE_PUBSUB_PUSH_AUDIENCE", "workspace")
+  );
+
+  if (productUrl && isHttpsUrl(productUrl)) {
+    checks.push(
+      ...checkExpectedUrl(envByName, "GOOGLE_OAUTH_REDIRECT_URI", `${trimTrailingSlash(productUrl)}/api/oauth/google/callback`),
+      ...checkExpectedUrl(envByName, "WORKSPACE_PUBSUB_PUSH_AUDIENCE", `${trimTrailingSlash(productUrl)}/api/webhooks/pubsub/gmail`)
+    );
+  }
+
+  if (projectId && !hasPlaceholder(projectId)) {
+    checks.push(
+      ...checkExpectedValue(envByName, "SENTINEL_BUDGET_PUBSUB_TOPIC", `projects/${projectId}/topics/sentinel-budget-alerts`, "cost"),
+      ...checkExpectedValue(envByName, "WORKSPACE_GMAIL_TOPIC", `projects/${projectId}/topics/workspace-gmail-updates`, "workspace"),
+      ...checkExpectedValue(envByName, "WORKSPACE_GMAIL_SUBSCRIPTION", `projects/${projectId}/subscriptions/workspace-gmail-push`, "workspace"),
+      ...checkExpectedValue(envByName, "WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL", `workspace-push@${projectId}.iam.gserviceaccount.com`, "workspace")
+    );
+
+    if (runtimeServiceAccount !== "missing" && !hasPlaceholder(runtimeServiceAccount) && runtimeServiceAccount !== `sentinel-runtime@${projectId}.iam.gserviceaccount.com`) {
+      checks.push(
+        envCheck(
+          "INVALID_CLOUD_RUN_SERVICE_ACCOUNT",
+          "google-cloud",
+          "blocked",
+          false,
+          runtimeServiceAccount,
+          "Cloud Run runtime service account does not match GOOGLE_CLOUD_PROJECT.",
+          `Use sentinel-runtime@${projectId}.iam.gserviceaccount.com or update the verifier only with a reviewed service-account policy.`
+        )
+      );
+    }
+  }
+
+  if (projectId && region && image !== "missing" && !hasPlaceholder(image) && !image.startsWith(`${region}-docker.pkg.dev/${projectId}/`)) {
+    checks.push(
+      envCheck(
+        "INVALID_CLOUD_RUN_IMAGE",
+        "google-cloud",
+        "blocked",
+        false,
+        image,
+        "Container image registry does not match SENTINEL_CLOUD_RUN_REGION and GOOGLE_CLOUD_PROJECT.",
+        "Render the image as REGION-docker.pkg.dev/PROJECT_ID/sentinel/web:RELEASE_ID."
+      )
+    );
+  }
+
+  if (billingAccountId && !/^[A-Z0-9]{6}-[A-Z0-9]{6}-[A-Z0-9]{6}$/u.test(billingAccountId)) {
+    checks.push(
+      envCheck(
+        "INVALID_GOOGLE_CLOUD_BILLING_ACCOUNT_ID",
+        "cost",
+        "blocked",
+        false,
+        billingAccountId,
+        "GOOGLE_CLOUD_BILLING_ACCOUNT_ID does not match the expected billing-account id shape.",
+        "Use the real billing account id or keep the template placeholder until it is known."
+      )
+    );
+  }
+
+  if (billingAccountId) {
+    const budgetId = cleanEnvValue(envByName, "SENTINEL_GCP_BUDGET_ID");
+    if (budgetId && !budgetId.startsWith(`billingAccounts/${billingAccountId}/budgets/`)) {
+      checks.push(
+        envCheck(
+          "INVALID_SENTINEL_GCP_BUDGET_ID",
+          "cost",
+          "blocked",
+          false,
+          budgetId,
+          "SENTINEL_GCP_BUDGET_ID does not belong to GOOGLE_CLOUD_BILLING_ACCOUNT_ID.",
+          "Render SENTINEL_GCP_BUDGET_ID from the same billing account id and reviewed budget id."
+        )
+      );
+    }
+  }
+
+  if (projectNumber) {
+    const geminiApiKeyId = cleanEnvValue(envByName, "SENTINEL_GEMINI_API_KEY_ID");
+    if (geminiApiKeyId && !new RegExp(`^projects/${escapeRegExp(projectNumber)}/locations/global/keys/[A-Za-z0-9_-]+$`, "u").test(geminiApiKeyId)) {
+      checks.push(
+        envCheck(
+          "INVALID_SENTINEL_GEMINI_API_KEY_ID",
+          "gemini",
+          "blocked",
+          false,
+          geminiApiKeyId,
+          "SENTINEL_GEMINI_API_KEY_ID does not match the expected Google API key resource path.",
+          "Render SENTINEL_GEMINI_API_KEY_ID as projects/PROJECT_NUMBER/locations/global/keys/KEY_ID."
+        )
+      );
+    }
+  }
+
+  if (geminiModel && geminiAllowlist) {
+    const allowed = geminiAllowlist.split(",").map((item) => item.trim()).filter(Boolean);
+    if (!allowed.includes(geminiModel)) {
+      checks.push(
+        envCheck(
+          "INVALID_GEMINI_MODEL_ALLOWLIST",
+          "gemini",
+          "blocked",
+          false,
+          geminiAllowlist,
+          "GEMINI_MODEL is not present in SENTINEL_GEMINI_MODEL_ALLOWLIST.",
+          "Add the selected Gemini model to the allowlist or choose an allowed model."
+        )
+      );
+    }
+  }
+
+  return checks;
+}
+
+function checkHttpsUrl(
+  envByName: Map<string, ParsedEnvEntry>,
+  name: string,
+  category: CloudRunDeploymentEnvCheck["category"]
+): CloudRunDeploymentEnvCheck[] {
+  const value = cleanEnvValue(envByName, name);
+  if (!value || isHttpsUrl(value)) {
+    return [];
+  }
+
+  return [
+    envCheck(
+      `INVALID_URL_${name}`,
+      category,
+      "blocked",
+      false,
+      value,
+      `${name} must be an HTTPS URL before production deployment.`,
+      `Set ${name} to a hosted HTTPS URL or keep the template placeholder until final evidence exists.`
+    )
+  ];
+}
+
+function checkExpectedUrl(envByName: Map<string, ParsedEnvEntry>, name: string, expectedValue: string): CloudRunDeploymentEnvCheck[] {
+  const value = cleanEnvValue(envByName, name);
+  if (!value || value === expectedValue) {
+    return [];
+  }
+
+  return [
+    envCheck(
+      `MISMATCHED_${name}`,
+      categoryForEnv(name),
+      "blocked",
+      false,
+      value,
+      `${name} does not match NEXT_PUBLIC_PRODUCT_URL.`,
+      `Set ${name} to ${expectedValue}.`
+    )
+  ];
+}
+
+function checkExpectedValue(
+  envByName: Map<string, ParsedEnvEntry>,
+  name: string,
+  expectedValue: string,
+  category: CloudRunDeploymentEnvCheck["category"]
+): CloudRunDeploymentEnvCheck[] {
+  const value = cleanEnvValue(envByName, name);
+  if (!value || value === expectedValue) {
+    return [];
+  }
+
+  return [
+    envCheck(
+      `MISMATCHED_${name}`,
+      category,
+      "blocked",
+      false,
+      value,
+      `${name} does not match the deployment project contract.`,
+      `Set ${name} to ${expectedValue}.`
+    )
+  ];
+}
+
+function cleanEnvValue(envByName: Map<string, ParsedEnvEntry>, name: string) {
+  const value = envByName.get(name)?.value;
+  if (!value || hasPlaceholder(value)) {
+    return "";
+  }
+
+  return value;
 }
 
 function buildReplacementFindings(input: {
@@ -656,6 +981,23 @@ function extractScalar(manifest: string, key: "image" | "serviceAccountName") {
 
 function hasPlaceholder(value: string) {
   return placeholderPatterns.some((pattern) => pattern.test(value));
+}
+
+function isHttpsUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function trimTrailingSlash(value: string) {
+  return value.replace(/\/+$/u, "");
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 function redactSecretRef(value: string) {

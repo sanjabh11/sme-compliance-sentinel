@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildCloudRunDeploymentEvidence, collectCloudRunDeploymentEvidence } from "@/lib/cloudrun-deployment";
@@ -122,6 +123,31 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(JSON.stringify(evidence)).not.toContain("do-not-commit");
   });
 
+  it("blocks rendered manifests with unsafe production-mode, callback, model, or secret-version drift", () => {
+    const driftedManifest = renderProductionCandidateManifest()
+      .replace('name: SENTINEL_MOCK_MODE\n              value: "false"', 'name: SENTINEL_MOCK_MODE\n              value: "true"')
+      .replace(
+        'name: GOOGLE_OAUTH_REDIRECT_URI\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/api/oauth/google/callback"',
+        'name: GOOGLE_OAUTH_REDIRECT_URI\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/wrong/oauth/callback"'
+      )
+      .replace(
+        'name: WORKSPACE_PUBSUB_PUSH_AUDIENCE\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/api/webhooks/pubsub/gmail"',
+        'name: WORKSPACE_PUBSUB_PUSH_AUDIENCE\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/api/webhooks/pubsub/drive"'
+      )
+      .replace('name: SENTINEL_GEMINI_MODEL_ALLOWLIST\n              value: "gemini-3.5-flash,gemini-2.5-flash,gemini-2.5-pro"', 'name: SENTINEL_GEMINI_MODEL_ALLOWLIST\n              value: "gemini-2.5-flash"')
+      .replace('name: sentinel-admin-action-token\n                  key: "1"', 'name: sentinel-admin-action-token\n                  key: "latest"');
+    const evidence = buildCloudRunDeploymentEvidence(driftedManifest);
+    const checksByName = Object.fromEntries(evidence.envChecks.map((check) => [check.name, check]));
+
+    expect(evidence.overallStatus).toBe("blocked");
+    expect(checksByName.INVALID_VALUE_SENTINEL_MOCK_MODE).toMatchObject({ status: "blocked" });
+    expect(checksByName.MISMATCHED_GOOGLE_OAUTH_REDIRECT_URI).toMatchObject({ status: "blocked" });
+    expect(checksByName.MISMATCHED_WORKSPACE_PUBSUB_PUSH_AUDIENCE).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_GEMINI_MODEL_ALLOWLIST).toMatchObject({ status: "blocked" });
+    expect(checksByName.SENTINEL_ADMIN_ACTION_TOKEN).toMatchObject({ status: "blocked" });
+    expect(JSON.stringify(evidence)).not.toContain("private-admin-token");
+  });
+
   it("emits a CLI JSON report without leaking secret values", () => {
     const output = execFileSync("node", ["scripts/verify-cloudrun-deployment.mjs"], {
       cwd: process.cwd(),
@@ -144,6 +170,32 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(output).not.toContain("SENTINEL_ADMIN_ACTION_TOKEN=");
     expect(output).not.toContain("AIza");
     expect(report.blockers).toEqual([]);
+  });
+
+  it("applies the same production contract checks through the CLI verifier", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-cloudrun-"));
+    const manifestPath = join(tempDir, "cloudrun.bad.yaml");
+    writeFileSync(
+      manifestPath,
+      renderProductionCandidateManifest().replace(
+        'name: SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE\n              value: "oidc"',
+        'name: SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE\n              value: "demo"'
+      ),
+      "utf8"
+    );
+
+    try {
+      const output = execFileSync("node", ["scripts/verify-cloudrun-deployment.mjs", `--manifest=${manifestPath}`], {
+        cwd: process.cwd(),
+        encoding: "utf8"
+      });
+      const report = JSON.parse(output) as { overallStatus: string; blockers: string[] };
+
+      expect(report.overallStatus).toBe("blocked");
+      expect(report.blockers.join(" ")).toContain("INVALID_VALUE_SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("keeps deployment evidence language inside the claim guard boundary", () => {
