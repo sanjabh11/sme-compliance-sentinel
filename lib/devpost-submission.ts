@@ -7,8 +7,11 @@ import type {
   DashboardSnapshot,
   DemoScriptScene,
   DevpostCopySection,
+  DevpostEvidenceReadinessExport,
+  DevpostEvidenceReadinessItem,
   DevpostSubmissionPack,
   DevpostSubmissionStatus,
+  SubmissionEvidenceStatus,
   SubmissionPrivateEvidenceRequest,
   SubmissionScreenshotItem
 } from "@/lib/types";
@@ -30,9 +33,11 @@ type DevpostSnapshot = Pick<
 >;
 
 export function buildDevpostSubmissionPack(snapshot: DevpostSnapshot): DevpostSubmissionPack {
+  const generatedAt = new Date().toISOString();
   const gate = buildXPrizeSubmissionGate(snapshot);
   const compliance = buildSubmissionComplianceCenter(snapshot);
   const thirdPartyManifest = buildThirdPartyManifest();
+  const privateEvidenceResponse = buildPrivateEvidenceResponse(snapshot);
   const blockers = [
     ...gate.blockingSummary,
     ...compliance.checks.filter((check) => check.status === "blocked").map((check) => `${check.label}: ${check.fix}`),
@@ -44,7 +49,7 @@ export function buildDevpostSubmissionPack(snapshot: DevpostSnapshot): DevpostSu
   });
 
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     overallStatus,
     title: "SME Workspace Sentinel",
     tagline: "A one-day Google Workspace risk desk for small businesses preparing enterprise security reviews.",
@@ -58,7 +63,14 @@ export function buildDevpostSubmissionPack(snapshot: DevpostSnapshot): DevpostSu
     demoVideoScript: buildDemoVideoScript(snapshot),
     screenshotChecklist: buildScreenshotChecklist(snapshot),
     testingInstructionsDraft: buildTestingInstructionsDraft(),
-    privateEvidenceResponse: buildPrivateEvidenceResponse(snapshot),
+    privateEvidenceResponse,
+    evidenceReadinessExport: buildEvidenceReadinessExport(snapshot, {
+      generatedAt,
+      gate,
+      compliance,
+      thirdPartyManifest,
+      privateEvidenceResponse
+    }),
     claimBoundaries: [
       "Use SOC2 readiness evidence, risk detection, staged remediation, human-approved remediation, and redacted judge evidence language.",
       "Do not state or imply certification, auditor opinion, guaranteed outcomes, or certainty of winning.",
@@ -70,6 +82,236 @@ export function buildDevpostSubmissionPack(snapshot: DevpostSnapshot): DevpostSu
     nextActions: buildNextActions(blockers, compliance.nextActions, thirdPartyManifest.nextActions),
     disclaimer:
       "This pack prepares Devpost-facing copy, demo flow, screenshots, and private evidence responses. It does not replace final human review, production deployment proof, customer consent checks, or Devpost field submission."
+  };
+}
+
+function buildEvidenceReadinessExport(
+  snapshot: DevpostSnapshot,
+  deps: {
+    generatedAt: string;
+    gate: ReturnType<typeof buildXPrizeSubmissionGate>;
+    compliance: ReturnType<typeof buildSubmissionComplianceCenter>;
+    thirdPartyManifest: ReturnType<typeof buildThirdPartyManifest>;
+    privateEvidenceResponse: SubmissionPrivateEvidenceRequest[];
+  }
+): DevpostEvidenceReadinessExport {
+  const gateById = new Map(deps.gate.checks.map((check) => [check.id, check]));
+  const complianceById = new Map(deps.compliance.checks.map((check) => [check.id, check]));
+  const privateEvidenceById = new Map(deps.privateEvidenceResponse.map((request) => [request.id, request]));
+  const categoryStatus =
+    statusFromGate(gateById.get("category-small-business")?.status) === "ready"
+      ? snapshot.agentRuns.length
+        ? "ready"
+        : "needs-review"
+      : "blocked";
+  const googleStackStatus = worstStatus([
+    statusFromGate(gateById.get("google-cloud-product")?.status),
+    statusFromGate(gateById.get("gemini-api-production")?.status)
+  ]);
+  const realUserStatus = worstStatus([
+    statusFromEvidenceStatus(privateEvidenceById.get("real-user-evidence")?.status),
+    statusFromGate(gateById.get("related-party-separation")?.status)
+  ]);
+  const productionOperationStatus = worstStatus([
+    statusFromEvidenceStatus(privateEvidenceById.get("ai-operation-proof")?.status),
+    statusFromEvidenceStatus(privateEvidenceById.get("gcp-production-proof")?.status),
+    statusFromEvidenceStatus(privateEvidenceById.get("workspace-sync-proof")?.status)
+  ]);
+  const ipStatus = worstStatus([
+    statusFromCompliance(complianceById.get("third-party-license-manifest")?.status),
+    statusFromCompliance(complianceById.get("submission-ip-ownership")?.status),
+    statusFromManifest(deps.thirdPartyManifest.summary.status)
+  ]);
+
+  const checklist: DevpostEvidenceReadinessItem[] = [
+    {
+      id: "category-ai-workflow",
+      label: "Category fit and AI workflow transformation",
+      ruleArea: "Category Impact",
+      status: categoryStatus,
+      source: "/api/xprize/submission-gate",
+      publicSafeEvidence:
+        categoryStatus === "ready"
+          ? "Small Business Services positioning and AI-assisted scan-to-recommendation workflow are visible in the product."
+          : "Category positioning is present, but the final submission still needs a fresh visible workflow run before recording.",
+      privateProofNeeded:
+        categoryStatus === "ready"
+          ? []
+          : ["Capture a current scan, recommendation, approval, and audit trail before final submission."],
+      redactionRule: "Use seeded or redacted Workspace examples; do not show customer file names, domains, or private findings.",
+      ownerRole: "founder"
+    },
+    {
+      id: "google-cloud-gemini",
+      label: "Google Cloud product and deployed Gemini API call",
+      ruleArea: "Project Requirements",
+      status: googleStackStatus,
+      source: "/api/xprize/submission-gate",
+      publicSafeEvidence:
+        googleStackStatus === "ready"
+          ? "Production proof shows Google Cloud infrastructure and at least one deployed Gemini API semantic audit."
+          : "Local proof describes the intended Cloud Run, Firestore, BigQuery, Secret Manager, Workspace, and Gemini path; deployed proof remains required.",
+      privateProofNeeded: [
+        "Cloud Run revision and URL proof.",
+        "Gemini API model, timestamp, token, and cost metadata from a deployed run.",
+        "Google Cloud logs with secrets and customer identifiers removed."
+      ],
+      redactionRule: "Never expose API keys, project numbers that identify private billing, service-account keys, or raw prompt content.",
+      ownerRole: "engineering"
+    },
+    {
+      id: "product-access",
+      label: "Working product URL and free judge access",
+      ruleArea: "Submission Requirements",
+      status: statusFromCompliance(complianceById.get("product-access")?.status),
+      source: "/api/xprize/judge-access-pack",
+      publicSafeEvidence: judgeProductAccessSummary(),
+      privateProofNeeded: ["Hosted product URL.", "Private judge testing instructions.", "Free access confirmation through the judging period."],
+      redactionRule: "Put credentials only in Devpost testing instructions or another approved private channel, never in source or screenshots.",
+      ownerRole: "engineering"
+    },
+    {
+      id: "repository-access",
+      label: "Repository access and source completeness",
+      ruleArea: "Submission Requirements",
+      status: statusFromCompliance(complianceById.get("repository-access")?.status),
+      source: "/api/xprize/source-release",
+      publicSafeEvidence: sentinelConfig.repositoryUrl
+        ? "Repository URL is configured for judge review."
+        : "Repository URL is not configured in this runtime.",
+      privateProofNeeded: ["Public repository URL or private repository access for the required judging accounts.", "Source-release proof with no secrets."],
+      redactionRule: "Keep secrets, customer documents, invoices, private evidence, and judge credentials out of the repository.",
+      ownerRole: "engineering"
+    },
+    {
+      id: "demo-video",
+      label: "Public under-three-minute demo video",
+      ruleArea: "Submission Requirements",
+      status: statusFromCompliance(complianceById.get("demo-video-clearance")?.status),
+      source: "/api/xprize/demo-video-pack",
+      publicSafeEvidence: demoVideoClearanceSummary(),
+      privateProofNeeded: [
+        "Public YouTube, Vimeo, or Youku URL.",
+        "Length, English or subtitle, visibility, asset-permission, and customer-data redaction confirmation."
+      ],
+      redactionRule: "Record with seeded or redacted data, no copyrighted music, and no unlicensed third-party marks.",
+      ownerRole: "sales"
+    },
+    {
+      id: "revenue-cost-cac",
+      label: "Revenue by month, total costs, and customer acquisition spend",
+      ruleArea: "Business Viability",
+      status: statusFromEvidenceStatus(privateEvidenceById.get("revenue-cost-cac")?.status),
+      source: "/api/financial-evidence/ledger",
+      publicSafeEvidence:
+        "The export tracks readiness for total revenue, monthly revenue, costs, and customer acquisition spend without exposing invoices or customer identities.",
+      privateProofNeeded: [
+        "Arms-length invoices or payment exports for May, June, July, and August 2026 as applicable.",
+        "Cost ledger and one-sentence cost description.",
+        "Marketing and customer acquisition spend, even when zero."
+      ],
+      redactionRule: "Public copy should use aggregate numbers only; invoice IDs, payment references, and customer identities stay private.",
+      ownerRole: "founder"
+    },
+    {
+      id: "real-users-feedback-related-party",
+      label: "Real users, consented feedback, and related-party separation",
+      ruleArea: "Business Viability",
+      status: realUserStatus,
+      source: "/api/evidence/vault",
+      publicSafeEvidence:
+        "The export checks user-count, high-level user breakdown, testimonial consent, and related-party separation without publishing raw contact details.",
+      privateProofNeeded: [
+        "Active-user counts and high-level user segments.",
+        "Customer feedback with explicit sharing consent.",
+        "Related-party revenue separated from arms-length revenue."
+      ],
+      redactionRule: "Do not publish customer names, emails, phone numbers, testimonial text, or related-party notes without explicit consent.",
+      ownerRole: "sales"
+    },
+    {
+      id: "production-operation-proof",
+      label: "Production operation proof and AI-native logs",
+      ruleArea: "AI-Native Operations",
+      status: productionOperationStatus,
+      source: "/api/production/hosted-evidence",
+      publicSafeEvidence:
+        "The checklist expects agent execution logs, API usage records, dashboard screenshots, and production playbook proof after deployment.",
+      privateProofNeeded: [
+        "Agent execution timeline.",
+        "Gemini API usage metadata.",
+        "Hosted dashboard screenshots and Cloud logs.",
+        "Workspace sync and reconciliation trace."
+      ],
+      redactionRule: "Show statuses, timestamps, counts, and model metadata; remove prompts, document contents, OAuth tokens, and customer identifiers.",
+      ownerRole: "engineering"
+    },
+    {
+      id: "ip-third-party-safety",
+      label: "Original work, third-party use, and public safety review",
+      ruleArea: "IP and Safety",
+      status: ipStatus,
+      source: "/api/xprize/submission-compliance",
+      publicSafeEvidence:
+        "The submission compliance gate tracks new-project disclosure, third-party SDK/API authorization, license review, media clearance, and public redaction boundaries.",
+      privateProofNeeded: [
+        "Pre-existing template/framework disclosure.",
+        "Open-source and third-party API review.",
+        "Demo media and screenshot clearance notes."
+      ],
+      redactionRule: "Do not upload third-party copyrighted material, customer-private material, or unsupported ownership claims.",
+      ownerRole: "legal"
+    },
+    {
+      id: "two-business-day-response",
+      label: "Two-business-day private evidence response",
+      ruleArea: "Evidence Response",
+      status: statusFromCompliance(complianceById.get("private-evidence-response")?.status),
+      source: "/api/xprize/submission-binder",
+      publicSafeEvidence:
+        "The binder assigns owners and response handling for private financial, customer, AI-operation, Cloud, Workspace, and license evidence requests.",
+      privateProofNeeded: deps.privateEvidenceResponse
+        .filter((request) => request.status !== "private-on-request" && request.status !== "ready" && request.status !== "verified")
+        .map((request) => request.label),
+      redactionRule: "Respond to organizer evidence requests privately; keep customer contact details and financial documents out of public Devpost fields.",
+      ownerRole: "founder"
+    }
+  ];
+  const summary = summarizeEvidenceReadiness(checklist);
+  const overallStatus = resolveOverallStatus({
+    blocked: summary.blocked,
+    warnings: summary.needsReview
+  });
+
+  return {
+    generatedAt: deps.generatedAt,
+    overallStatus,
+    summary,
+    checklist,
+    publicSafeSummary: [
+      `${summary.total} Devpost evidence bucket(s): ${summary.ready} ready, ${summary.needsReview} need review, ${summary.blocked} blocked.`,
+      "The export maps product access, repository access, demo video, business evidence, real users, AI-operation proof, category impact, and IP safety without raw customer evidence.",
+      "Use this as the paste-review checklist before Devpost upload; attach sensitive proof only through approved private judge channels."
+    ],
+    copyReadyDevpostBullets: [
+      "Small Business Services entry: a one-day Google Workspace risk desk for small businesses preparing enterprise security reviews.",
+      "AI transforms the workflow by triaging Workspace events, running deterministic checks first, routing justified cases to Gemini semantic review, and staging human-approved remediation.",
+      "The evidence workflow separates public demo proof from private financial, customer, and production-operation evidence for judge review."
+    ],
+    privateJudgePacketRules: [
+      "Include revenue by month, total costs, and customer acquisition spend with source documents privately.",
+      "Include real-user counts, high-level user segments, feedback, and consent records privately.",
+      "Include agent execution logs, API usage records, dashboard screenshots, and live-demo readiness privately.",
+      "Keep customer contact details available for organizer requests, but never place them in public Devpost copy or committed files.",
+      "Respond to organizer evidence requests within two business days."
+    ],
+    redactionWarnings: [
+      "Do not publish customer names, email addresses, phone numbers, invoices, payment references, raw findings, document contents, OAuth tokens, API keys, or judge credentials.",
+      "Do not show unconsented testimonials or private customer security details in screenshots or the demo video.",
+      "Do not turn seed data, local mock runs, or pipeline estimates into public revenue, user, or production-proof claims."
+    ],
+    disclaimer:
+      "This export is a submission-readiness map. It does not submit to Devpost, prove eligibility, replace legal review, or convert mock evidence into production proof."
   };
 }
 
@@ -411,6 +653,63 @@ function buildNextActions(blockers: string[], complianceActions: string[], manif
     ...complianceActions.slice(0, 2),
     ...manifestActions.slice(0, 2)
   ];
+}
+
+function summarizeEvidenceReadiness(checklist: DevpostEvidenceReadinessItem[]) {
+  const ready = checklist.filter((item) => item.status === "ready").length;
+  const needsReview = checklist.filter((item) => item.status === "needs-review").length;
+  const blocked = checklist.filter((item) => item.status === "blocked").length;
+
+  return {
+    ready,
+    needsReview,
+    blocked,
+    total: checklist.length
+  };
+}
+
+function statusFromGate(status?: "passed" | "warning" | "blocked"): DevpostSubmissionStatus {
+  if (status === "passed") {
+    return "ready";
+  }
+
+  if (status === "warning") {
+    return "needs-review";
+  }
+
+  return "blocked";
+}
+
+function statusFromCompliance(status?: "passed" | "warning" | "blocked"): DevpostSubmissionStatus {
+  return statusFromGate(status);
+}
+
+function statusFromEvidenceStatus(status?: SubmissionEvidenceStatus): DevpostSubmissionStatus {
+  if (status === "ready" || status === "verified" || status === "private-on-request") {
+    return "ready";
+  }
+
+  if (status === "mock-only") {
+    return "needs-review";
+  }
+
+  return "blocked";
+}
+
+function statusFromManifest(status: "passed" | "warning" | "blocked"): DevpostSubmissionStatus {
+  return statusFromGate(status);
+}
+
+function worstStatus(statuses: DevpostSubmissionStatus[]): DevpostSubmissionStatus {
+  if (statuses.includes("blocked")) {
+    return "blocked";
+  }
+
+  if (statuses.includes("needs-review")) {
+    return "needs-review";
+  }
+
+  return "ready";
 }
 
 function resolveOverallStatus(input: { blocked: number; warnings: number }): DevpostSubmissionStatus {

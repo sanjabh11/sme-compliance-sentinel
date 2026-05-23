@@ -349,7 +349,7 @@ Approved answers are added to the Answer Library with an owner, source pack, seg
 
 ## Devpost Submission Pack
 
-`GET /api/xprize/devpost-pack` returns the claim-safe submission pack for the final upload workflow. It includes public description sections, problem/solution/business model copy, Google stack wording, a public demo script capped below three minutes, screenshot checklist, testing-instruction draft, private evidence response plan, blockers, next actions, and claim boundaries. It is intentionally blocked while product URL, repository URL, public demo video, production Google Cloud/Gemini proof, and real customer evidence are missing.
+`GET /api/xprize/devpost-pack` returns the claim-safe submission pack for the final upload workflow. It includes public description sections, problem/solution/business model copy, Google stack wording, a public demo script capped below three minutes, screenshot checklist, testing-instruction draft, private evidence response plan, a public-safe evidence readiness export, blockers, next actions, and claim boundaries. The readiness export maps product access, repository access, demo video, revenue/cost/CAC, real-user proof, AI-operation proof, category impact, and IP/safety buckets to current status without exposing customer aliases, invoices, security findings, contact details, credentials, or unconsented testimonials. It is intentionally blocked while product URL, repository URL, public demo video, production Google Cloud/Gemini proof, and real customer evidence are missing.
 
 ## Demo Video Compliance Pack
 

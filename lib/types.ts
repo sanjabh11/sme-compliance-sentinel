@@ -1324,6 +1324,42 @@ export interface SubmissionScreenshotItem {
   status: DevpostSubmissionStatus;
 }
 
+export interface DevpostEvidenceReadinessItem {
+  id: string;
+  label: string;
+  ruleArea:
+    | "Project Requirements"
+    | "Submission Requirements"
+    | "Business Viability"
+    | "AI-Native Operations"
+    | "Category Impact"
+    | "Evidence Response"
+    | "IP and Safety";
+  status: DevpostSubmissionStatus;
+  source: string;
+  publicSafeEvidence: string;
+  privateProofNeeded: string[];
+  redactionRule: string;
+  ownerRole: SubmissionEvidenceArtifact["ownerRole"];
+}
+
+export interface DevpostEvidenceReadinessExport {
+  generatedAt: string;
+  overallStatus: DevpostSubmissionStatus;
+  summary: {
+    ready: number;
+    needsReview: number;
+    blocked: number;
+    total: number;
+  };
+  checklist: DevpostEvidenceReadinessItem[];
+  publicSafeSummary: string[];
+  copyReadyDevpostBullets: string[];
+  privateJudgePacketRules: string[];
+  redactionWarnings: string[];
+  disclaimer: string;
+}
+
 export interface DevpostSubmissionPack {
   generatedAt: string;
   overallStatus: DevpostSubmissionStatus;
@@ -1340,6 +1376,7 @@ export interface DevpostSubmissionPack {
   screenshotChecklist: SubmissionScreenshotItem[];
   testingInstructionsDraft: string[];
   privateEvidenceResponse: SubmissionPrivateEvidenceRequest[];
+  evidenceReadinessExport: DevpostEvidenceReadinessExport;
   claimBoundaries: string[];
   blockers: string[];
   nextActions: string[];

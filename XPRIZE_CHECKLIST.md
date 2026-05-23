@@ -31,7 +31,7 @@
 - [x] Local MVP exposes a dependency/license and third-party API manifest generated from `package.json` and `package-lock.json`.
 - [x] Local dependency/license manifest separates restricted-license blockers from obligation-review packages, so optional LGPL-style transitive packages remain human-review items without being misreported as automatic replacement blockers.
 - [x] Local MVP exposes a private XPRIZE Submission Binder with artifact statuses, owner roles, testing instructions, demo timeline, and judge evidence request queue.
-- [x] Local MVP exposes a Devpost Submission Pack with claim-safe copy, under-three-minute demo script, screenshot checklist, testing instructions draft, and private evidence response plan.
+- [x] Local MVP exposes a Devpost Submission Pack with claim-safe copy, under-three-minute demo script, screenshot checklist, testing instructions draft, private evidence response plan, and public-safe readiness export for Devpost evidence buckets.
 - [x] Local MVP exposes a Demo Video Compliance Pack for runtime, public platform, English/subtitle, live-Gemini, asset-clearance, and redaction gates.
 - [x] Local MVP exposes `/api/xprize/judge-access-pack` with non-secret judge testing instructions, signed-out smoke checks, safe walkthrough, private credential rules, free-access confirmation, and evidence-response ownership.
 - [x] Local MVP enforces Gemini model allowlist, monthly budget, and per-event content byte guardrails before Tier 2 calls.
@@ -205,7 +205,7 @@
 - [ ] Run `npm run import:hosted-proof -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --url $NEXT_PUBLIC_PRODUCT_URL --confirm-import` from a private operator shell with `SENTINEL_ADMIN_ACTION_TOKEN` set, then confirm Cloud Run, Gemini, GCP persistence, Workspace, Cloud Billing, repository, and readiness artifacts have SHA-256 checksums in the Evidence Vault.
 - [ ] Run `/api/market/positioning` before final pitch copy and verify the story remains a focused Workspace risk-scan wedge, not a broad GRC replacement claim.
 - [ ] Run `/api/pilots/conversion-kit` before each outreach sprint and before final submission so paid-pilot revenue, active-user proof, and customer-consent gaps are visible.
-- [ ] Generate and human-review `/api/xprize/devpost-pack` before pasting final Devpost text, recording the demo video, or uploading screenshots.
+- [ ] Generate and human-review `/api/xprize/devpost-pack` before pasting final Devpost text, recording the demo video, or uploading screenshots; use `evidenceReadinessExport` as the public-safe checklist for product access, repository access, demo video, revenue/cost/CAC, real-user proof, AI-operation proof, category impact, and IP/safety evidence.
 - [ ] Generate and human-review `/api/xprize/demo-video-pack` before recording, uploading, or pasting the final public demo video URL.
 - [ ] Generate the private XPRIZE Submission Binder before final Devpost submission and attach every required artifact or private-response owner.
 

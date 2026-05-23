@@ -2739,6 +2739,22 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
                 </p>
               </article>
               <article>
+                <strong>Evidence readiness export</strong>
+                <p>
+                  {devpostPack.evidenceReadinessExport.summary.ready} ready ·{" "}
+                  {devpostPack.evidenceReadinessExport.summary.needsReview} review ·{" "}
+                  {devpostPack.evidenceReadinessExport.summary.blocked} blocked across{" "}
+                  {devpostPack.evidenceReadinessExport.summary.total} Devpost evidence bucket(s)
+                </p>
+              </article>
+              <article>
+                <strong>First evidence bucket</strong>
+                <p>
+                  {devpostPack.evidenceReadinessExport.checklist[0]?.label}:{" "}
+                  {devpostPack.evidenceReadinessExport.checklist[0]?.status}
+                </p>
+              </article>
+              <article>
                 <strong>Demo opener</strong>
                 <p>{devpostPack.demoVideoScript[0]?.voiceover}</p>
               </article>

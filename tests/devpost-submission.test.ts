@@ -59,4 +59,36 @@ describe("Devpost submission pack", () => {
     );
     expect(pack.privateEvidenceResponse.find((item) => item.id === "license-and-ip-proof")?.status).toBe("missing");
   });
+
+  it("exports a public-safe Devpost evidence readiness checklist", async () => {
+    resetState();
+    await ingestResourceEvent(createDemoEvent("public-secret"));
+
+    const pack = buildDevpostSubmissionPack(getDashboardSnapshot());
+    const exportChecklist = pack.evidenceReadinessExport;
+    const itemsById = Object.fromEntries(exportChecklist.checklist.map((item) => [item.id, item]));
+    const serialized = JSON.stringify(exportChecklist, null, 2);
+
+    expect(exportChecklist.overallStatus).toBe("blocked");
+    expect(exportChecklist.summary.total).toBe(10);
+    expect(exportChecklist.summary.blocked).toBeGreaterThan(0);
+    expect(exportChecklist.publicSafeSummary.join(" ")).toContain("Devpost evidence bucket");
+    expect(itemsById["product-access"].status).toBe("blocked");
+    expect(itemsById["repository-access"].source).toBe("/api/xprize/source-release");
+    expect(itemsById["revenue-cost-cac"].privateProofNeeded).toEqual(
+      expect.arrayContaining([
+        "Arms-length invoices or payment exports for May, June, July, and August 2026 as applicable.",
+        "Marketing and customer acquisition spend, even when zero."
+      ])
+    );
+    expect(itemsById["production-operation-proof"].redactionRule).toContain("OAuth tokens");
+    expect(itemsById["two-business-day-response"].privateProofNeeded).toEqual(
+      expect.arrayContaining(["Revenue, costs, and customer acquisition spend", "Google Cloud production proof"])
+    );
+    expect(exportChecklist.privateJudgePacketRules.join(" ")).toContain("two business days");
+    expect(exportChecklist.copyReadyDevpostBullets.join(" ")).toContain("Gemini semantic review");
+    expect(serialized).not.toContain("Redacted seed-stage CTO");
+    expect(serialized).not.toContain("Private Stripe invoice on file");
+    expect(serialized).not.toContain("Sentinel found a public vendor packet");
+  });
 });
