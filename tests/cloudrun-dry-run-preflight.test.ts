@@ -44,6 +44,8 @@ interface CloudRunDryRunPreflightModule {
   verifyCloudRunDryRunPacket: (packetPath: string) => Promise<{
     status: string;
     readyForDryRun: boolean;
+    packetPath: string;
+    packetVerifierPath: string;
     releaseId: string;
     packetStatus: string;
     digestCount: number;
@@ -128,7 +130,8 @@ describe("Cloud Run dry-run preflight packet", () => {
     expect(packet.evidenceFilesToPreserve).toEqual(
       expect.arrayContaining([
         join(packet.outputDirectory, "cloudrun-dry-run-preflight-packet.json"),
-        join(packet.outputDirectory, "cloudrun-dry-run-preflight-packet.md")
+        join(packet.outputDirectory, "cloudrun-dry-run-preflight-packet.md"),
+        join(packet.outputDirectory, "cloudrun-dry-run-packet-verifier.json")
       ])
     );
     expect(packet.evidenceFileDigests.map((item) => item.role)).toEqual([
@@ -175,10 +178,19 @@ describe("Cloud Run dry-run preflight packet", () => {
     });
     const packetPath = join(packet.outputDirectory, "cloudrun-dry-run-preflight-packet.json");
     const verified = await verifyCloudRunDryRunPacket(packetPath);
+    const verifierPath = join(packet.outputDirectory, "cloudrun-dry-run-packet-verifier.json");
+    const verifierJson = JSON.parse(await readFile(verifierPath, "utf8")) as {
+      status: string;
+      packetPath: string;
+      packetVerifierPath: string;
+      digestCount: number;
+    };
 
     expect(verified).toMatchObject({
       status: "verified",
       readyForDryRun: true,
+      packetPath,
+      packetVerifierPath: verifierPath,
       releaseId: "release-20260523-001",
       packetStatus: "ready-to-dry-run",
       digestCount: 5,
@@ -187,6 +199,13 @@ describe("Cloud Run dry-run preflight packet", () => {
     });
     expect(verified.digestChecks.every((check) => check.status === "matched")).toBe(true);
     expect(verified.nextActions.join(" ")).toContain("Run the generated dry-run command");
+    expect(verified.nextActions.join(" ")).toContain("cloudrun-dry-run-packet-verifier.json");
+    expect(verifierJson).toMatchObject({
+      status: "verified",
+      packetPath,
+      packetVerifierPath: verifierPath,
+      digestCount: 5
+    });
 
     const manifestDigest = packet.evidenceFileDigests.find((item) => item.role === "rendered-manifest");
     if (!manifestDigest) {
@@ -194,6 +213,7 @@ describe("Cloud Run dry-run preflight packet", () => {
     }
     await writeFile(manifestDigest.path, `${await readFile(manifestDigest.path, "utf8")}\n# drift after preflight\n`, "utf8");
     const drifted = await verifyCloudRunDryRunPacket(packetPath);
+    const driftedVerifierJson = JSON.parse(await readFile(verifierPath, "utf8")) as { status: string; failedDigestCount: number };
 
     expect(drifted).toMatchObject({
       status: "blocked",
@@ -205,6 +225,10 @@ describe("Cloud Run dry-run preflight packet", () => {
       expectedSha256: manifestDigest.sha256
     });
     expect(drifted.stopConditions.join(" ")).toContain("Do not run Cloud Run dry-run");
+    expect(driftedVerifierJson).toMatchObject({
+      status: "blocked",
+      failedDigestCount: 1
+    });
   });
 
   it("stops before dry-run when render values are still placeholders", async () => {

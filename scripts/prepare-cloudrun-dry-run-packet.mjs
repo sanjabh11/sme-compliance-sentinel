@@ -3,13 +3,14 @@
 
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { renderCloudRunManifest } from "./render-cloudrun-manifest.mjs";
 
 const defaultOutDir = "artifacts/deployment";
 const defaultTemplate = "cloudrun.service.yaml";
 const packetFileName = "cloudrun-dry-run-preflight-packet.json";
 const markdownFileName = "cloudrun-dry-run-preflight-packet.md";
+const packetVerifierFileName = "cloudrun-dry-run-packet-verifier.json";
 
 const prohibitedCliPatterns = [
   /(^|-)token($|=)/iu,
@@ -138,6 +139,7 @@ export async function verifyCloudRunDryRunPacket(packetPath) {
   }
 
   const absolutePacketPath = resolve(packetPath);
+  const packetVerifierPath = join(dirname(absolutePacketPath), packetVerifierFileName);
   const packet = JSON.parse(await readFile(absolutePacketPath, "utf8"));
   const digestEntries = Array.isArray(packet.evidenceFileDigests) ? packet.evidenceFileDigests : [];
   const digestChecks = await Promise.all(digestEntries.map(verifyDigestEntry));
@@ -145,11 +147,12 @@ export async function verifyCloudRunDryRunPacket(packetPath) {
   const packetReady = packet.status === "ready-to-dry-run" && packet.readyForDryRun === true;
   const status = packetReady && digestEntries.length > 0 && failedChecks.length === 0 ? "verified" : "blocked";
 
-  return {
+  const report = {
     generatedAt: new Date().toISOString(),
     status,
     readyForDryRun: status === "verified",
     packetPath: absolutePacketPath,
+    packetVerifierPath,
     releaseId: packet.releaseId ?? "missing",
     packetStatus: packet.status ?? "missing",
     digestCount: digestEntries.length,
@@ -162,6 +165,10 @@ export async function verifyCloudRunDryRunPacket(packetPath) {
     disclaimer:
       "This verifies local preflight artifact digests only. It does not run Cloud Run dry-run, deploy Cloud Run, or prove hosted production readiness."
   };
+
+  await writeJson(packetVerifierPath, report);
+
+  return report;
 }
 
 export function buildDryRunPacket({ renderSummary, verifier, valuesPath, evidenceFileDigests = [] }) {
@@ -217,6 +224,7 @@ export function buildDryRunPacket({ renderSummary, verifier, valuesPath, evidenc
       join(renderSummary.outputDirectory, renderSummary.summaryFile ?? "cloudrun-render-summary.json"),
       join(renderSummary.outputDirectory, packetFileName),
       join(renderSummary.outputDirectory, markdownFileName),
+      join(renderSummary.outputDirectory, packetVerifierFileName),
       join(renderSummary.outputDirectory, renderSummary.dryRunCommandFile),
       join(renderSummary.outputDirectory, renderSummary.deployCommandFile)
     ],
@@ -225,6 +233,7 @@ export function buildDryRunPacket({ renderSummary, verifier, valuesPath, evidenc
       "This preflight packet is an ignored private deployment artifact. It does not deploy Cloud Run or prove hosted readiness.",
       "A ready-to-dry-run status only means the rendered manifest has no local verifier blockers or missing placeholders.",
       "The packet hashes the rendered manifest bundle before dry-run so later evidence imports can detect file drift.",
+      "The packet verifier writes cloudrun-dry-run-packet-verifier.json beside this packet and must be preserved with the private release evidence.",
       "Human-review flags may remain false at dry-run time; they become proof only after the private artifact exists.",
       "Run the dry-run command only from a private operator shell with approved Google Cloud credentials."
     ],
@@ -420,6 +429,7 @@ function buildVerificationNextActions({ status, packet }) {
 
   return [
     `Run the generated dry-run command from a private operator shell: ${packet.dryRunCommand}`,
+    "Preserve cloudrun-dry-run-packet-verifier.json beside this packet before running gcloud dry-run.",
     "Save the dry-run output beside the verified preflight packet in the private evidence store.",
     "Deploy only after dry-run review and then capture hosted production proof."
   ];
