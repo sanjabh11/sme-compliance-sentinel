@@ -54,11 +54,21 @@ describe("production provisioning pack", () => {
       expect.arrayContaining([
         "local-quality-gates",
         "write-render-values-template",
+        "audit-render-values",
         "render-cloudrun-manifest",
         "manifest-regression",
         "hosted-smoke",
         "write-through-smoke"
       ])
+    );
+    expect(pack.verificationSequence.findIndex((command) => command.id === "audit-render-values")).toBeLessThan(
+      pack.verificationSequence.findIndex((command) => command.id === "render-cloudrun-manifest")
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "audit-render-values")?.command).toContain(
+      "npm run audit:cloudrun-values"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "audit-render-values")?.expectedProof).toContain(
+      "ready-to-render"
     );
     expect(pack.verificationSequence.map((command) => command.id)).toContain("import-hosted-proof");
   });
@@ -88,6 +98,7 @@ describe("production provisioning pack", () => {
     expect(pack.checklist.find((item) => item.id === "source-revision-metadata")?.status).toBe("missing");
     expect(pack.privateHandlingRules.join(" ")).toContain("Secret Manager");
     expect(pack.privateHandlingRules.join(" ")).toContain("cloudrun-render-values.template.json");
+    expect(pack.privateHandlingRules.join(" ")).toContain("audit:cloudrun-values");
 
     const violations = scanClaimText({
       artifact: "production-provisioning",

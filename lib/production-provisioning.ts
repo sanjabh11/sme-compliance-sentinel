@@ -9,6 +9,8 @@ const serviceName = sentinelConfig.cloudRunServiceName || "sme-workspace-sentine
 const recommendedRegion = sentinelConfig.cloudRunRegion || "us-central1";
 const manifestPath = "cloudrun.service.yaml";
 const renderValuesTemplatePath = "docs/deployment/cloudrun-render-values.template.json";
+const privateRenderValuesPath = "/secure/local/cloudrun-render-values.json";
+const deploymentArtifactsDir = "artifacts/deployment";
 const renderedManifestPath = "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml";
 const projectId = sentinelConfig.googleCloudProject || "PROJECT_ID";
 const projectNumber = sentinelConfig.googleCloudProjectNumber || "PROJECT_NUMBER";
@@ -90,20 +92,29 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
       command(
         "write-render-values-template",
         "Write private render values template",
-        "node scripts/render-cloudrun-manifest.mjs --write-values-template /secure/local/cloudrun-render-values.json",
+        `node scripts/render-cloudrun-manifest.mjs --write-values-template ${privateRenderValuesPath}`,
         "engineering",
         false,
         false,
         "Private non-secret values file template ready for project ids, source revision metadata, hosted URLs, secret versions, and reviewed XPRIZE flags."
       ),
       command(
-        "render-cloudrun-manifest",
-        "Render private Cloud Run manifest",
-        "npm run render:cloudrun-manifest -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
+        "audit-render-values",
+        "Audit private render values",
+        `npm run audit:cloudrun-values -- --values ${privateRenderValuesPath} --out-dir ${deploymentArtifactsDir} --release-id $SENTINEL_RELEASE_ID --strict`,
         "engineering",
         false,
         false,
-        "Ignored private render bundle with rendered manifest, verifier JSON, and dry-run/deploy command files."
+        "Private cloudrun-render-values-audit.json showing status ready-to-render before any manifest render."
+      ),
+      command(
+        "render-cloudrun-manifest",
+        "Render private Cloud Run manifest",
+        `npm run render:cloudrun-manifest -- --values ${privateRenderValuesPath} --out-dir ${deploymentArtifactsDir} --release-id $SENTINEL_RELEASE_ID --strict`,
+        "engineering",
+        false,
+        false,
+        "Ignored private render bundle with rendered manifest, verifier JSON, and dry-run/deploy command files after the values audit is ready-to-render."
       ),
       command(
         "manifest-regression",
@@ -145,7 +156,8 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
     blockers,
     privateHandlingRules: [
       "Never put API keys, OAuth client secrets, evidence-signing secrets, Drive channel tokens, judge credentials, invoices, or customer findings in the repository.",
-      `Use ${renderValuesTemplatePath} only as a non-secret starting point; filled render values belong in a private path such as /secure/local/cloudrun-render-values.json.`,
+      `Use ${renderValuesTemplatePath} only as a non-secret starting point; filled render values belong in a private path such as ${privateRenderValuesPath}.`,
+      "Run npm run audit:cloudrun-values against the filled private values file before rendering; stop if the audit is not ready-to-render.",
       "Use Secret Manager for the runtime secrets and grant access only to the Cloud Run runtime service account.",
       "Use Devpost private testing instructions for judge credentials; keep public README and video free of login secrets.",
       "Use the admin action token only from private operator tooling when importing hosted proof JSON.",
@@ -154,6 +166,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
     ],
     sourceUrls: [
       "https://docs.cloud.google.com/run/docs/configuring/services/secrets",
+      "https://docs.cloud.google.com/run/docs/configuring/services/environment-variables",
       "https://cloud.google.com/sdk/gcloud/reference/run/services/replace",
       "https://ai.google.dev/api/all-methods"
     ],
