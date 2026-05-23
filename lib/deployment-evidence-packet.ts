@@ -109,16 +109,18 @@ function buildRunbook(input: {
         "cloudrun-render-values-audit-json",
         "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
-        "cloudrun-dry-run-preflight-json"
+        "cloudrun-dry-run-preflight-json",
+        "cloudrun-dry-run-packet-verifier-json"
       ],
       proofFiles: proofFiles(
         "cloudrun-render-values-audit-json",
         "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
-        "cloudrun-dry-run-preflight-json"
+        "cloudrun-dry-run-preflight-json",
+        "cloudrun-dry-run-packet-verifier-json"
       ),
       stopCondition:
-        "Stop unless the render-values audit is ready-to-render and the rendered verifier status is ready-to-dry-run with zero blockers and no raw credential values.",
+        "Stop unless the render-values audit is ready-to-render, the rendered verifier status is ready-to-dry-run, and the dry-run packet verifier status is verified with zero digest drift.",
       redactionCheck:
         "Keep the filled values file, rendered manifest, and command files private; share only redacted audit/verifier status, Secret Manager lookup names, and release id.",
       nextStep: "Run the generated Cloud Run dry-run command from a private operator shell only after the preflight packet is ready-to-dry-run.",
@@ -267,6 +269,21 @@ function buildArtifactManifest(input: {
       evidenceVaultTarget: "cloud-run-proof",
       redactionRules: ["Keep the filled values file private; share only the packet after human redaction review."],
       nextAction: "Generate immediately before Cloud Run dry-run and stop if status is not ready-to-dry-run."
+    }),
+    artifact({
+      id: "cloudrun-dry-run-packet-verifier-json",
+      label: "Cloud Run dry-run packet digest verifier JSON",
+      ownerRole: "engineering",
+      status: localVerifierStatus,
+      sourceCommand:
+        "npm run verify:cloudrun-dry-run-packet -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json --strict",
+      privateStorePath: `${basePath}/cloudrun-dry-run-packet-verifier.json`,
+      evidenceVaultTarget: "cloud-run-proof",
+      redactionRules: [
+        "Keep local paths private if they reveal operator usernames or customer names.",
+        "Share digest status, release id, matched counts, and stop conditions only after redaction review."
+      ],
+      nextAction: "Run immediately before Cloud Run dry-run and preserve the verifier JSON beside the preflight packet."
     }),
     artifact({
       id: "cloudrun-dry-run-log",
@@ -423,7 +440,7 @@ function buildCommandSequence(input: {
       "npm run verify:cloudrun-dry-run-packet -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json --strict",
       false,
       false,
-      "cloudrun-dry-run-preflight-json",
+      "cloudrun-dry-run-packet-verifier-json",
       "Rechecks rendered manifest bundle SHA-256 digests immediately before dry-run; regenerate the preflight packet if any file drifted."
     ),
     command(

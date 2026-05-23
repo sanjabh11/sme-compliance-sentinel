@@ -34,6 +34,7 @@ describe("deployment evidence packet", () => {
         "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
         "cloudrun-dry-run-preflight-json",
+        "cloudrun-dry-run-packet-verifier-json",
         "cloudrun-dry-run-log",
         "cloudrun-deploy-log",
         "cloudrun-describe-json",
@@ -74,6 +75,9 @@ describe("deployment evidence packet", () => {
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-dry-run-packet-verify")?.command).toContain(
       "npm run verify:cloudrun-dry-run-packet"
     );
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-dry-run-packet-verify")?.expectedArtifactId).toBe(
+      "cloudrun-dry-run-packet-verifier-json"
+    );
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-dry-run")?.command).toContain(
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml"
     );
@@ -104,7 +108,8 @@ describe("deployment evidence packet", () => {
         "cloudrun-render-values-audit-json",
         "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
-        "cloudrun-dry-run-preflight-json"
+        "cloudrun-dry-run-preflight-json",
+        "cloudrun-dry-run-packet-verifier-json"
       ]
     });
     expect(packet.runbook[1].proofFiles).toEqual(
@@ -112,7 +117,8 @@ describe("deployment evidence packet", () => {
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-values-audit.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-summary.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-manifest-verifier.json",
-        "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-dry-run-preflight-packet.json"
+        "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-dry-run-preflight-packet.json",
+        "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-dry-run-packet-verifier.json"
       ])
     );
     expect(packet.runbook[2].stopCondition).toContain("dry-run fails");
