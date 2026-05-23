@@ -78,6 +78,39 @@ const requiredSecretEnv = [
   "WORKSPACE_DRIVE_CHANNEL_TOKEN"
 ];
 
+const prohibitedCredentialEnv = [
+  {
+    name: "GOOGLE_CLOUD_ACCESS_TOKEN",
+    evidence: "Cloud Run should use the runtime service account and metadata server, not a committed access-token env var.",
+    fix: "Remove this env var from cloudrun.service.yaml and grant the Cloud Run service account the required IAM roles."
+  },
+  {
+    name: "GOOGLE_APPLICATION_CREDENTIALS",
+    evidence: "Cloud Run should use the runtime service account, not a mounted or committed service-account key path.",
+    fix: "Remove this env var and deploy with serviceAccountName plus least-privilege IAM."
+  },
+  {
+    name: "GOOGLE_OAUTH_REFRESH_TOKEN",
+    evidence: "Workspace OAuth refresh tokens must be stored per tenant in Secret Manager, not as shared service env vars.",
+    fix: "Remove this env var and store tenant OAuth refresh-token payloads under WORKSPACE_SECRET_PREFIX."
+  },
+  {
+    name: "WORKSPACE_REFRESH_TOKEN",
+    evidence: "Workspace OAuth refresh tokens must be tenant-scoped Secret Manager entries.",
+    fix: "Remove this env var and use the OAuth callback Secret Manager storage path."
+  },
+  {
+    name: "XPRIZE_JUDGE_CREDENTIALS",
+    evidence: "Judge credentials belong only in private Devpost testing instructions or an approved private channel.",
+    fix: "Remove this env var and keep judge credentials outside source and deployment manifests."
+  },
+  {
+    name: "XPRIZE_JUDGE_PASSWORD",
+    evidence: "Judge credentials must not be committed or exposed through Cloud Run env metadata.",
+    fix: "Remove this env var and provide credentials only through private judging instructions."
+  }
+];
+
 const manualReviewEnv = new Set([
   "XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED",
   "XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED",
@@ -132,7 +165,8 @@ export function buildCloudRunDeploymentEvidence(
   const runtimeServiceAccount = extractScalar(manifest, "serviceAccountName") || "missing";
   const envChecks = [
     ...requiredNonSecretEnv.map((name) => checkNonSecretEnv(name, envByName.get(name))),
-    ...requiredSecretEnv.map((name) => checkSecretEnv(name, envByName.get(name)))
+    ...requiredSecretEnv.map((name) => checkSecretEnv(name, envByName.get(name))),
+    ...prohibitedCredentialEnv.flatMap((item) => checkProhibitedCredentialEnv(item, envByName.get(item.name)))
   ];
   const replacementFindings = buildReplacementFindings({ image, runtimeServiceAccount, envChecks });
   const secretRefs = requiredSecretEnv
@@ -330,6 +364,27 @@ function checkSecretEnv(name: string, entry?: ParsedEnvEntry): CloudRunDeploymen
     "Secret Manager reference uses an explicit version.",
     "No action."
   );
+}
+
+function checkProhibitedCredentialEnv(
+  item: (typeof prohibitedCredentialEnv)[number],
+  entry?: ParsedEnvEntry
+): CloudRunDeploymentEnvCheck[] {
+  if (!entry) {
+    return [];
+  }
+
+  return [
+    envCheck(
+      item.name,
+      "secret",
+      "blocked",
+      true,
+      entry.secretName ? `secret:${entry.secretName}` : "raw-value",
+      item.evidence,
+      item.fix
+    )
+  ];
 }
 
 function buildReplacementFindings(input: {

@@ -87,7 +87,16 @@ describe("Cloud Run deployment manifest", () => {
     expectSecretEnv("SENTINEL_EVIDENCE_SIGNING_SECRET", "sentinel-evidence-signing-secret", "1");
     expectSecretEnv("WORKSPACE_DRIVE_CHANNEL_TOKEN", "workspace-drive-channel-token", "1");
     expect(manifest).not.toContain("key: latest");
-    expect(manifest).not.toContain("- name: GOOGLE_CLOUD_ACCESS_TOKEN");
+    [
+      "GOOGLE_CLOUD_ACCESS_TOKEN",
+      "GOOGLE_APPLICATION_CREDENTIALS",
+      "GOOGLE_OAUTH_REFRESH_TOKEN",
+      "WORKSPACE_REFRESH_TOKEN",
+      "XPRIZE_JUDGE_CREDENTIALS",
+      "XPRIZE_JUDGE_PASSWORD"
+    ].forEach((name) => {
+      expect(manifest).not.toContain(`- name: ${name}`);
+    });
   });
 });
 

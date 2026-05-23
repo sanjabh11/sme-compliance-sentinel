@@ -55,6 +55,28 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(evidence.deployCommand).toContain("gcloud run services replace cloudrun.service.yaml");
   });
 
+  it("blocks raw credential and judge-access env vars even when the rest of the manifest is rendered", () => {
+    const evidence = buildCloudRunDeploymentEvidence(addEnv(renderProductionCandidateManifest(), [
+      ["GOOGLE_CLOUD_ACCESS_TOKEN", "ya29.should-not-be-in-cloud-run"],
+      ["XPRIZE_JUDGE_PASSWORD", "do-not-commit"]
+    ]));
+
+    expect(evidence.overallStatus).toBe("blocked");
+    expect(evidence.envChecks.find((check) => check.name === "GOOGLE_CLOUD_ACCESS_TOKEN")).toMatchObject({
+      status: "blocked",
+      secret: true,
+      currentValue: "raw-value"
+    });
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_JUDGE_PASSWORD")).toMatchObject({
+      status: "blocked",
+      secret: true,
+      currentValue: "raw-value"
+    });
+    expect(evidence.blockers.join(" ")).toContain("Cloud Run service account");
+    expect(JSON.stringify(evidence)).not.toContain("ya29.should-not-be-in-cloud-run");
+    expect(JSON.stringify(evidence)).not.toContain("do-not-commit");
+  });
+
   it("emits a CLI JSON report without leaking secret values", () => {
     const output = execFileSync("node", ["scripts/verify-cloudrun-deployment.mjs"], {
       cwd: process.cwd(),
@@ -89,6 +111,14 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(violations).toEqual([]);
   });
 });
+
+function addEnv(source: string, entries: Array<[string, string]>) {
+  const rendered = entries
+    .map(([name, value]) => `            - name: ${name}\n              value: "${value}"`)
+    .join("\n");
+
+  return source.replace("          env:\n", `          env:\n${rendered}\n`);
+}
 
 function renderProductionCandidateManifest() {
   return manifest
