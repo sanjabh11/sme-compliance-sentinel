@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* global console, process */
 
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { renderCloudRunManifest } from "./render-cloudrun-manifest.mjs";
@@ -103,7 +104,8 @@ export async function prepareCloudRunDryRunPacket(options) {
   const outputDirectory = resolve(renderSummary.outputDirectory);
   const verifierPath = join(outputDirectory, renderSummary.verifierFile);
   const verifier = JSON.parse(await readFile(verifierPath, "utf8"));
-  const packet = buildDryRunPacket({ renderSummary, verifier, valuesPath: options.valuesPath });
+  const evidenceFileDigests = await buildEvidenceFileDigests(renderSummary);
+  const packet = buildDryRunPacket({ renderSummary, verifier, valuesPath: options.valuesPath, evidenceFileDigests });
 
   await mkdir(outputDirectory, { recursive: true });
   await writeJson(join(outputDirectory, packetFileName), packet);
@@ -118,7 +120,7 @@ export async function prepareCloudRunDryRunPacket(options) {
   return packet;
 }
 
-export function buildDryRunPacket({ renderSummary, verifier, valuesPath }) {
+export function buildDryRunPacket({ renderSummary, verifier, valuesPath, evidenceFileDigests = [] }) {
   const blockers = verifier.blockers ?? [];
   const replacementFindings = verifier.replacementFindings ?? [];
   const manualReviewFlags = (verifier.envChecks ?? [])
@@ -174,9 +176,11 @@ export function buildDryRunPacket({ renderSummary, verifier, valuesPath }) {
       join(renderSummary.outputDirectory, renderSummary.dryRunCommandFile),
       join(renderSummary.outputDirectory, renderSummary.deployCommandFile)
     ],
+    evidenceFileDigests,
     privateHandling: [
       "This preflight packet is an ignored private deployment artifact. It does not deploy Cloud Run or prove hosted readiness.",
       "A ready-to-dry-run status only means the rendered manifest has no local verifier blockers or missing placeholders.",
+      "The packet hashes the rendered manifest bundle before dry-run so later evidence imports can detect file drift.",
       "Human-review flags may remain false at dry-run time; they become proof only after the private artifact exists.",
       "Run the dry-run command only from a private operator shell with approved Google Cloud credentials."
     ],
@@ -257,12 +261,52 @@ function renderMarkdown(packet) {
     "## Evidence Files",
     ...packet.evidenceFilesToPreserve.map((item) => `- ${item}`),
     "",
+    "## Evidence File Digests",
+    ...packet.evidenceFileDigests.map((item) => `- ${item.role}: ${item.sha256} (${item.byteLength} bytes) ${item.path}`),
+    "",
     "## Next Actions",
     ...packet.nextActions.map((item) => `- ${item}`),
     "",
     `Disclaimer: ${packet.disclaimer}`,
     ""
   ].join("\n");
+}
+
+async function buildEvidenceFileDigests(renderSummary) {
+  const files = [
+    {
+      role: "rendered-manifest",
+      path: renderSummary.renderedManifestPath
+    },
+    {
+      role: "manifest-verifier",
+      path: join(renderSummary.outputDirectory, renderSummary.verifierFile)
+    },
+    {
+      role: "render-summary",
+      path: join(renderSummary.outputDirectory, renderSummary.summaryFile ?? "cloudrun-render-summary.json")
+    },
+    {
+      role: "dry-run-command",
+      path: join(renderSummary.outputDirectory, renderSummary.dryRunCommandFile)
+    },
+    {
+      role: "deploy-command",
+      path: join(renderSummary.outputDirectory, renderSummary.deployCommandFile)
+    }
+  ];
+
+  return Promise.all(files.map(readDigest));
+}
+
+async function readDigest(file) {
+  const buffer = await readFile(file.path);
+
+  return {
+    ...file,
+    sha256: createHash("sha256").update(buffer).digest("hex"),
+    byteLength: buffer.length
+  };
 }
 
 async function writeJson(path, value) {

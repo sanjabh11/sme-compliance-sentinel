@@ -32,6 +32,12 @@ interface CloudRunDryRunPreflightModule {
     };
     redactionChecklist: string[];
     evidenceFilesToPreserve: string[];
+    evidenceFileDigests: Array<{
+      role: string;
+      path: string;
+      sha256: string;
+      byteLength: number;
+    }>;
     nextActions: string[];
   }>;
 }
@@ -79,7 +85,7 @@ describe("Cloud Run dry-run preflight packet", () => {
     });
     const packetJson = JSON.parse(
       await readFile(join(packet.outputDirectory, "cloudrun-dry-run-preflight-packet.json"), "utf8")
-    ) as { status: string };
+    ) as { status: string; evidenceFileDigests: Array<{ role: string; sha256: string; byteLength: number }> };
     const packetMarkdown = await readFile(join(packet.outputDirectory, "cloudrun-dry-run-preflight-packet.md"), "utf8");
 
     expect(packet.status).toBe("ready-to-dry-run");
@@ -98,8 +104,33 @@ describe("Cloud Run dry-run preflight packet", () => {
         join(packet.outputDirectory, "cloudrun-dry-run-preflight-packet.md")
       ])
     );
+    expect(packet.evidenceFileDigests.map((item) => item.role)).toEqual([
+      "rendered-manifest",
+      "manifest-verifier",
+      "render-summary",
+      "dry-run-command",
+      "deploy-command"
+    ]);
+    expect(packet.evidenceFileDigests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "rendered-manifest",
+          path: expect.stringContaining("cloudrun.service.rendered.yaml"),
+          sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+          byteLength: expect.any(Number)
+        }),
+        expect.objectContaining({
+          role: "manifest-verifier",
+          path: expect.stringContaining("cloudrun-manifest-verifier.json"),
+          sha256: expect.stringMatching(/^[a-f0-9]{64}$/u)
+        })
+      ])
+    );
+    expect(packet.evidenceFileDigests.every((item) => item.byteLength > 0)).toBe(true);
     expect(packetJson.status).toBe("ready-to-dry-run");
+    expect(packetJson.evidenceFileDigests[0].sha256).toMatch(/^[a-f0-9]{64}$/u);
     expect(packetMarkdown).toContain("Status: ready-to-dry-run");
+    expect(packetMarkdown).toContain("## Evidence File Digests");
     expect(JSON.stringify(packet)).not.toContain("AIza");
     expect(JSON.stringify(packet)).not.toContain("private-admin-token");
   });
@@ -119,6 +150,9 @@ describe("Cloud Run dry-run preflight packet", () => {
     expect(packet.nextActions.join(" ")).toContain("Fill the remaining non-secret render values");
     expect(packet.evidenceFilesToPreserve).toEqual(
       expect.arrayContaining([join(packet.outputDirectory, "cloudrun-dry-run-preflight-packet.json")])
+    );
+    expect(packet.evidenceFileDigests.map((item) => item.role)).toEqual(
+      expect.arrayContaining(["rendered-manifest", "manifest-verifier", "render-summary"])
     );
   });
 });
