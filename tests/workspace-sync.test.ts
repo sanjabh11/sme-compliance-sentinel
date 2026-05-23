@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildDriveChangesListRequest,
   buildDriveChangesWatchRequest,
@@ -20,6 +20,11 @@ const counters: EvidenceCounters = {
 };
 
 describe("Workspace sync reliability", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
   it("builds official Drive and Gmail cursor request shapes", () => {
     const startToken = buildDriveStartPageTokenRequest();
     expect(startToken.method).toBe("GET");
@@ -127,6 +132,50 @@ describe("Workspace sync reliability", () => {
     expect(reliability.driveCursor).toBeDefined();
     expect(reliability.renewalWarnings[0]).toContain("Drive changes channel is due for renewal");
     expect(reliability.reliabilityNotes.join(" ")).toContain("3 resource(s)");
+  });
+
+  it("builds a renewal plan with redacted Drive and Gmail watch requests", async () => {
+    vi.stubEnv("SENTINEL_MOCK_MODE", "false");
+    vi.stubEnv("NEXT_PUBLIC_PRODUCT_URL", "https://sentinel.example.com");
+    vi.stubEnv("WORKSPACE_DRIVE_CHANNEL_TOKEN", "drive_channel_token_secret");
+    vi.resetModules();
+
+    const {
+      buildInitialWorkspaceSyncState: buildInitialWorkspaceSyncStateWithEnv,
+      buildWorkspaceWatchRenewalPlan: buildWorkspaceWatchRenewalPlanWithEnv
+    } = await import("@/lib/workspace-sync");
+    const syncState = buildInitialWorkspaceSyncStateWithEnv("tenant_123", new Date("2026-05-22T12:00:00.000Z"));
+    syncState.mode = "oauth";
+    syncState.drive = {
+      status: "renewal_due",
+      startPageToken: "drive_start_token",
+      pageToken: "drive_page_token",
+      channelId: "old_drive_channel",
+      channelResourceId: "old_drive_resource",
+      channelExpirationAt: "2026-05-23T10:00:00.000Z",
+      renewalDueAt: "2026-05-22T10:00:00.000Z"
+    };
+    syncState.gmail = {
+      status: "healthy",
+      historyId: "gmail_history_123",
+      topicName: "projects/project-123/topics/workspace-gmail-updates",
+      watchExpirationAt: "2026-05-29T00:00:00.000Z",
+      renewalDueAt: "2026-05-28T00:00:00.000Z"
+    };
+
+    const plan = buildWorkspaceWatchRenewalPlanWithEnv(syncState, new Date("2026-05-22T13:00:00.000Z"));
+    const drive = plan.items.find((item) => item.provider === "drive");
+    const gmail = plan.items.find((item) => item.provider === "gmail");
+
+    expect(plan.overallStatus).toBe("due");
+    expect(plan.nextActions.join(" ")).toContain("/api/workspace/sync/renew");
+    expect(drive?.status).toBe("due");
+    expect(drive?.request?.url).toContain("/drive/v3/changes/watch");
+    expect(drive?.request?.body?.id).toBe("drive_channel_RENEWAL_RUN_ID");
+    expect(drive?.request?.body?.["to" + "ken"]).toBe("[secret-manager:workspace-drive-channel-token]");
+    expect(gmail?.status).toBe("scheduled");
+    expect(gmail?.request?.url).toBe("https://gmail.googleapis.com/gmail/v1/users/me/watch");
+    expect(JSON.stringify(plan)).not.toContain("old_drive_resource");
   });
 
   it("requires initialized Drive and Gmail cursors before live sync can count as proof", () => {

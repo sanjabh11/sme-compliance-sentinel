@@ -543,6 +543,14 @@ function buildVerificationCommands(): ProductionLaunchCommand[] {
       expectedProof: "Reconciliation payload showing live cursor state or explicit blocker if not installed."
     },
     {
+      id: "workspace-watch-renewal",
+      label: "Workspace watch renewal",
+      command: "curl -X POST -s $NEXT_PUBLIC_PRODUCT_URL/api/workspace/sync/renew -H 'x-sentinel-admin-token: $SENTINEL_ADMIN_ACTION_TOKEN'",
+      ownerRole: "security",
+      purpose: "Renew Drive changes and Gmail mailbox watches before expiration during pilot and judging windows.",
+      expectedProof: "Renewal payload with new Drive channel metadata, Gmail historyId, expiration timestamps, and no OAuth or channel token values."
+    },
+    {
       id: "final-claim-guard",
       label: "Final Claim Guard",
       command: "curl -s $NEXT_PUBLIC_PRODUCT_URL/api/compliance/claims",
@@ -578,6 +586,7 @@ function buildProofArtifacts(snapshot: ProductionLaunchSnapshot): ProductionLaun
     proofArtifact("secret-manager-token", "Secret Manager OAuth token path", buildPersistenceReadiness().configured && hasLiveWorkspaceConnection, "security", "/api/oauth/google/callback", "Workspace OAuth credential safety.", "Never expose token values; show secret path and IAM only.", "Complete OAuth callback and verify token storage."),
     proofArtifact("live-gemini-log", "Live Gemini API semantic run", hasGeminiRun, "engineering", "/api/production/gemini-smoke", "Required deployed LLM functionality proof.", "Share model/cost metadata only; redact prompt and customer content.", "Run the hosted synthetic Gemini smoke after configuring GEMINI_API_KEY."),
     proofArtifact("workspace-sync-log", "Workspace sync reconciliation log", hasLiveWorkspaceConnection && hasLiveWorkspaceSyncEvidence(snapshot.syncState), "security", "/api/workspace/sync/reconcile", "AI-native operations continuity.", "Redact email addresses, domains, and file names.", "Run reconciliation after OAuth install."),
+    proofArtifact("workspace-watch-renewal", "Workspace watch renewal log", hasLiveWorkspaceConnection && hasLiveWorkspaceSyncEvidence(snapshot.syncState), "security", "/api/workspace/sync/renew", "AI-native operations continuity.", "Redact OAuth tokens, channel tokens, file names, and mailbox details.", "Run watch renewal before Drive/Gmail expiration and register the redacted output."),
     proofArtifact("financial-records", "Revenue, cost, CAC, and invoice proof", paidProofReady, "founder", "/api/financial-evidence/ledger", "Business Viability.", "Keep invoices/payment exports private and redacted.", "Attach real paid customer records and costs."),
     proofArtifact("user-consent", "Real user and testimonial consent proof", productionEvidence && snapshot.tenant.evidence.activeUsers > 0, "sales", "/api/evidence/vault", "Real user evidence.", "Share testimonials only when explicit consent is recorded.", "Register consent and active-user artifacts."),
     proofArtifact("repository-access", "Repository access proof", Boolean(sentinelConfig.repositoryUrl), "engineering", "XPRIZE_REPOSITORY_URL", "Submission testing.", "Keep secrets and private evidence out of source.", "Publish or privately share the complete source repository."),

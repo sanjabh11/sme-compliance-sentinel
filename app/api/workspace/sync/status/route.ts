@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildSyncReliability } from "@/lib/workspace-sync";
+import { buildSyncReliability, buildWorkspaceWatchRenewalPlan } from "@/lib/workspace-sync";
 import { getDashboardSnapshot } from "@/lib/store";
 
 export async function GET() {
@@ -7,6 +7,7 @@ export async function GET() {
 
   return NextResponse.json({
     syncState: snapshot.syncState,
-    reliability: buildSyncReliability(snapshot.syncState, snapshot.aggregateCounters)
+    reliability: buildSyncReliability(snapshot.syncState, snapshot.aggregateCounters),
+    renewalPlan: buildWorkspaceWatchRenewalPlan(snapshot.syncState)
   });
 }

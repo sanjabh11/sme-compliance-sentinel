@@ -124,7 +124,7 @@ export function buildHostedEvidenceCapturePacket(snapshot: HostedEvidenceSnapsho
       requiredFor: "AI-Native Operations",
       ownerRole: "security",
       evidence: `Connection modes ${snapshot.connections.map((connection) => connection.mode).join(", ")}; sync mode ${snapshot.syncState.mode}.`,
-      fix: "Collect signed pilot consent, complete OAuth install, run /api/workspace/sync/bootstrap from Cloud Run, and register redacted Drive/Gmail cursor output.",
+      fix: "Collect signed pilot consent, complete OAuth install, run /api/workspace/sync/bootstrap and /api/workspace/sync/renew from Cloud Run, and register redacted Drive/Gmail cursor and renewal output.",
       privateHandling: "Do not expose refresh tokens, file names, email addresses, or channel tokens."
     }),
     artifactCheck({
@@ -268,10 +268,10 @@ function buildPrivateArtifactTemplates(): HostedEvidenceArtifactTemplate[] {
       label: "Workspace OAuth install and reconciliation",
       ownerRole: "security",
       requiredFor: "AI-Native Operations",
-      acceptedProof: ["Signed pilot consent", "OAuth install timestamp", "Drive page token", "Gmail history id", "bootstrap and reconciliation output"],
+      acceptedProof: ["Signed pilot consent", "OAuth install timestamp", "Drive page token", "Gmail history id", "bootstrap, renewal, and reconciliation output"],
       redactionRules: ["Hide refresh tokens", "Hide Drive channel tokens", "Redact file names and email addresses"],
       storageTarget: "Evidence Vault workspace-oauth-log artifact",
-      registrationHint: "Register only after a consented pilot completes OAuth."
+      registrationHint: "Register only after a consented pilot completes OAuth bootstrap and hosted watch renewal."
     }),
     artifactTemplate({
       id: "cloud-billing-budget",

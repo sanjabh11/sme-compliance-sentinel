@@ -94,6 +94,7 @@
 - [x] Local MVP records OAuth install proof separately from Drive/Gmail cursor initialization.
 - [x] Submission gates do not count Workspace sync as live proof until Drive and Gmail cursors are initialized.
 - [x] Local MVP exposes `/api/workspace/sync/bootstrap` to initialize Drive/Gmail watches from a consented OAuth install only after GCP persistence, product URL, Gmail topic, Drive channel token, OAuth credentials, and Secret Manager token storage are configured.
+- [x] Local MVP exposes `/api/workspace/sync/renew` and a renewal plan so Drive/Gmail watches can be renewed before expiration from the hosted app with private admin authorization.
 - [x] Non-demo Workspace webhook routes reject unauthenticated pushes instead of falling back to demo events.
 - [x] Authenticated production Workspace pushes are recorded as reconciliation hints and cannot directly create findings.
 - [x] Replayed Workspace push notifications are deduplicated before updating sync timestamps or audit evidence, with Firestore create-only reservations in `gcp-rest` mode.
@@ -170,6 +171,7 @@
 - [ ] Create `sentinel-admin-action-token` and private evidence storage before importing hosted verification proof from the deployed app.
 - [ ] Run hosted write-through proof commands from a private shell with `SENTINEL_ADMIN_ACTION_TOKEN` configured; do not place the token in source, screenshots, or public Devpost fields.
 - [ ] Run `POST /api/production/gemini-smoke` from the hosted Cloud Run URL after configuring the Gemini API key, then persist the resulting `provider=gemini-api` agent-run row to BigQuery.
+- [ ] Run `POST /api/workspace/sync/renew` from the hosted Cloud Run URL after OAuth bootstrap and register the redacted Drive/Gmail renewal output before channel expiration.
 - [x] Local MVP separates mock sync reconciliation from live Google API reconciliation.
 - [x] Local MVP falls back to deterministic staged findings when Gemini is blocked by model or budget policy.
 - [x] Local MVP labels mock Gemini fallbacks with explicit reason metadata so they cannot be mistaken for live API proof.

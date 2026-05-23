@@ -11,7 +11,10 @@ import type {
   WorkspaceConnection,
   WorkspaceReconciliationResult,
   WorkspaceSyncProviderStatus,
-  WorkspaceSyncState
+  WorkspaceSyncState,
+  WorkspaceWatchRenewalItem,
+  WorkspaceWatchRenewalPlan,
+  WorkspaceWatchRenewalStatus
 } from "@/lib/types";
 
 const DRIVE_CHANGES_URL = "https://www.googleapis.com/drive/v3/changes";
@@ -19,6 +22,8 @@ const DRIVE_START_TOKEN_URL = "https://www.googleapis.com/drive/v3/changes/start
 const GMAIL_HISTORY_URL = "https://gmail.googleapis.com/gmail/v1/users/me/history";
 const GMAIL_WATCH_URL = "https://gmail.googleapis.com/gmail/v1/users/me/watch";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const WATCH_RENEWAL_LEAD_HOURS = 24;
+const WATCH_RENEWAL_EXTENSION_HOURS = 24 * 6;
 
 export function buildInitialWorkspaceSyncState(
   tenantId = sentinelConfig.tenantId,
@@ -176,11 +181,36 @@ export function buildSyncReliability(
     driveCursor: syncState.drive.pageToken ?? syncState.drive.startPageToken,
     gmailCursor: syncState.gmail.historyId,
     renewalWarnings,
+    renewalPlan: buildWorkspaceWatchRenewalPlan(syncState, now),
     blockers,
     reliabilityNotes: [
       "Drive changes use getStartPageToken/list/watch cursors; push notifications are treated as hints, not proof of complete coverage.",
       "Gmail watches return a historyId and expiration; reconciliation must use users.history.list and trigger full sync on stale historyId errors.",
       `${aggregateCounters.filesInspected} resource(s) are represented in the current demo counters.`
+    ]
+  };
+}
+
+export function buildWorkspaceWatchRenewalPlan(syncState: WorkspaceSyncState, now = new Date()): WorkspaceWatchRenewalPlan {
+  const items = [buildDriveRenewalItem(syncState, now), buildGmailRenewalItem(syncState, now)];
+  const overallStatus = summarizeRenewalStatus(syncState, items);
+
+  return {
+    generatedAt: now.toISOString(),
+    overallStatus,
+    renewalLeadHours: WATCH_RENEWAL_LEAD_HOURS,
+    items,
+    nextActions: buildRenewalNextActions(overallStatus, items),
+    privateHandling: [
+      "Run renewal only from the hosted production app with the admin action token.",
+      "Rotate the Drive channel token by creating a new Secret Manager version and deploying a new revision before planned Drive renewals.",
+      "Store only request metadata, response status, channel ids, expiration timestamps, and cursor ids in judge evidence.",
+      "Do not expose OAuth refresh tokens, access tokens, channel tokens, customer email addresses, file names, or message metadata in public artifacts."
+    ],
+    sourceBasis: [
+      "Drive changes.watch channels have finite expirations; the template schedules renewal one day before expiration.",
+      "Gmail users.watch must be called at least every seven days, and daily renewal is recommended by Google.",
+      "Push notifications are hints; reconciliation cursors remain the proof boundary."
     ]
   };
 }
@@ -487,6 +517,185 @@ export async function bootstrapLiveWorkspaceSyncState(
   }
 }
 
+export async function renewLiveWorkspaceWatches(
+  input: {
+    syncState: WorkspaceSyncState;
+    connections: WorkspaceConnection[];
+    now?: Date;
+  },
+  fetchImpl: typeof fetch = fetch
+): Promise<WorkspaceReconciliationResult> {
+  const now = input.now ?? new Date();
+  const generatedAt = now.toISOString();
+  const checks: WorkspaceReconciliationResult["checks"] = [];
+  const oauthConnection = input.connections.find(
+    (connection) => connection.mode === "oauth" || connection.mode === "domain-wide-delegation"
+  );
+  const persistence = buildPersistenceReadiness();
+  const callbackBaseUrl = sentinelConfig.productUrl;
+  const drivePageToken = input.syncState.drive.pageToken ?? input.syncState.drive.startPageToken;
+  const gmailTopic = sentinelConfig.gmailPubSubTopic || input.syncState.gmail.topicName;
+  const missingConfiguration = [
+    ...(sentinelConfig.mockMode ? ["SENTINEL_MOCK_MODE must be false for live Workspace watch renewal."] : []),
+    ...(oauthConnection ? [] : ["A consent-gated OAuth or domain-wide-delegation Workspace connection is required."]),
+    ...(persistence.configured
+      ? []
+      : [`SENTINEL_STORAGE_MODE=gcp-rest and Google Cloud persistence are required. Missing env: ${persistence.missingEnv.join(", ") || "none"}.`]),
+    ...(callbackBaseUrl ? [] : ["NEXT_PUBLIC_PRODUCT_URL is required for the Drive webhook callback URL."]),
+    ...(sentinelConfig.workspaceDriveChannelTokenConfigured ? [] : ["WORKSPACE_DRIVE_CHANNEL_TOKEN must be configured before renewing a Drive watch channel."]),
+    ...(gmailTopic ? [] : ["WORKSPACE_GMAIL_TOPIC must be configured before renewing a Gmail watch."]),
+    ...(sentinelConfig.oauthClientId && sentinelConfig.oauthClientSecret
+      ? []
+      : ["GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET are required to refresh the Workspace OAuth token."]),
+    ...(drivePageToken ? [] : ["Drive renewal needs an initialized Drive page token from Workspace bootstrap."]),
+    ...(input.syncState.gmail.historyId ? [] : ["Gmail renewal needs an initialized Gmail historyId from Workspace bootstrap."])
+  ];
+
+  if (missingConfiguration.length) {
+    return {
+      generatedAt,
+      status: "blocked",
+      attemptedLiveApi: false,
+      processedChanges: 0,
+      cursors: {
+        drivePageToken,
+        gmailHistoryId: input.syncState.gmail.historyId
+      },
+      checks: [
+        {
+          target: "configuration",
+          status: "blocked",
+          detail: missingConfiguration.join(" ")
+        }
+      ]
+    };
+  }
+
+  let activeTarget: WorkspaceReconciliationResult["checks"][number]["target"] = "access-token";
+
+  try {
+    if (!oauthConnection || !drivePageToken || !gmailTopic) {
+      throw new Error("Workspace watch renewal prerequisites are incomplete.");
+    }
+
+    const tokenPayload = await accessWorkspaceOAuthTokenPayload(sentinelConfig.tenantId, fetchImpl);
+    const workspaceAccessToken = await exchangeWorkspaceRefreshTokenForAccessToken(tokenPayload.refreshToken, fetchImpl);
+    checks.push({
+      target: "access-token",
+      status: "passed",
+      detail: "Workspace OAuth refresh token was exchanged for renewal; token values were not logged."
+    });
+
+    const driveExpiration = addHours(now, WATCH_RENEWAL_EXTENSION_HOURS);
+    activeTarget = "drive-watch";
+    const driveWatchRequest = buildDriveChangesWatchRequest({
+      pageToken: drivePageToken,
+      callbackUrl: `${callbackBaseUrl.replace(/\/+$/u, "")}/api/webhooks/pubsub/drive`,
+      channelId: makeId("drive_channel_renewal"),
+      channelToken: sentinelConfig.workspaceDriveChannelToken,
+      expirationAt: driveExpiration
+    });
+    const driveWatchResponse = await executeWorkspaceJsonRequest<{
+      id?: string;
+      resourceId?: string;
+      expiration?: string;
+    }>(driveWatchRequest, workspaceAccessToken, fetchImpl);
+    checks.push({
+      target: "drive-watch",
+      status: "passed",
+      detail: "Drive changes watch channel renewed; channel token was not returned in the result.",
+      url: driveWatchRequest.url,
+      httpStatus: driveWatchResponse.httpStatus
+    });
+
+    activeTarget = "gmail-watch";
+    const gmailWatchRequest = buildGmailWatchRequest(gmailTopic);
+    const gmailWatchResponse = await executeWorkspaceJsonRequest<{
+      historyId?: string;
+      expiration?: string;
+    }>(gmailWatchRequest, workspaceAccessToken, fetchImpl);
+    const gmailHistoryId = gmailWatchResponse.body.historyId;
+    if (!gmailHistoryId) {
+      throw new Error("Gmail watch renewal response did not include historyId.");
+    }
+    checks.push({
+      target: "gmail-watch",
+      status: "passed",
+      detail: "Gmail watch renewed and returned a mailbox historyId.",
+      url: gmailWatchRequest.url,
+      httpStatus: gmailWatchResponse.httpStatus
+    });
+
+    input.syncState.mode = oauthConnection.mode;
+    input.syncState.lastReconciliationAt = generatedAt;
+    input.syncState.drive = {
+      ...input.syncState.drive,
+      status: "healthy",
+      pageToken: drivePageToken,
+      channelId: driveWatchResponse.body.id,
+      channelResourceId: driveWatchResponse.body.resourceId,
+      channelExpirationAt: normalizeGoogleExpiration(driveWatchResponse.body.expiration, driveExpiration),
+      renewalDueAt: addHours(normalizeGoogleExpirationDate(driveWatchResponse.body.expiration, driveExpiration), -WATCH_RENEWAL_LEAD_HOURS).toISOString(),
+      lastReconciledAt: generatedAt,
+      blocker: undefined
+    };
+    input.syncState.gmail = {
+      ...input.syncState.gmail,
+      status: "healthy",
+      historyId: gmailHistoryId,
+      topicName: gmailTopic,
+      watchExpirationAt: normalizeGoogleExpiration(gmailWatchResponse.body.expiration, addHours(now, WATCH_RENEWAL_EXTENSION_HOURS)),
+      renewalDueAt: addHours(normalizeGoogleExpirationDate(gmailWatchResponse.body.expiration, addHours(now, WATCH_RENEWAL_EXTENSION_HOURS)), -WATCH_RENEWAL_LEAD_HOURS).toISOString(),
+      lastReconciledAt: generatedAt,
+      blocker: undefined
+    };
+
+    activeTarget = "sync-state-firestore";
+    const persisted = await persistWorkspaceOAuthInstallMetadata(
+      {
+        connection: oauthConnection,
+        syncState: input.syncState
+      },
+      fetchImpl
+    );
+    checks.push({
+      target: "sync-state-firestore",
+      status: "passed",
+      detail: `Renewed Workspace watch metadata persisted to Firestore. Connection ${persisted.connection.httpStatus}, sync ${persisted.syncState.httpStatus}.`
+    });
+
+    return {
+      generatedAt,
+      status: "passed",
+      attemptedLiveApi: true,
+      processedChanges: 0,
+      cursors: {
+        drivePageToken: input.syncState.drive.pageToken,
+        gmailHistoryId: input.syncState.gmail.historyId
+      },
+      checks
+    };
+  } catch (error) {
+    checks.push({
+      target: typeof activeTarget === "string" ? activeTarget : "configuration",
+      status: "failed",
+      detail: sanitizeWorkspaceSyncError(error)
+    });
+
+    return {
+      generatedAt,
+      status: "failed",
+      attemptedLiveApi: true,
+      processedChanges: 0,
+      cursors: {
+        drivePageToken,
+        gmailHistoryId: input.syncState.gmail.historyId
+      },
+      checks
+    };
+  }
+}
+
 export async function exchangeWorkspaceRefreshTokenForAccessToken(refreshToken: string, fetchImpl: typeof fetch = fetch) {
   const response = await fetchImpl(GOOGLE_TOKEN_URL, {
     method: "POST",
@@ -557,6 +766,165 @@ function sanitizeWorkspaceSyncError(error: unknown) {
     .replace(/refresh_token=[^&\s]+/giu, "refresh_token=[redacted]")
     .replace(/access_token=[^&\s]+/giu, "access_token=[redacted]")
     .replace(/Bearer\s+[A-Za-z0-9._~-]+/gu, "Bearer [redacted]");
+}
+
+function buildDriveRenewalItem(syncState: WorkspaceSyncState, now: Date): WorkspaceWatchRenewalItem {
+  const pageToken = syncState.drive.pageToken ?? syncState.drive.startPageToken;
+  const expirationAt = syncState.drive.channelExpirationAt;
+  const callbackBaseUrl = sentinelConfig.productUrl || "https://YOUR-CLOUD-RUN-URL";
+  const blocker =
+    syncState.mode === "mock"
+      ? undefined
+      : !pageToken
+        ? "Drive renewal needs an initialized changes page token."
+        : !sentinelConfig.productUrl
+          ? "NEXT_PUBLIC_PRODUCT_URL is required for the Drive watch callback URL."
+          : !sentinelConfig.workspaceDriveChannelTokenConfigured
+            ? "WORKSPACE_DRIVE_CHANNEL_TOKEN must be configured through Secret Manager."
+            : undefined;
+  const status = syncState.mode === "mock" ? "mock-only" : blocker ? "blocked" : renewalStatus(expirationAt, syncState.drive.renewalDueAt, now);
+  const request =
+    status === "blocked" || status === "mock-only" || !pageToken
+      ? undefined
+      : buildDriveChangesWatchRequest({
+          pageToken,
+          callbackUrl: `${callbackBaseUrl.replace(/\/+$/u, "")}/api/webhooks/pubsub/drive`,
+          channelId: "drive_channel_RENEWAL_RUN_ID",
+          channelToken: "[secret-manager:workspace-drive-channel-token]",
+          expirationAt: addHours(now, WATCH_RENEWAL_EXTENSION_HOURS)
+        });
+
+  return {
+    provider: "drive",
+    label: "Drive changes watch",
+    status,
+    currentExpirationAt: expirationAt,
+    renewalDueAt: syncState.drive.renewalDueAt,
+    request,
+    blocker,
+    evidenceToCapture: [
+      "Drive changes.watch HTTP status.",
+      "New channel id and resource id.",
+      "New channel expiration timestamp.",
+      "Persisted page token and renewalDueAt."
+    ],
+    privateHandling:
+      "Use a Secret Manager-backed channel token, rotate its version before planned renewal, and never include the token value in logs or judge screenshots."
+  };
+}
+
+function buildGmailRenewalItem(syncState: WorkspaceSyncState, now: Date): WorkspaceWatchRenewalItem {
+  const expirationAt = syncState.gmail.watchExpirationAt;
+  const topicName = sentinelConfig.gmailPubSubTopic || syncState.gmail.topicName;
+  const blocker =
+    syncState.mode === "mock"
+      ? undefined
+      : !syncState.gmail.historyId
+        ? "Gmail renewal needs an initialized historyId."
+        : !topicName
+          ? "WORKSPACE_GMAIL_TOPIC must be configured before Gmail watch renewal."
+          : undefined;
+  const status = syncState.mode === "mock" ? "mock-only" : blocker ? "blocked" : renewalStatus(expirationAt, syncState.gmail.renewalDueAt, now);
+  const request = status === "blocked" || status === "mock-only" || !topicName ? undefined : buildGmailWatchRequest(topicName);
+
+  return {
+    provider: "gmail",
+    label: "Gmail mailbox watch",
+    status,
+    currentExpirationAt: expirationAt,
+    renewalDueAt: syncState.gmail.renewalDueAt,
+    request,
+    blocker,
+    evidenceToCapture: [
+      "Gmail users.watch HTTP status.",
+      "Returned mailbox historyId.",
+      "Returned watch expiration timestamp.",
+      "Persisted topicName and renewalDueAt."
+    ],
+    privateHandling:
+      "Share topic and status metadata only; redact mailbox addresses, message metadata, OAuth tokens, and customer-specific notification payloads."
+  };
+}
+
+function renewalStatus(
+  expirationAt: string | undefined,
+  renewalDueAt: string | undefined,
+  now: Date
+): WorkspaceWatchRenewalStatus {
+  if (!expirationAt) {
+    return "blocked";
+  }
+
+  const expirationMs = Date.parse(expirationAt);
+  if (!Number.isFinite(expirationMs)) {
+    return "blocked";
+  }
+
+  if (expirationMs <= now.getTime()) {
+    return "overdue";
+  }
+
+  const renewalDueMs = renewalDueAt ? Date.parse(renewalDueAt) : expirationMs - WATCH_RENEWAL_LEAD_HOURS * 60 * 60 * 1000;
+  if (Number.isFinite(renewalDueMs) && renewalDueMs <= now.getTime()) {
+    return "due";
+  }
+
+  return "scheduled";
+}
+
+function summarizeRenewalStatus(
+  syncState: WorkspaceSyncState,
+  items: WorkspaceWatchRenewalItem[]
+): WorkspaceWatchRenewalStatus {
+  if (syncState.mode === "mock") {
+    return "mock-only";
+  }
+
+  if (items.some((item) => item.status === "blocked")) {
+    return "blocked";
+  }
+
+  if (items.some((item) => item.status === "overdue")) {
+    return "overdue";
+  }
+
+  if (items.some((item) => item.status === "due")) {
+    return "due";
+  }
+
+  return "scheduled";
+}
+
+function buildRenewalNextActions(overallStatus: WorkspaceWatchRenewalStatus, items: WorkspaceWatchRenewalItem[]) {
+  if (overallStatus === "mock-only") {
+    return [
+      "Use this plan as local design evidence only; deploy with OAuth, GCP persistence, and Workspace watch configuration before counting live sync."
+    ];
+  }
+
+  if (overallStatus === "blocked") {
+    return [
+      "Complete Workspace OAuth bootstrap before renewal can run.",
+      ...items
+        .filter((item) => item.status === "blocked" && item.blocker)
+        .map((item) => `${item.label}: ${item.blocker}`)
+    ];
+  }
+
+  if (overallStatus === "due" || overallStatus === "overdue") {
+    return [
+      "Rotate the Drive channel token Secret Manager version if this is a planned Drive renewal.",
+      "POST /api/workspace/sync/renew from the hosted app with the admin action token.",
+      "Register the redacted renewal response in the private Evidence Vault.",
+      "Run reconciliation after renewal so cursor continuity is captured."
+    ];
+  }
+
+  return [
+    "Schedule renewal before the earliest renewalDueAt.",
+    "Keep daily Gmail renewal available even when the current watch has not expired.",
+    "Capture renewal output privately before the judging period begins."
+  ];
 }
 
 function deriveProviderStatus(

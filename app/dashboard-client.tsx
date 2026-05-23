@@ -754,6 +754,34 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
     }
   }
 
+  async function renewWorkspaceWatches() {
+    setActionState("running");
+    setLastMessage("Renewing live Drive/Gmail watches...");
+
+    try {
+      const response = await fetch("/api/workspace/sync/renew", { method: "POST" });
+      const payload = (await response.json()) as { result: WorkspaceReconciliationResult; snapshot: DashboardSnapshot };
+
+      if (!response.ok) {
+        throw new Error("Unable to renew Workspace watches.");
+      }
+
+      setSyncCheck(payload.result);
+      setSnapshot(payload.snapshot);
+      setActionState(payload.result.status === "failed" ? "error" : "idle");
+      setLastMessage(
+        payload.result.status === "passed"
+          ? "Live Workspace watches renewed and persisted."
+          : payload.result.status === "blocked"
+            ? "Watch renewal is blocked until hosted OAuth, GCP persistence, product URL, and webhook secrets are configured."
+            : `Workspace watch renewal ${payload.result.status}.`
+      );
+    } catch (error) {
+      setActionState("error");
+      setLastMessage(error instanceof Error ? error.message : "Unable to renew Workspace watches.");
+    }
+  }
+
   async function checkCostControls() {
     setActionState("running");
     setLastMessage("Checking Google Cloud budget and Gemini key controls...");
@@ -1923,6 +1951,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               rows={[
                 `Drive: ${readiness.syncReliability.driveChannelStatus}`,
                 `Gmail: ${readiness.syncReliability.gmailWatchStatus}`,
+                `Renewal: ${readiness.syncReliability.renewalPlan.overallStatus}`,
                 `Reconcile every ${readiness.syncReliability.reconciliationCadenceHours}h`,
                 `Drive cursor: ${readiness.syncReliability.driveCursor ?? "not initialized"}`,
                 `Gmail cursor: ${readiness.syncReliability.gmailCursor ?? "not initialized"}`
@@ -2057,6 +2086,10 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
           <button type="button" className="secondary" onClick={bootstrapLiveSync} disabled={actionState === "running"}>
             <RefreshCw size={16} aria-hidden="true" />
             Bootstrap live sync
+          </button>
+          <button type="button" className="secondary" onClick={renewWorkspaceWatches} disabled={actionState === "running"}>
+            <RefreshCw size={16} aria-hidden="true" />
+            Renew watches
           </button>
           <button type="button" className="secondary" onClick={checkCostControls} disabled={actionState === "running"}>
             <Database size={16} aria-hidden="true" />

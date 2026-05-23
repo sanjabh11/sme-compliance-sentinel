@@ -135,4 +135,109 @@ describe("Workspace live sync bootstrap", () => {
     expect(JSON.stringify(result)).not.toContain("workspace_access_token_secret");
     expect(JSON.stringify(result)).not.toContain("drive_channel_token_secret");
   });
+
+  it("renews existing Drive and Gmail watches without leaking token values", async () => {
+    vi.stubEnv("SENTINEL_MOCK_MODE", "false");
+    vi.stubEnv("SENTINEL_STORAGE_MODE", "gcp-rest");
+    vi.stubEnv("GOOGLE_CLOUD_PROJECT", "project_123");
+    vi.stubEnv("GOOGLE_CLOUD_ACCESS_TOKEN", "cloud_access_token_secret");
+    vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "client_123");
+    vi.stubEnv("GOOGLE_OAUTH_CLIENT_SECRET", "client_secret_value");
+    vi.stubEnv("GOOGLE_OAUTH_REDIRECT_URI", "https://sentinel.example.com/api/oauth/google/callback");
+    vi.stubEnv("NEXT_PUBLIC_PRODUCT_URL", "https://sentinel.example.com");
+    vi.stubEnv("WORKSPACE_DRIVE_CHANNEL_TOKEN", "rotated_drive_channel_token_secret");
+    vi.stubEnv("WORKSPACE_GMAIL_TOPIC", "projects/project_123/topics/workspace-gmail-updates");
+    vi.resetModules();
+
+    const { buildInitialWorkspaceSyncState, renewLiveWorkspaceWatches } = await import("@/lib/workspace-sync");
+    const syncState = buildInitialWorkspaceSyncState("tenant_mainstreet_security", new Date("2026-05-23T00:00:00.000Z"));
+    syncState.mode = "oauth";
+    syncState.drive = {
+      status: "renewal_due",
+      startPageToken: "drive_start_token_123",
+      pageToken: "drive_page_token_123",
+      channelId: "old_drive_channel",
+      channelResourceId: "old_drive_resource",
+      channelExpirationAt: "2026-05-24T00:00:00.000Z",
+      renewalDueAt: "2026-05-23T00:00:00.000Z"
+    };
+    syncState.gmail = {
+      status: "renewal_due",
+      historyId: "gmail_history_old",
+      topicName: "projects/project_123/topics/workspace-gmail-updates",
+      watchExpirationAt: "2026-05-24T00:00:00.000Z",
+      renewalDueAt: "2026-05-23T00:00:00.000Z"
+    };
+    const connection: WorkspaceConnection = {
+      id: "conn_google_workspace_live",
+      tenantId: "tenant_mainstreet_security",
+      provider: "google-workspace",
+      mode: "oauth",
+      scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly", "https://www.googleapis.com/auth/gmail.metadata"],
+      connectedAt: "2026-05-23T00:00:00.000Z"
+    };
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const requestUrl = String(url);
+
+      if (requestUrl.includes("secretmanager.googleapis.com")) {
+        return Response.json({
+          payload: {
+            data: Buffer.from(
+              JSON.stringify({
+                refreshToken: "workspace_refresh_token_secret",
+                scope: "https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/gmail.metadata",
+                tokenType: "Bearer",
+                expiresInSeconds: 3600
+              }),
+              "utf8"
+            ).toString("base64")
+          }
+        });
+      }
+
+      if (requestUrl === "https://oauth2.googleapis.com/token") {
+        return Response.json({ access_token: "workspace_access_token_secret", expires_in: 3600, token_type: "Bearer" });
+      }
+
+      if (requestUrl.includes("/drive/v3/changes/watch")) {
+        const body = JSON.parse(String(init?.body)) as { address: string; token: string };
+        expect(body.address).toBe("https://sentinel.example.com/api/webhooks/pubsub/drive");
+        expect(body.token).toBe("rotated_drive_channel_token_secret");
+        return Response.json({
+          id: "drive_channel_renewed",
+          resourceId: "drive_resource_renewed",
+          expiration: String(Date.parse("2026-05-29T00:00:00.000Z"))
+        });
+      }
+
+      if (requestUrl === "https://gmail.googleapis.com/gmail/v1/users/me/watch") {
+        return Response.json({ historyId: "gmail_history_renewed", expiration: String(Date.parse("2026-05-29T00:00:00.000Z")) });
+      }
+
+      if (requestUrl.includes("firestore.googleapis.com")) {
+        return Response.json({ name: "firestore-write-ok" });
+      }
+
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    });
+
+    const result = await renewLiveWorkspaceWatches(
+      {
+        syncState,
+        connections: [connection],
+        now: new Date("2026-05-23T00:05:00.000Z")
+      },
+      fetchImpl as unknown as typeof fetch
+    );
+
+    expect(result.status).toBe("passed");
+    expect(result.checks.map((check) => check.target)).toEqual(["access-token", "drive-watch", "gmail-watch", "sync-state-firestore"]);
+    expect(result.cursors).toEqual({ drivePageToken: "drive_page_token_123", gmailHistoryId: "gmail_history_renewed" });
+    expect(syncState.drive.channelId).toBe("drive_channel_renewed");
+    expect(syncState.drive.channelResourceId).toBe("drive_resource_renewed");
+    expect(syncState.gmail.historyId).toBe("gmail_history_renewed");
+    expect(JSON.stringify(result)).not.toContain("workspace_refresh_token_secret");
+    expect(JSON.stringify(result)).not.toContain("workspace_access_token_secret");
+    expect(JSON.stringify(result)).not.toContain("rotated_drive_channel_token_secret");
+  });
 });

@@ -4,6 +4,7 @@ import { POST as postGeminiSmoke } from "@/app/api/production/gemini-smoke/route
 import { POST as postPersistence } from "@/app/api/production/persistence/route";
 import { POST as postWorkspaceBootstrap } from "@/app/api/workspace/sync/bootstrap/route";
 import { POST as postWorkspaceReconcile } from "@/app/api/workspace/sync/reconcile/route";
+import { POST as postWorkspaceRenew } from "@/app/api/workspace/sync/renew/route";
 import { resetState } from "@/lib/store";
 
 const protectedRoutes = [
@@ -11,7 +12,8 @@ const protectedRoutes = [
   ["Persistence write-through", postPersistence],
   ["Cost controls", postCostControls],
   ["Workspace bootstrap", postWorkspaceBootstrap],
-  ["Workspace reconciliation", postWorkspaceReconcile]
+  ["Workspace reconciliation", postWorkspaceReconcile],
+  ["Workspace watch renewal", postWorkspaceRenew]
 ] as const;
 
 describe("production admin action authentication", () => {

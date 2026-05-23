@@ -187,6 +187,15 @@ const writeThroughChecks = [
       status: payload?.result?.status ?? payload?.status ?? "unknown",
       detail: `${payload?.result?.checks?.length ?? "unknown"} bootstrap check(s); attempted live API ${payload?.result?.attemptedLiveApi ?? "unknown"}.`
     })
+  },
+  {
+    id: "workspace-watch-renewal",
+    method: "POST",
+    path: "/api/workspace/sync/renew",
+    summarize: (payload) => ({
+      status: payload?.result?.status ?? payload?.status ?? "unknown",
+      detail: `${payload?.result?.checks?.length ?? "unknown"} renewal check(s); attempted live API ${payload?.result?.attemptedLiveApi ?? "unknown"}.`
+    })
   }
 ];
 

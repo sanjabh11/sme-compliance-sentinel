@@ -115,6 +115,30 @@ export interface WorkspaceApiRequestPlan {
   purpose: string;
 }
 
+export type WorkspaceWatchRenewalStatus = "scheduled" | "due" | "overdue" | "blocked" | "mock-only";
+
+export interface WorkspaceWatchRenewalItem {
+  provider: "drive" | "gmail";
+  label: string;
+  status: WorkspaceWatchRenewalStatus;
+  currentExpirationAt?: string;
+  renewalDueAt?: string;
+  request?: WorkspaceApiRequestPlan;
+  blocker?: string;
+  evidenceToCapture: string[];
+  privateHandling: string;
+}
+
+export interface WorkspaceWatchRenewalPlan {
+  generatedAt: string;
+  overallStatus: WorkspaceWatchRenewalStatus;
+  renewalLeadHours: number;
+  items: WorkspaceWatchRenewalItem[];
+  nextActions: string[];
+  privateHandling: string[];
+  sourceBasis: string[];
+}
+
 export interface ResourceEvent {
   id: string;
   tenantId: string;
@@ -2060,6 +2084,7 @@ export interface SyncReliability {
   driveCursor?: string;
   gmailCursor?: string;
   renewalWarnings: string[];
+  renewalPlan: WorkspaceWatchRenewalPlan;
   blockers: string[];
   reliabilityNotes: string[];
 }

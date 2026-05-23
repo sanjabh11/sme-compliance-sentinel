@@ -9,7 +9,12 @@ import { makeGmailPiiEvent, makeLowRiskThumbnailEvent, makePublicSecretDriveEven
 import { scanResourceEvent } from "@/lib/scanner";
 import { buildStrategySnapshot } from "@/lib/strategy";
 import { buildReadinessCommandCenter } from "@/lib/readiness";
-import { bootstrapLiveWorkspaceSyncState, buildInitialWorkspaceSyncState, reconcileWorkspaceSyncState } from "@/lib/workspace-sync";
+import {
+  bootstrapLiveWorkspaceSyncState,
+  buildInitialWorkspaceSyncState,
+  reconcileWorkspaceSyncState,
+  renewLiveWorkspaceWatches
+} from "@/lib/workspace-sync";
 import { buildTrustPacket, defaultTrustPacketSections } from "@/lib/trust-center";
 import { buildQuestionnaireExport, buildQuestionnaireResponsePack, normalizeQuestionText } from "@/lib/questionnaire";
 import { buildDefaultPlaybooks, validatePlaybookDraft } from "@/lib/playbooks";
@@ -1118,6 +1123,32 @@ export async function runWorkspaceSyncBootstrap(): Promise<{
     }
   );
   appendRiskScoreSnapshot(state, "sync_reconciliation_completed", "workspace_sync_bootstrap", true);
+
+  return { result, snapshot: getDashboardSnapshot() };
+}
+
+export async function runWorkspaceWatchRenewal(): Promise<{
+  result: WorkspaceReconciliationResult;
+  snapshot: DashboardSnapshot;
+}> {
+  const state = getState();
+  const result = await renewLiveWorkspaceWatches({
+    syncState: state.syncState,
+    connections: state.connections
+  });
+
+  writeAudit(
+    "system",
+    "sync_reconciliation_completed",
+    `Workspace watch renewal ${result.status}: Drive/Gmail renewal ${result.attemptedLiveApi ? "attempted" : "blocked before API calls"}.`,
+    "workspace_sync_renewal",
+    {
+      status: result.status,
+      attemptedLiveApi: result.attemptedLiveApi,
+      processedChanges: result.processedChanges
+    }
+  );
+  appendRiskScoreSnapshot(state, "sync_reconciliation_completed", "workspace_sync_renewal", true);
 
   return { result, snapshot: getDashboardSnapshot() };
 }

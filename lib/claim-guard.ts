@@ -60,6 +60,7 @@ const defaultArtifactPaths = [
   "app/api/production/hosted-evidence/route.ts",
   "app/api/production/launch-readiness/route.ts",
   "app/api/workspace/sync/bootstrap/route.ts",
+  "app/api/workspace/sync/renew/route.ts",
   "app/api/risk/score-history/route.ts",
   "app/api/trust-center/analytics/route.ts",
   "app/layout.tsx",
