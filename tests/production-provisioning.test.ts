@@ -56,6 +56,8 @@ describe("production provisioning pack", () => {
         "write-render-values-template",
         "audit-render-values",
         "render-cloudrun-manifest",
+        "prepare-cloudrun-dry-run",
+        "verify-cloudrun-dry-run-packet",
         "manifest-regression",
         "hosted-smoke",
         "write-through-smoke"
@@ -64,11 +66,32 @@ describe("production provisioning pack", () => {
     expect(pack.verificationSequence.findIndex((command) => command.id === "audit-render-values")).toBeLessThan(
       pack.verificationSequence.findIndex((command) => command.id === "render-cloudrun-manifest")
     );
+    expect(pack.verificationSequence.findIndex((command) => command.id === "render-cloudrun-manifest")).toBeLessThan(
+      pack.verificationSequence.findIndex((command) => command.id === "prepare-cloudrun-dry-run")
+    );
+    expect(pack.verificationSequence.findIndex((command) => command.id === "prepare-cloudrun-dry-run")).toBeLessThan(
+      pack.verificationSequence.findIndex((command) => command.id === "verify-cloudrun-dry-run-packet")
+    );
+    expect(pack.verificationSequence.findIndex((command) => command.id === "verify-cloudrun-dry-run-packet")).toBeLessThan(
+      pack.verificationSequence.findIndex((command) => command.id === "manifest-regression")
+    );
     expect(pack.verificationSequence.find((command) => command.id === "audit-render-values")?.command).toContain(
       "npm run audit:cloudrun-values"
     );
     expect(pack.verificationSequence.find((command) => command.id === "audit-render-values")?.expectedProof).toContain(
       "ready-to-render"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "prepare-cloudrun-dry-run")?.command).toContain(
+      "npm run prepare:cloudrun-dry-run"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "prepare-cloudrun-dry-run")?.expectedProof).toContain(
+      "ready-to-dry-run"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "verify-cloudrun-dry-run-packet")?.command).toContain(
+      "cloudrun-dry-run-preflight-packet.json"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "verify-cloudrun-dry-run-packet")?.expectedProof).toContain(
+      "cloudrun-dry-run-packet-verifier.json"
     );
     expect(pack.verificationSequence.map((command) => command.id)).toContain("import-hosted-proof");
   });
@@ -99,6 +122,7 @@ describe("production provisioning pack", () => {
     expect(pack.privateHandlingRules.join(" ")).toContain("Secret Manager");
     expect(pack.privateHandlingRules.join(" ")).toContain("cloudrun-render-values.template.json");
     expect(pack.privateHandlingRules.join(" ")).toContain("audit:cloudrun-values");
+    expect(pack.privateHandlingRules.join(" ")).toContain("verify:cloudrun-dry-run-packet");
 
     const violations = scanClaimText({
       artifact: "production-provisioning",

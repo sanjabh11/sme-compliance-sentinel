@@ -12,6 +12,7 @@ const renderValuesTemplatePath = "docs/deployment/cloudrun-render-values.templat
 const privateRenderValuesPath = "/secure/local/cloudrun-render-values.json";
 const deploymentArtifactsDir = "artifacts/deployment";
 const renderedManifestPath = "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml";
+const dryRunPreflightPacketPath = "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json";
 const projectId = sentinelConfig.googleCloudProject || "PROJECT_ID";
 const projectNumber = sentinelConfig.googleCloudProjectNumber || "PROJECT_NUMBER";
 const imageTag = sentinelConfig.releaseId ? dockerTag(sentinelConfig.releaseId) : "$SENTINEL_RELEASE_ID";
@@ -117,6 +118,24 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
         "Ignored private render bundle with rendered manifest, verifier JSON, and dry-run/deploy command files after the values audit is ready-to-render."
       ),
       command(
+        "prepare-cloudrun-dry-run",
+        "Prepare Cloud Run dry-run preflight packet",
+        `npm run prepare:cloudrun-dry-run -- --values ${privateRenderValuesPath} --out-dir ${deploymentArtifactsDir} --release-id $SENTINEL_RELEASE_ID --strict`,
+        "engineering",
+        false,
+        false,
+        "Private cloudrun-dry-run-preflight-packet.json showing status ready-to-dry-run and SHA-256 digests for the rendered manifest bundle."
+      ),
+      command(
+        "verify-cloudrun-dry-run-packet",
+        "Verify Cloud Run dry-run packet digests",
+        `npm run verify:cloudrun-dry-run-packet -- ${dryRunPreflightPacketPath} --strict`,
+        "engineering",
+        false,
+        false,
+        "Private cloudrun-dry-run-packet-verifier.json showing status verified immediately before the real gcloud dry-run."
+      ),
+      command(
         "manifest-regression",
         "Manifest regression",
         "npm test -- tests/cloudrun-manifest.test.ts && npm test -- tests/cloudrun-render.test.ts",
@@ -158,6 +177,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
       "Never put API keys, OAuth client secrets, evidence-signing secrets, Drive channel tokens, judge credentials, invoices, or customer findings in the repository.",
       `Use ${renderValuesTemplatePath} only as a non-secret starting point; filled render values belong in a private path such as ${privateRenderValuesPath}.`,
       "Run npm run audit:cloudrun-values against the filled private values file before rendering; stop if the audit is not ready-to-render.",
+      "Run npm run prepare:cloudrun-dry-run and npm run verify:cloudrun-dry-run-packet before gcloud dry-run; preserve both JSON outputs in the private evidence store.",
       "Use Secret Manager for the runtime secrets and grant access only to the Cloud Run runtime service account.",
       "Use Devpost private testing instructions for judge credentials; keep public README and video free of login secrets.",
       "Use the admin action token only from private operator tooling when importing hosted proof JSON.",
