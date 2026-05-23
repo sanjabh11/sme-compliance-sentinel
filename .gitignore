@@ -4,6 +4,7 @@ out/
 coverage/
 dist/
 artifacts/hosted-proof/
+artifacts/deployment/
 *.tsbuildinfo
 .env
 .env.local

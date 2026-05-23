@@ -30,6 +30,7 @@ describe("deployment evidence packet", () => {
     expect(packet.artifactManifest.map((artifact) => artifact.id)).toEqual(
       expect.arrayContaining([
         "local-quality-gates-log",
+        "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
         "cloudrun-dry-run-log",
         "cloudrun-deploy-log",
@@ -44,6 +45,7 @@ describe("deployment evidence packet", () => {
     );
     expect(packet.commandSequence.map((command) => command.id)).toEqual(
       expect.arrayContaining([
+        "cloudrun-render-manifest",
         "cloudrun-template-strict",
         "cloudrun-dry-run",
         "cloudrun-deploy",
@@ -55,6 +57,12 @@ describe("deployment evidence packet", () => {
       ])
     );
     expect(packet.commandSequence.find((command) => command.id === "hosted-write-through")?.requiresAdminToken).toBe(true);
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-render-manifest")?.command).toContain(
+      "npm run render:cloudrun-manifest"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-dry-run")?.command).toContain(
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml"
+    );
     expect(packet.commandSequence.find((command) => command.id === "vault-import")?.command).toContain(
       "$SENTINEL_ADMIN_ACTION_TOKEN"
     );

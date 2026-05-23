@@ -8,6 +8,7 @@ import type {
 const serviceName = sentinelConfig.cloudRunServiceName || "sme-workspace-sentinel";
 const recommendedRegion = sentinelConfig.cloudRunRegion || "us-central1";
 const manifestPath = "cloudrun.service.yaml";
+const renderedManifestPath = "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml";
 const projectId = sentinelConfig.googleCloudProject || "PROJECT_ID";
 const projectNumber = sentinelConfig.googleCloudProjectNumber || "PROJECT_NUMBER";
 const region = "REGION";
@@ -58,8 +59,8 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
   const blockers = checklist
     .filter((item) => item.status !== "configured")
     .map((item) => `${item.label}: ${item.verification}`);
-  const dryRunCommand = `gcloud run services replace ${manifestPath} --region ${recommendedRegion} --project ${projectId} --dry-run`;
-  const deployCommand = `gcloud run services replace ${manifestPath} --region ${recommendedRegion} --project ${projectId}`;
+  const dryRunCommand = `gcloud run services replace ${renderedManifestPath} --region ${recommendedRegion} --project ${projectId} --dry-run`;
+  const deployCommand = `gcloud run services replace ${renderedManifestPath} --region ${recommendedRegion} --project ${projectId}`;
 
   return {
     generatedAt: new Date().toISOString(),
@@ -85,13 +86,22 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
         "Terminal output showing the submitted source passes before cloud deployment."
       ),
       command(
-        "manifest-regression",
-        "Manifest regression",
-        "npm test -- tests/cloudrun-manifest.test.ts",
+        "render-cloudrun-manifest",
+        "Render private Cloud Run manifest",
+        "npm run render:cloudrun-manifest -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
         "engineering",
         false,
         false,
-        "Test output showing required Cloud Run env and Secret Manager placeholders are present."
+        "Ignored private render bundle with rendered manifest, verifier JSON, and dry-run/deploy command files."
+      ),
+      command(
+        "manifest-regression",
+        "Manifest regression",
+        "npm test -- tests/cloudrun-manifest.test.ts && npm test -- tests/cloudrun-render.test.ts",
+        "engineering",
+        false,
+        false,
+        "Test output showing required Cloud Run env, Secret Manager placeholders, and private render safety checks are present."
       ),
       command(
         "hosted-smoke",
@@ -382,7 +392,7 @@ function buildCommands(dryRunCommand: string, deployCommand: string): Production
       "engineering",
       false,
       false,
-      "Cloud Run accepts the manifest schema without applying a revision."
+      "Cloud Run accepts the rendered manifest schema without applying a revision."
     ),
     command(
       "deploy-cloudrun",
@@ -391,7 +401,7 @@ function buildCommands(dryRunCommand: string, deployCommand: string): Production
       "engineering",
       false,
       true,
-      "Cloud Run revision is deployed from the checked-in manifest."
+      "Cloud Run revision is deployed from the ignored rendered manifest."
     ),
     command(
       "describe-cloudrun",

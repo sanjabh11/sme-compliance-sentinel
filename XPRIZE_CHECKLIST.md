@@ -50,6 +50,7 @@
 - [x] Local repo includes `npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL` for hosted readiness smoke reports, with optional write-through checks after production credentials are ready.
 - [x] Local repo includes `npm run collect:hosted-proof -- --url https://YOUR-CLOUD-RUN-URL --release-id RELEASE_ID` to capture an ignored local bundle of redacted hosted proof JSON for deployment, judge access, Devpost, demo-video, evidence-intake, Claim Guard, and production verification surfaces.
 - [x] Local repo includes `npm run import:hosted-proof -- --bundle-dir artifacts/hosted-proof/RELEASE_ID --url https://YOUR-CLOUD-RUN-URL --dry-run|--confirm-import` to preview or post only the redacted hosted `verify-production.json` into the Evidence Vault without putting admin tokens on the command line.
+- [x] Local repo includes `npm run render:cloudrun-manifest -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id RELEASE_ID --strict` to create an ignored private rendered Cloud Run manifest bundle from non-secret values before dry-run/deploy.
 - [x] Local repo includes `cloudrun.service.yaml` with production-mode placeholders for Cloud Run, Firestore, BigQuery, Pub/Sub, OAuth, Workspace webhook authentication, Sensitive Data Protection, Gemini guardrails, XPRIZE attestations, judge/demo flags, and Cloud Billing controls.
 - [x] Local repo requires Cloud Run release id, region/service identity, private evidence bucket, and a Secret Manager-backed admin action token before hosted proof imports are treated as production-safe.
 - [x] Production proof POST endpoints require the Secret Manager-backed admin action token before Gemini smoke, GCP write-through, cost-control, Workspace reconciliation, Workspace bootstrap, or Evidence Vault proof import calls run on a hosted deployment.
@@ -163,8 +164,8 @@
 - [ ] Create and verify a real Cloud Billing budget with alert thresholds and Pub/Sub notifications.
 - [ ] Restrict the production Gemini API key to the required Google API target and server-only client boundary.
 - [ ] Capture private proof of Gemini quota/usage controls before public launch.
-- [ ] Run `/api/production/provisioning`, replace placeholders in `cloudrun.service.yaml`, execute the dry-run command, then execute the deployment command in the real Google Cloud project.
-- [ ] Run `npm run verify:cloudrun-deployment -- --strict` after rendering production values into `cloudrun.service.yaml`; preserve the dry-run output as private deployment evidence.
+- [ ] Run `/api/production/provisioning`, render placeholders into an ignored private manifest with `npm run render:cloudrun-manifest -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict`, execute the generated dry-run command, then execute the deployment command in the real Google Cloud project.
+- [ ] Run `npm run verify:cloudrun-deployment -- --manifest=artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml --strict` after rendering production values; preserve the verifier JSON and dry-run output as private deployment evidence.
 - [ ] Create `sentinel-admin-action-token` and private evidence storage before importing hosted verification proof from the deployed app.
 - [ ] Run hosted write-through proof commands from a private shell with `SENTINEL_ADMIN_ACTION_TOKEN` configured; do not place the token in source, screenshots, or public Devpost fields.
 - [ ] Run `POST /api/production/gemini-smoke` from the hosted Cloud Run URL after configuring the Gemini API key, then persist the resulting `provider=gemini-api` agent-run row to BigQuery.

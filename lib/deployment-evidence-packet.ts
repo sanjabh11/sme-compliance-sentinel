@@ -117,11 +117,23 @@ function buildArtifactManifest(input: {
       nextAction: "Run all local checks and store the terminal transcript before deployment."
     }),
     artifact({
+      id: "cloudrun-render-summary-json",
+      label: "Private rendered Cloud Run manifest bundle",
+      ownerRole: "engineering",
+      status: localVerifierStatus,
+      sourceCommand:
+        "npm run render:cloudrun-manifest -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
+      privateStorePath: `${basePath}/cloudrun-render-summary.json`,
+      evidenceVaultTarget: "cloud-run-proof",
+      redactionRules: ["Use non-secret render values only; keep rendered manifest and command files private."],
+      nextAction: "Render a private production candidate manifest and inspect verifier output before Cloud Run dry-run."
+    }),
+    artifact({
       id: "cloudrun-manifest-verifier-json",
       label: "Cloud Run manifest verifier JSON",
       ownerRole: "engineering",
       status: localVerifierStatus,
-      sourceCommand: "npm run verify:cloudrun-deployment -- --strict",
+      sourceCommand: "npm run verify:cloudrun-deployment -- --manifest=artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml --strict",
       privateStorePath: `${basePath}/cloudrun-manifest-verifier.json`,
       evidenceVaultTarget: "cloud-run-proof",
       redactionRules: ["Keep Secret Manager names if useful, but never include secret values."],
@@ -132,7 +144,7 @@ function buildArtifactManifest(input: {
       label: "Cloud Run dry-run output",
       ownerRole: "engineering",
       status: "external-required",
-      sourceCommand: "gcloud run services replace cloudrun.service.yaml --region REGION --project PROJECT_ID --dry-run",
+      sourceCommand: "gcloud run services replace artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml --region REGION --project PROJECT_ID --dry-run",
       privateStorePath: `${basePath}/cloudrun-dry-run.log`,
       evidenceVaultTarget: "cloud-run-proof",
       redactionRules: ["Redact unrelated project ids and internal notes if present."],
@@ -143,7 +155,7 @@ function buildArtifactManifest(input: {
       label: "Cloud Run deploy output",
       ownerRole: "engineering",
       status: "external-required",
-      sourceCommand: "gcloud run services replace cloudrun.service.yaml --region REGION --project PROJECT_ID",
+      sourceCommand: "gcloud run services replace artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml --region REGION --project PROJECT_ID",
       privateStorePath: `${basePath}/cloudrun-deploy.log`,
       evidenceVaultTarget: "cloud-run-proof",
       redactionRules: ["Do not include judge credentials, shell env dumps, or secret payloads."],
@@ -241,9 +253,18 @@ function buildCommandSequence(input: {
     command("test", "Unit tests", "npm test", false, false, "local-quality-gates-log", "Safe local quality gate."),
     command("build", "Production build", "npm run build", false, false, "local-quality-gates-log", "Safe local quality gate."),
     command(
+      "cloudrun-render-manifest",
+      "Render private Cloud Run manifest",
+      "npm run render:cloudrun-manifest -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
+      false,
+      false,
+      "cloudrun-render-summary-json",
+      "Uses non-secret render values only; generated manifest stays ignored and private."
+    ),
+    command(
       "cloudrun-template-strict",
       "Validate Cloud Run manifest",
-      "npm run verify:cloudrun-deployment -- --strict",
+      "npm run verify:cloudrun-deployment -- --manifest=artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml --strict",
       false,
       false,
       "cloudrun-manifest-verifier-json",
@@ -252,7 +273,7 @@ function buildCommandSequence(input: {
     command(
       "cloudrun-dry-run",
       "Cloud Run dry-run",
-      `gcloud run services replace cloudrun.service.yaml --region ${input.region} --project ${input.projectId} --dry-run`,
+      `gcloud run services replace artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml --region ${input.region} --project ${input.projectId} --dry-run`,
       false,
       false,
       "cloudrun-dry-run-log",
@@ -261,7 +282,7 @@ function buildCommandSequence(input: {
     command(
       "cloudrun-deploy",
       "Deploy Cloud Run service",
-      `gcloud run services replace cloudrun.service.yaml --region ${input.region} --project ${input.projectId}`,
+      `gcloud run services replace artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml --region ${input.region} --project ${input.projectId}`,
       true,
       false,
       "cloudrun-deploy-log",

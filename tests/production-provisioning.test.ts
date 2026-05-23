@@ -42,9 +42,9 @@ describe("production provisioning pack", () => {
       ])
     );
     expect(pack.dryRunCommand).toContain("--dry-run");
-    expect(pack.deployCommand).toContain("gcloud run services replace cloudrun.service.yaml");
+    expect(pack.deployCommand).toContain("gcloud run services replace artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml");
     expect(pack.verificationSequence.map((command) => command.id)).toEqual(
-      expect.arrayContaining(["local-quality-gates", "manifest-regression", "hosted-smoke", "write-through-smoke"])
+      expect.arrayContaining(["local-quality-gates", "render-cloudrun-manifest", "manifest-regression", "hosted-smoke", "write-through-smoke"])
     );
     expect(pack.verificationSequence.map((command) => command.id)).toContain("import-hosted-proof");
   });
