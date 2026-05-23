@@ -112,6 +112,33 @@ const secretVersionEnvNames = {
   WORKSPACE_DRIVE_CHANNEL_TOKEN_VERSION: "WORKSPACE_DRIVE_CHANNEL_TOKEN"
 };
 
+const manualReviewValueKeys = [
+  "XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED",
+  "XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED",
+  "XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED",
+  "XPRIZE_DEMO_VIDEO_CUSTOMER_DATA_REDACTED_CONFIRMED",
+  "XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED",
+  "XPRIZE_JUDGE_ACCESS_CONFIGURED",
+  "XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED",
+  "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED",
+  "XPRIZE_GENERAL_ELIGIBILITY_CONFIRMED",
+  "XPRIZE_REPRESENTATIVE_AUTHORIZED",
+  "XPRIZE_ORGANIZATION_UNDER_25_CONFIRMED",
+  "XPRIZE_CORPORATE_ID_CONFIGURED",
+  "XPRIZE_NO_PROMOTION_ENTITY_CONFLICT_CONFIRMED",
+  "XPRIZE_THIRD_PARTY_REVIEW_APPROVED",
+  "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
+  "XPRIZE_REVENUE_BY_MONTH_EVIDENCE_CONFIGURED",
+  "XPRIZE_TOTAL_COSTS_EVIDENCE_CONFIGURED",
+  "XPRIZE_CAC_SPEND_EVIDENCE_CONFIGURED",
+  "XPRIZE_REAL_USER_EVIDENCE_CONFIGURED",
+  "XPRIZE_TESTIMONIAL_CONSENT_CONFIRMED",
+  "XPRIZE_RELATED_PARTY_REVENUE_REVIEWED",
+  "XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED",
+  "XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED",
+  "SENTINEL_GEMINI_QUOTA_EVIDENCE_CONFIRMED"
+];
+
 const prohibitedRawSecretKeys = [
   "SENTINEL_ADMIN_ACTION_TOKEN",
   "GEMINI_API_KEY",
@@ -390,6 +417,61 @@ export async function writeRenderValuesTemplate(outputPath = defaultValuesTempla
   };
 }
 
+export async function auditCloudRunRenderValues(options = {}) {
+  if (!options.valuesPath) {
+    throw new Error("Cloud Run render-values audit requires --values /private/path/cloudrun-render-values.json.");
+  }
+
+  const fileValues = await loadValuesFile(options.valuesPath);
+  const renderValues = buildRenderValues(fileValues);
+  const missingStrictKeys = strictRequiredValueKeys.filter((key) => isMissingStrictValue(renderValues[key]));
+  const placeholderKeys = Object.entries(renderValues)
+    .filter(([, value]) => hasTemplatePlaceholder(String(value)))
+    .map(([key]) => key)
+    .sort();
+  const derivedValues = derivedValueKeys.map((key) => ({
+    key,
+    status: fileValues[key] !== undefined ? "provided" : renderValues[key] !== undefined ? "derived" : "unused"
+  }));
+  const manualReviewFlags = manualReviewValueKeys.map((key) => ({
+    key,
+    status: renderValues[key] === "true" ? "attested" : "not-attested",
+    requiredBeforePublicClaim: true
+  }));
+  const secretVersionKeysStatus = Object.entries(secretVersionEnvNames).map(([versionKey, envName]) => ({
+    envName,
+    versionKey,
+    status: isMissingStrictValue(renderValues[versionKey]) ? "needs-value" : "version-set"
+  }));
+  const releaseId = String(options.releaseId || renderValues.SENTINEL_RELEASE_ID || "release-candidate");
+  const status = missingStrictKeys.length ? "needs-values" : "ready-to-render";
+
+  return {
+    generatedAt: new Date().toISOString(),
+    status,
+    readyForStrictRender: status === "ready-to-render",
+    releaseId,
+    valuesPath: options.valuesPath,
+    sourceValueKeyCount: Object.keys(fileValues).length,
+    appliedValueKeyCount: Object.keys(renderValues).length,
+    missingStrictKeys,
+    placeholderKeys,
+    derivedValues,
+    manualReviewFlags,
+    secretVersionKeys: secretVersionKeysStatus,
+    stopConditions: buildAuditStopConditions({ missingStrictKeys, placeholderKeys }),
+    redactionChecklist: [
+      "Keep the filled render-values file private; it can expose project ids, URLs, budget ids, and evidence-state decisions.",
+      "Never place raw API keys, OAuth secrets, refresh tokens, service-account key paths, judge credentials, invoices, or customer findings in render values.",
+      "Before sharing this audit packet, review valuesPath, project ids, URLs, billing ids, and evidence-state flags for customer or operator sensitivity.",
+      "Only mark manual XPRIZE/evidence flags true after the private proof exists and the responsible owner has reviewed it."
+    ],
+    nextActions: buildAuditNextActions({ missingStrictKeys }),
+    disclaimer:
+      "This audit validates the private render-values input before rendering a Cloud Run manifest. It does not deploy Cloud Run, call Gemini, prove Workspace sync, or prove XPRIZE business evidence."
+  };
+}
+
 async function loadValuesFile(valuesPath) {
   if (!valuesPath) {
     return {};
@@ -609,6 +691,43 @@ function assertNoUnsafeRenderedSecrets(renderedManifest) {
   if (unsafeCredentialPatterns.some((pattern) => pattern.test(renderedManifest))) {
     throw new Error("Rendered manifest appears to contain a raw credential.");
   }
+}
+
+function buildAuditStopConditions({ missingStrictKeys, placeholderKeys }) {
+  if (missingStrictKeys.length) {
+    return [
+      "Do not run strict render or Cloud Run dry-run while required render values are missing or placeholder-shaped.",
+      ...missingStrictKeys.slice(0, 8).map((key) => `${key}: fill a reviewed non-secret production value.`)
+    ];
+  }
+
+  if (placeholderKeys.length) {
+    return [
+      "Review placeholder-shaped optional values before dry-run.",
+      ...placeholderKeys.slice(0, 8).map((key) => `${key}: still appears placeholder-shaped.`)
+    ];
+  }
+
+  return [
+    "Stop if the rendered manifest verifier reports blockers or replacement findings.",
+    "Stop if the dry-run command references a different release id, source commit, project, region, image, or service account than this audit."
+  ];
+}
+
+function buildAuditNextActions({ missingStrictKeys }) {
+  if (missingStrictKeys.length) {
+    return [
+      "Fill the missing non-secret values in the private render-values file.",
+      "Keep manual evidence flags false until private proof exists.",
+      "Rerun this audit before rendering the Cloud Run manifest."
+    ];
+  }
+
+  return [
+    "Run npm run render:cloudrun-manifest with the same private values file and --strict.",
+    "Run npm run prepare:cloudrun-dry-run with the same private values file and --strict.",
+    "Preserve the audit packet, render summary, verifier JSON, and preflight packet in the private evidence store."
+  ];
 }
 
 function isRawSecretArg(arg) {

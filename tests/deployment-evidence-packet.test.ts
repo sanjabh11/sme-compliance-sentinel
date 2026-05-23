@@ -30,6 +30,7 @@ describe("deployment evidence packet", () => {
     expect(packet.artifactManifest.map((artifact) => artifact.id)).toEqual(
       expect.arrayContaining([
         "local-quality-gates-log",
+        "cloudrun-render-values-audit-json",
         "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
         "cloudrun-dry-run-preflight-json",
@@ -46,6 +47,7 @@ describe("deployment evidence packet", () => {
     );
     expect(packet.commandSequence.map((command) => command.id)).toEqual(
       expect.arrayContaining([
+        "cloudrun-render-values-audit",
         "cloudrun-render-manifest",
         "cloudrun-template-strict",
         "cloudrun-dry-run-preflight",
@@ -59,6 +61,9 @@ describe("deployment evidence packet", () => {
       ])
     );
     expect(packet.commandSequence.find((command) => command.id === "hosted-write-through")?.requiresAdminToken).toBe(true);
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-render-values-audit")?.command).toContain(
+      "npm run audit:cloudrun-values"
+    );
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-render-manifest")?.command).toContain(
       "npm run render:cloudrun-manifest"
     );
@@ -92,6 +97,7 @@ describe("deployment evidence packet", () => {
     expect(packet.runbook[1]).toMatchObject({
       phase: "manifest-render",
       requiredArtifactIds: [
+        "cloudrun-render-values-audit-json",
         "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
         "cloudrun-dry-run-preflight-json"
@@ -99,6 +105,7 @@ describe("deployment evidence packet", () => {
     });
     expect(packet.runbook[1].proofFiles).toEqual(
       expect.arrayContaining([
+        "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-values-audit.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-summary.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-manifest-verifier.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-dry-run-preflight-packet.json"

@@ -98,12 +98,24 @@ function buildRunbook(input: {
       phase: "manifest-render",
       label: "Render and verify private Cloud Run manifest",
       ownerRole: "engineering",
-      commandIds: commandIds("cloudrun-render-manifest", "cloudrun-template-strict", "cloudrun-dry-run-preflight"),
-      requiredArtifactIds: ["cloudrun-render-summary-json", "cloudrun-manifest-verifier-json", "cloudrun-dry-run-preflight-json"],
-      proofFiles: proofFiles("cloudrun-render-summary-json", "cloudrun-manifest-verifier-json", "cloudrun-dry-run-preflight-json"),
-      stopCondition: "Stop unless the rendered verifier status is ready-to-dry-run with zero blockers and no raw credential values.",
-      redactionCheck: "Keep rendered manifest and command files private; share only redacted verifier status, Secret Manager lookup names, and release id.",
-      nextStep: "Run the generated Cloud Run dry-run command from a private operator shell.",
+      commandIds: commandIds("cloudrun-render-values-audit", "cloudrun-render-manifest", "cloudrun-template-strict", "cloudrun-dry-run-preflight"),
+      requiredArtifactIds: [
+        "cloudrun-render-values-audit-json",
+        "cloudrun-render-summary-json",
+        "cloudrun-manifest-verifier-json",
+        "cloudrun-dry-run-preflight-json"
+      ],
+      proofFiles: proofFiles(
+        "cloudrun-render-values-audit-json",
+        "cloudrun-render-summary-json",
+        "cloudrun-manifest-verifier-json",
+        "cloudrun-dry-run-preflight-json"
+      ),
+      stopCondition:
+        "Stop unless the render-values audit is ready-to-render and the rendered verifier status is ready-to-dry-run with zero blockers and no raw credential values.",
+      redactionCheck:
+        "Keep the filled values file, rendered manifest, and command files private; share only redacted audit/verifier status, Secret Manager lookup names, and release id.",
+      nextStep: "Run the generated Cloud Run dry-run command from a private operator shell only after the preflight packet is ready-to-dry-run.",
       externalProofRequired: false
     }),
     runbookStep({
@@ -199,6 +211,21 @@ function buildArtifactManifest(input: {
       evidenceVaultTarget: "release-readiness transcript",
       redactionRules: ["Do not include local env values or shell history."],
       nextAction: "Run all local checks and store the terminal transcript before deployment."
+    }),
+    artifact({
+      id: "cloudrun-render-values-audit-json",
+      label: "Cloud Run render-values audit packet",
+      ownerRole: "engineering",
+      status: localVerifierStatus,
+      sourceCommand:
+        "npm run audit:cloudrun-values -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
+      privateStorePath: `${basePath}/cloudrun-render-values-audit.json`,
+      evidenceVaultTarget: "cloud-run-proof",
+      redactionRules: [
+        "Keep the filled render-values file private; it can expose project ids, URLs, budget ids, and evidence-state decisions.",
+        "Share only after reviewing valuesPath, project ids, URLs, billing ids, and manual evidence flags."
+      ],
+      nextAction: "Audit the private render-values file before rendering; stop if status is not ready-to-render."
     }),
     artifact({
       id: "cloudrun-render-summary-json",
@@ -348,6 +375,15 @@ function buildCommandSequence(input: {
     command("typecheck", "Typecheck", "npm run typecheck", false, false, "local-quality-gates-log", "Safe local quality gate."),
     command("test", "Unit tests", "npm test", false, false, "local-quality-gates-log", "Safe local quality gate."),
     command("build", "Production build", "npm run build", false, false, "local-quality-gates-log", "Safe local quality gate."),
+    command(
+      "cloudrun-render-values-audit",
+      "Audit private Cloud Run render values",
+      "npm run audit:cloudrun-values -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
+      false,
+      false,
+      "cloudrun-render-values-audit-json",
+      "Writes the private render-values audit; do not render unless status is ready-to-render."
+    ),
     command(
       "cloudrun-render-manifest",
       "Render private Cloud Run manifest",
@@ -502,7 +538,7 @@ function buildNextActions(input: {
   }
 
   return [
-    `Run ${input.commandSequence[0].command}, ${input.commandSequence[1].command}, ${input.commandSequence[2].command}, and ${input.commandSequence[3].command} before deployment.`,
+    `Run ${input.commandSequence[0].command}, ${input.commandSequence[1].command}, ${input.commandSequence[2].command}, ${input.commandSequence[3].command}, and ${input.commandSequence[4].command} before deployment.`,
     "Execute the Cloud Run dry-run and deploy commands from a private operator shell.",
     "Run hosted read-only and write-through verification, redact the JSON, then import it into the Evidence Vault.",
     "Attach the release id, source commit, Cloud Run revision, checksums, and final Devpost testing instructions to the private judge packet."
