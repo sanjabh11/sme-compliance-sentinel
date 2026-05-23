@@ -935,8 +935,11 @@ export type EvidenceVaultArtifactKind =
   | "cost-receipt"
   | "cac-receipt"
   | "testimonial-consent"
+  | "cloud-run-proof"
+  | "gcp-persistence-proof"
   | "cloud-billing-proof"
   | "gemini-usage-log"
+  | "production-readiness-report"
   | "workspace-oauth-log"
   | "product-url-proof"
   | "demo-video-proof"
@@ -974,6 +977,49 @@ export interface EvidenceVault {
   requiredArtifacts: EvidenceVaultArtifact[];
   blockers: string[];
   nextActions: string[];
+  disclaimer: string;
+}
+
+export type EvidenceVaultImportSource =
+  | "verify-production"
+  | "hosted-evidence"
+  | "cloudrun-deployment"
+  | "gemini-smoke"
+  | "persistence"
+  | "workspace-bootstrap"
+  | "cost-controls";
+
+export interface EvidenceVaultImportRequest {
+  source?: EvidenceVaultImportSource;
+  payload: unknown;
+  redacted?: boolean;
+  sourceUrl?: string;
+  ownerNote?: string;
+}
+
+export interface EvidenceVaultImportCandidate {
+  artifactId: string;
+  kind: EvidenceVaultArtifactKind;
+  label: string;
+  status: EvidenceVaultArtifactStatus;
+  ownerRole: EvidenceVaultArtifact["ownerRole"];
+  requiredFor: EvidenceVaultArtifact["requiredFor"];
+  sourceDescription: string;
+  nextAction: string;
+  privateHandling: string;
+}
+
+export interface EvidenceVaultImportResult {
+  generatedAt: string;
+  source: EvidenceVaultImportSource;
+  checksumSha256: string;
+  redacted: boolean;
+  status: "ready" | "needs-redaction" | "blocked";
+  artifactCount: number;
+  candidates: EvidenceVaultImportCandidate[];
+  blockers: string[];
+  warnings: string[];
+  privateHandling: string[];
   disclaimer: string;
 }
 

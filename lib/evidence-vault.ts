@@ -60,8 +60,11 @@ const artifactKinds: EvidenceVaultArtifactKind[] = [
   "cost-receipt",
   "cac-receipt",
   "testimonial-consent",
+  "cloud-run-proof",
+  "gcp-persistence-proof",
   "cloud-billing-proof",
   "gemini-usage-log",
+  "production-readiness-report",
   "workspace-oauth-log",
   "product-url-proof",
   "demo-video-proof",
@@ -197,6 +200,42 @@ function buildExpectedArtifacts(snapshot: EvidenceVaultSnapshot): EvidenceVaultA
       ownerRole: "sales",
       requiredFor: "Business Viability",
       nextAction: "Attach CAC receipts or dated founder-sales evidence.",
+      createdAt: now
+    }),
+    expectedArtifact({
+      id: "vault_cloud_run_deployment_proof",
+      tenantId: snapshot.tenant.id,
+      kind: "cloud-run-proof",
+      label: "Cloud Run deployment proof",
+      status: sentinelConfig.productUrl ? "requested" : "missing",
+      sourceDescription: "Cloud Run service URL, revision, dry-run/deploy output, and hosted verification evidence.",
+      ownerRole: "engineering",
+      requiredFor: "AI-Native Operations",
+      nextAction: "Deploy on Cloud Run, capture redacted revision and deploy output, and import the hosted verification JSON.",
+      createdAt: now
+    }),
+    expectedArtifact({
+      id: "vault_gcp_persistence_proof",
+      tenantId: snapshot.tenant.id,
+      kind: "gcp-persistence-proof",
+      label: "Firestore, BigQuery, and Secret Manager proof",
+      status: sentinelConfig.storageMode === "gcp-rest" ? "requested" : "missing",
+      sourceDescription: "Hosted write-through verification for Firestore state, BigQuery evidence rows, and Secret Manager token access.",
+      ownerRole: "engineering",
+      requiredFor: "AI-Native Operations",
+      nextAction: "Run production write-through verification and import the redacted JSON output.",
+      createdAt: now
+    }),
+    expectedArtifact({
+      id: "vault_production_readiness_report",
+      tenantId: snapshot.tenant.id,
+      kind: "production-readiness-report",
+      label: "Hosted production readiness verification report",
+      status: hasJudgeProductAccess() ? "requested" : "missing",
+      sourceDescription: "Read-only and write-through hosted verification JSON from npm run verify:production.",
+      ownerRole: "engineering",
+      requiredFor: "Submission Logistics",
+      nextAction: "Run verify:production against the hosted Cloud Run URL and import the redacted JSON report.",
       createdAt: now
     }),
     expectedArtifact({
@@ -508,7 +547,7 @@ function requiredForKind(kind: EvidenceVaultArtifactKind): EvidenceVaultRequired
     return "Business Viability";
   }
 
-  if (kind === "product-url-proof" || kind === "demo-video-proof" || kind === "repository-proof") {
+  if (kind === "product-url-proof" || kind === "demo-video-proof" || kind === "repository-proof" || kind === "production-readiness-report") {
     return "Submission Logistics";
   }
 

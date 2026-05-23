@@ -32,6 +32,7 @@ import type {
   EvidenceExport,
   EvidenceIntakeQueue,
   EvidenceVault,
+  EvidenceVaultImportResult,
   Finding,
   FinancialEvidenceLedger,
   FrameworkEvidencePack,
@@ -123,6 +124,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
   const [dealImpactReport, setDealImpactReport] = useState<DealImpactReport | null>(null);
   const [financialLedger, setFinancialLedger] = useState<FinancialEvidenceLedger | null>(null);
   const [evidenceVaultCheck, setEvidenceVaultCheck] = useState<EvidenceVault | null>(null);
+  const [evidenceVaultImportResult, setEvidenceVaultImportResult] = useState<EvidenceVaultImportResult | null>(null);
   const [evidenceIntakeQueue, setEvidenceIntakeQueue] = useState<EvidenceIntakeQueue | null>(null);
   const [pilotConsentPacket, setPilotConsentPacket] = useState<PilotConsentPacket | null>(null);
   const [pilotConversionKit, setPilotConversionKit] = useState<PilotConversionKit | null>(null);
@@ -165,6 +167,22 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
     escalationTarget: "founder@mainstreet-security.example",
     status: "active"
   });
+  const [evidenceImportJson, setEvidenceImportJson] = useState(
+    JSON.stringify(
+      {
+        source: "verify-production",
+        redacted: true,
+        payload: {
+          baseUrl: "https://YOUR-CLOUD-RUN-URL",
+          mode: "read-only",
+          summary: { total: 0, passedTransport: 0, failedTransport: 0, blockedOrNeedsReview: 0 },
+          results: []
+        }
+      },
+      null,
+      2
+    )
+  );
   const readiness = snapshot.readiness;
   const persistence = readiness?.persistenceReadiness;
   const financialEvidence = financialLedger ?? readiness.financialEvidence;
@@ -1193,6 +1211,41 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
     } catch (error) {
       setActionState("error");
       setLastMessage(error instanceof Error ? error.message : "Unable to check Evidence Vault.");
+    }
+  }
+
+  async function importEvidenceVaultJson() {
+    setActionState("running");
+    setLastMessage("Importing redacted hosted proof JSON into the Evidence Vault...");
+
+    try {
+      const parsed = JSON.parse(evidenceImportJson) as unknown;
+      const response = await fetch("/api/evidence/vault/import", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(parsed)
+      });
+      const payload = (await response.json()) as {
+        importResult?: EvidenceVaultImportResult;
+        artifacts?: unknown[];
+        snapshot?: DashboardSnapshot;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.importResult || !payload.snapshot) {
+        throw new Error(payload.error ?? "Unable to import hosted proof JSON.");
+      }
+
+      setEvidenceVaultImportResult(payload.importResult);
+      setSnapshot(payload.snapshot);
+      setEvidenceVaultCheck(payload.snapshot.readiness.evidenceVault);
+      setActionState(payload.importResult.status === "blocked" ? "error" : "idle");
+      setLastMessage(
+        `Imported ${payload.artifacts?.length ?? payload.importResult.artifactCount} artifact(s) from ${payload.importResult.source}; checksum ${payload.importResult.checksumSha256.slice(0, 12)}...`
+      );
+    } catch (error) {
+      setActionState("error");
+      setLastMessage(error instanceof Error ? error.message : "Unable to import hosted proof JSON.");
     }
   }
 
@@ -2748,9 +2801,25 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
                   </article>
                 ))}
             </div>
+            <textarea
+              aria-label="Hosted proof JSON import"
+              value={evidenceImportJson}
+              onChange={(event) => setEvidenceImportJson(event.target.value)}
+              rows={5}
+            />
+            {evidenceVaultImportResult ? (
+              <small>
+                Last import: {evidenceVaultImportResult.artifactCount} artifact(s) ·{" "}
+                {evidenceVaultImportResult.status.replaceAll("-", " ")} · {evidenceVaultImportResult.checksumSha256.slice(0, 12)}...
+              </small>
+            ) : null}
             <button type="button" className="secondary wide" onClick={checkEvidenceVault} disabled={actionState === "running"}>
               <FileSearch size={16} aria-hidden="true" />
               Check Evidence Vault
+            </button>
+            <button type="button" className="secondary wide" onClick={importEvidenceVaultJson} disabled={actionState === "running"}>
+              <Download size={16} aria-hidden="true" />
+              Import proof JSON
             </button>
           </div>
           <div className="evidence-intake-card">

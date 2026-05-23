@@ -17,6 +17,7 @@ The product intentionally says **SOC2 readiness evidence**, not “SOC2 complian
   - Tier 2 Gemini semantic audit runs only when risk justifies cost and data exposure.
 - Private Evidence Room with MRR, pilots, revenue/cost fields, risk counters, agent runs, testimonials, consent/related-party summaries, financial evidence ledger, redacted JSON/Markdown/CSV judge exports, and print-ready integrity-sealed HTML packet.
 - Private Evidence Vault that tracks required invoices, payment exports, user logs, cost/CAC receipts, consent proof, Gemini/GCP/Workspace logs, product URL, repository URL, and demo-video artifacts by owner, redaction state, checksum, and proof status.
+- Evidence Vault proof importer that converts redacted hosted verification JSON into checksummed Cloud Run, GCP persistence, Gemini, Workspace, Cloud Billing, repository, and readiness artifact records without storing raw tokens in the dashboard response.
 - Evidence Intake Queue that prioritizes the private proof artifacts needed for the next paid pilot, gives accepted-proof examples, redaction checks, rejection triggers, and registration payloads for the Evidence Vault.
 - Strategy Room with top feature bets, marketability/win/sellability scoring, proof-status labels, gap analysis, loophole register, and realistic win-confidence scoring.
 - Trust Center Lite profile for redacted prospect-safe trust proof.
@@ -103,16 +104,17 @@ npm run build
 30. Run **Claim Guard** to verify that product and submission copy does not claim certification, legal advice, audit assurance, guaranteed compliance, or certainty of winning.
 31. Run **Check financial evidence** to confirm mock rows, missing invoices, private judge proof, and verified production proof stay separated.
 32. Run **Check Evidence Vault** to confirm invoices, user logs, cost/CAC receipts, consent records, Gemini/GCP logs, hosted URL, repository URL, and demo-video proof are tracked privately with redaction state.
-33. Run **Build intake queue** to prioritize private proof collection, redaction work, accepted proof types, rejection triggers, and Evidence Vault registration payloads for the next paid pilot.
-34. Run **Check submission gate** to see which XPRIZE requirements are proven, warning, or blocked.
-35. Run **Project provenance** to verify Git history, tracked source, first commit timing, repository URL, and pre-existing-work disclosure gaps.
-36. Run **Source release** before the first commit or source push to verify required files, ignore rules, release plan, and obvious secret patterns.
-37. Run **Check submission compliance** to surface repository, IP/license, public video, customer-redaction, and evidence-response blockers.
-38. Run **License manifest** to export dependency, license, and Google API-use disclosure details.
-39. Run **Generate submission binder** to produce the private judge-readiness manifest, testing-instruction status, under-three-minute demo timeline, and two-business-day evidence request queue.
-40. Run **Devpost pack** to generate claim-safe submission copy, demo scenes, screenshot targets, testing instructions, and the private evidence response plan.
-41. Run **Demo video pack** to verify the generated timeline, public host, English/subtitle confirmation, asset clearance, redaction, functioning-product footage, and live Gemini proof gates before recording or upload.
-42. Run **Market battlecard** to compare Sentinel against Vanta, Drata, and Secureframe while keeping the one-day Workspace risk-scan wedge explicit.
+33. Paste redacted `verify:production`, hosted evidence, Gemini, persistence, Workspace bootstrap, Cloud Run, or cost-control JSON into **Import proof JSON** to register checksummed private artifact records without manual transcription.
+34. Run **Build intake queue** to prioritize private proof collection, redaction work, accepted proof types, rejection triggers, and Evidence Vault registration payloads for the next paid pilot.
+35. Run **Check submission gate** to see which XPRIZE requirements are proven, warning, or blocked.
+36. Run **Project provenance** to verify Git history, tracked source, first commit timing, repository URL, and pre-existing-work disclosure gaps.
+37. Run **Source release** before the first commit or source push to verify required files, ignore rules, release plan, and obvious secret patterns.
+38. Run **Check submission compliance** to surface repository, IP/license, public video, customer-redaction, and evidence-response blockers.
+39. Run **License manifest** to export dependency, license, and Google API-use disclosure details.
+40. Run **Generate submission binder** to produce the private judge-readiness manifest, testing-instruction status, under-three-minute demo timeline, and two-business-day evidence request queue.
+41. Run **Devpost pack** to generate claim-safe submission copy, demo scenes, screenshot targets, testing instructions, and the private evidence response plan.
+42. Run **Demo video pack** to verify the generated timeline, public host, English/subtitle confirmation, asset clearance, redaction, functioning-product footage, and live Gemini proof gates before recording or upload.
+43. Run **Market battlecard** to compare Sentinel against Vanta, Drata, and Secureframe while keeping the one-day Workspace risk-scan wedge explicit.
 
 The **Low-risk skip** button verifies that metadata-only events do not call Gemini.
 
@@ -298,6 +300,8 @@ Approved answers are added to the Answer Library with an owner, source pack, seg
 `GET /api/evidence/vault` returns the private artifact register for submission and sales proof. It creates required artifact slots for pilot invoices, testimonial consent, active-user logs, operating costs, CAC receipts, Google Cloud billing proof, Gemini usage logs, Workspace OAuth/sync logs, hosted product URL, repository URL, demo video, and reviewed trust policies. Product and demo URLs are not treated as complete proof until judge access, free judging-period access, demo duration, public visibility, English/subtitle, asset clearance, and customer-data redaction confirmations are present. Each artifact has an owner, status, redaction flag, private-handling rule, optional SHA-256 checksum, blocker, and next action.
 
 `POST /api/evidence/vault` registers or updates a private artifact by id. The local vault improves workflow discipline, but it does not turn local files or seeded records into production proof until `SENTINEL_EVIDENCE_MODE=production`, `SENTINEL_STORAGE_MODE=gcp-rest`, and real private documents/logs are available for judge request.
+
+`POST /api/evidence/vault/import` accepts a redacted JSON object from `npm run verify:production`, `/api/production/hosted-evidence`, `/api/production/deployment-evidence`, `/api/production/gemini-smoke`, `/api/production/persistence`, `/api/workspace/sync/bootstrap`, or `/api/production/cost-controls`. The importer computes a SHA-256 checksum, maps supported rows to expected Evidence Vault artifact slots, marks local or unredacted imports as non-final proof, and stores only redacted source summaries in the dashboard response. Keep full source JSON in the private evidence store, not in the repository.
 
 `GET /api/evidence/vault?view=intake` returns the Evidence Intake Queue. It sorts required artifacts by pilot-conversion priority, proof status, and redaction risk; lists accepted proof examples and rejection triggers; and provides safe registration payload templates for `POST /api/evidence/vault`. It stays blocked in mock mode and does not treat registered local artifacts as production proof.
 

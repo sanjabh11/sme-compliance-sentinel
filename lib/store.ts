@@ -16,6 +16,10 @@ import { buildDefaultPlaybooks, validatePlaybookDraft } from "@/lib/playbooks";
 import { buildRiskScoreSnapshot } from "@/lib/risk-score";
 import { getApproverForRole, getEscalationTargetForRole } from "@/lib/approval-ops";
 import { normalizeEvidenceVaultArtifactInput, type EvidenceVaultArtifactInput } from "@/lib/evidence-vault";
+import {
+  buildEvidenceVaultArtifactInputsFromImport,
+  buildEvidenceVaultImport
+} from "@/lib/evidence-vault-import";
 import { normalizePilotProspectInput, type PilotProspectInput } from "@/lib/prospect-pipeline";
 import type {
   AgentRun,
@@ -24,7 +28,9 @@ import type {
   AuditEvent,
   DashboardSnapshot,
   EvidenceCounters,
+  EvidenceVaultImportRequest,
   EvidenceVaultArtifact,
+  EvidenceVaultImportResult,
   Finding,
   FindingStatus,
   RecommendationAction,
@@ -298,6 +304,39 @@ export function registerEvidenceVaultArtifact(input: EvidenceVaultArtifactInput)
   return { artifact: state.evidenceVaultArtifacts.find((candidate) => candidate.id === artifact.id) ?? artifact, snapshot: getDashboardSnapshot() };
 }
 
+export function importEvidenceVaultArtifacts(input: EvidenceVaultImportRequest): {
+  importResult: EvidenceVaultImportResult;
+  artifacts: EvidenceVaultArtifact[];
+  snapshot: DashboardSnapshot;
+} {
+  const state = getState();
+  const importResult = buildEvidenceVaultImport(input);
+
+  if (importResult.artifactCount === 0) {
+    throw new Error(importResult.blockers[0] ?? "No supported evidence artifact could be inferred from this JSON payload.");
+  }
+
+  const artifacts = buildEvidenceVaultArtifactInputsFromImport(importResult).map((artifactInput) =>
+    upsertEvidenceVaultArtifact(state, normalizeEvidenceVaultArtifactInput(artifactInput, state.tenant.id))
+  );
+
+  writeAudit(
+    "admin",
+    "evidence_vault_artifact_registered",
+    `Evidence Vault proof import registered ${artifacts.length} artifact(s) from ${importResult.source}.`,
+    artifacts[0]?.id ?? "evidence_import",
+    {
+      source: importResult.source,
+      artifactCount: artifacts.length,
+      checksumSha256: importResult.checksumSha256,
+      redacted: importResult.redacted
+    }
+  );
+  appendRiskScoreSnapshot(state, "evidence_vault_artifact_registered", artifacts[0]?.id ?? "evidence_import", true);
+
+  return { importResult, artifacts, snapshot: getDashboardSnapshot() };
+}
+
 export function findVerifiedPilotConsentArtifact() {
   const state = getState();
   const artifact = state.evidenceVaultArtifacts.find(
@@ -305,6 +344,24 @@ export function findVerifiedPilotConsentArtifact() {
   );
 
   return artifact ? { ...artifact } : undefined;
+}
+
+function upsertEvidenceVaultArtifact(state: SentinelState, artifact: EvidenceVaultArtifact) {
+  const existingIndex = state.evidenceVaultArtifacts.findIndex((candidate) => candidate.id === artifact.id);
+
+  if (existingIndex >= 0) {
+    const existing = state.evidenceVaultArtifacts[existingIndex];
+    state.evidenceVaultArtifacts[existingIndex] = {
+      ...existing,
+      ...artifact,
+      createdAt: existing.createdAt,
+      updatedAt: nowIso()
+    };
+  } else {
+    state.evidenceVaultArtifacts.unshift(artifact);
+  }
+
+  return state.evidenceVaultArtifacts.find((candidate) => candidate.id === artifact.id) ?? artifact;
 }
 
 export function recordWorkspaceOAuthLaunchSession(input: {

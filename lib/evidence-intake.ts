@@ -194,10 +194,17 @@ function guidanceForKind(kind: EvidenceVaultArtifactKind) {
         ...common
       };
     case "cloud-billing-proof":
+    case "cloud-run-proof":
+    case "gcp-persistence-proof":
+    case "production-readiness-report":
     case "cost-receipt":
     case "cac-receipt":
       return {
-        acceptedProof: ["Cloud Billing budget/export or operating receipt.", "CAC receipt or dated founder-sales cost note.", "Cost month and amount summary."],
+        acceptedProof: [
+          "Hosted verification JSON, Cloud Run deploy output, or Google Cloud API response.",
+          "Cloud Billing budget/export, persistence write-through, or operating receipt.",
+          "Redacted checksum and owner review note."
+        ],
         ...common
       };
     case "gemini-usage-log":
