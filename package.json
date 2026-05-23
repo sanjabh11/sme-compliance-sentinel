@@ -17,7 +17,8 @@
     "verify:source-release": "node scripts/verify-source-release.mjs",
     "verify:provenance": "node scripts/verify-project-provenance.mjs",
     "verify:cloudrun-deployment": "node scripts/verify-cloudrun-deployment.mjs",
-    "verify:production": "node scripts/verify-production-readiness.mjs"
+    "verify:production": "node scripts/verify-production-readiness.mjs",
+    "collect:hosted-proof": "node scripts/collect-hosted-proof-bundle.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

@@ -33,6 +33,15 @@ const readOnlyChecks = [
     })
   },
   {
+    id: "deployment-evidence-packet",
+    method: "GET",
+    path: "/api/production/deployment-packet",
+    summarize: (payload) => ({
+      status: payload?.status ?? "unknown",
+      detail: `${payload?.artifactManifest?.length ?? "unknown"} artifact(s); ${payload?.commandSequence?.length ?? "unknown"} command(s); ${payload?.blockers?.length ?? "unknown"} blocker(s).`
+    })
+  },
+  {
     id: "hosted-evidence-capture",
     method: "GET",
     path: "/api/production/hosted-evidence",
@@ -111,6 +120,15 @@ const readOnlyChecks = [
     summarize: (payload) => ({
       status: payload?.summary?.status ?? "unknown",
       detail: `${payload?.summary?.restrictedLicenseReviewCount ?? "unknown"} restricted-review, ${payload?.summary?.obligationReviewCount ?? "unknown"} obligation-review, ${payload?.summary?.licenseNeedsReviewCount ?? "unknown"} license-review package(s).`
+    })
+  },
+  {
+    id: "judge-access-pack",
+    method: "GET",
+    path: "/api/xprize/judge-access-pack",
+    summarize: (payload) => ({
+      status: payload?.overallStatus ?? "unknown",
+      detail: `${payload?.accessChecks?.filter?.((check) => check?.status === "missing")?.length ?? "unknown"} missing access check(s); ${payload?.walkthrough?.length ?? "unknown"} walkthrough step(s).`
     })
   },
   {

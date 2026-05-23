@@ -34,6 +34,7 @@ The product intentionally says **SOC2 readiness evidence**, not “SOC2 complian
 - Production Provisioning Pack that generates non-secret Google Cloud setup commands, API enablement, service-account/IAM steps, Secret Manager names, Cloud Run dry-run/deploy commands, verification sequence, and private-handling rules.
 - Hosted Evidence Capture Packet that turns the deployed Cloud Run URL, Gemini, GCP persistence, Workspace sync, Cloud Billing, paid-pilot, judge-access, and demo-video proof into a private artifact checklist without treating local/mock output as production proof.
 - Release Deployment Evidence Packet that binds release id, source repository, Cloud Run manifest state, hosted verification commands, redaction rules, private storage paths, and an Evidence Vault import template for the final judge packet.
+- Hosted Proof Bundle Collector that captures redacted hosted JSON from production verification, deployment, judge access, hosted evidence, Devpost, demo video, claim guard, and evidence-intake surfaces into an ignored local evidence folder.
 - Production Gemini Proof Smoke that runs a synthetic, non-customer high-risk fixture through the deployed Gemini audit path and blocks readiness unless `provider=gemini-api` is recorded.
 - Market Positioning Command Center with competitor battlecards for Vanta, Drata, and Secureframe, narrow USP scoring, differentiators, parity gaps, buyer narrative, and proof actions.
 - Framework Evidence Packs for SOC2, ISO 27001, GDPR, HIPAA, and PCI with control-level status, production-proof gaps, owner roles, redacted markdown export, and judge/prospect/auditor audience templates.
@@ -103,22 +104,23 @@ npm run build
 27. Run **Cloud Run evidence** or `npm run verify:cloudrun-deployment` to confirm the checked-in manifest still has only template replacement gaps, Secret Manager references, and manual attestation flags before a real dry-run.
 28. Run **Hosted evidence** to see the private capture packet for hosted Cloud Run URL, production verification JSON, live Gemini, GCP persistence, Workspace sync, Cloud Billing, paid-pilot, and judge-access artifacts.
 29. Run **Release packet** to bind release id, source repository, Cloud Run revision evidence, hosted verification commands, Evidence Vault import template, and redaction checklist into one private judge-packet plan.
-30. Run **Gemini proof smoke** after deploying with `GEMINI_API_KEY` to verify the hosted app records `provider=gemini-api` using a synthetic non-customer fixture.
-31. Run **Claim Guard** to verify that product and submission copy does not claim certification, legal advice, audit assurance, guaranteed compliance, or certainty of winning.
-32. Run **Check financial evidence** to confirm mock rows, missing invoices, private judge proof, and verified production proof stay separated.
-33. Run **Check Evidence Vault** to confirm invoices, user logs, cost/CAC receipts, consent records, Gemini/GCP logs, hosted URL, repository URL, and demo-video proof are tracked privately with redaction state.
-34. Paste redacted `verify:production`, hosted evidence, Gemini, persistence, Workspace bootstrap, Cloud Run, or cost-control JSON into **Import proof JSON** to register checksummed private artifact records without manual transcription.
-35. Run **Build intake queue** to prioritize private proof collection, redaction work, accepted proof types, rejection triggers, and Evidence Vault registration payloads for the next paid pilot.
-36. Run **Check submission gate** to see which XPRIZE requirements are proven, warning, or blocked.
-37. Run **Project provenance** to verify Git history, tracked source, first commit timing, repository URL, and pre-existing-work disclosure gaps.
-38. Run **Source release** before the first commit or source push to verify required files, ignore rules, release plan, and obvious secret patterns.
-39. Run **Check submission compliance** to surface repository, IP/license, public video, customer-redaction, and evidence-response blockers.
-40. Run **License manifest** to export dependency, license, and Google API-use disclosure details.
-41. Run **Judge access pack** to prepare non-secret testing instructions, signed-out smoke checks, safe walkthrough, private credential rules, free-access confirmation, and evidence-response owners.
-42. Run **Generate submission binder** to produce the private judge-readiness manifest, testing-instruction status, under-three-minute demo timeline, and two-business-day evidence request queue.
-43. Run **Devpost pack** to generate claim-safe submission copy, demo scenes, screenshot targets, testing instructions, and the private evidence response plan.
-44. Run **Demo video pack** to verify the generated timeline, public host, English/subtitle confirmation, asset clearance, redaction, functioning-product footage, and live Gemini proof gates before recording or upload.
-45. Run **Market battlecard** to compare Sentinel against Vanta, Drata, and Secureframe while keeping the one-day Workspace risk-scan wedge explicit.
+30. Run `npm run collect:hosted-proof -- --url $NEXT_PUBLIC_PRODUCT_URL --release-id $SENTINEL_RELEASE_ID` after deployment to capture an ignored local bundle of redacted hosted proof JSON.
+31. Run **Gemini proof smoke** after deploying with `GEMINI_API_KEY` to verify the hosted app records `provider=gemini-api` using a synthetic non-customer fixture.
+32. Run **Claim Guard** to verify that product and submission copy does not claim certification, legal advice, audit assurance, guaranteed compliance, or certainty of winning.
+33. Run **Check financial evidence** to confirm mock rows, missing invoices, private judge proof, and verified production proof stay separated.
+34. Run **Check Evidence Vault** to confirm invoices, user logs, cost/CAC receipts, consent records, Gemini/GCP logs, hosted URL, repository URL, and demo-video proof are tracked privately with redaction state.
+35. Paste redacted `verify:production`, hosted evidence, Gemini, persistence, Workspace bootstrap, Cloud Run, or cost-control JSON into **Import proof JSON** to register checksummed private artifact records without manual transcription.
+36. Run **Build intake queue** to prioritize private proof collection, redaction work, accepted proof types, rejection triggers, and Evidence Vault registration payloads for the next paid pilot.
+37. Run **Check submission gate** to see which XPRIZE requirements are proven, warning, or blocked.
+38. Run **Project provenance** to verify Git history, tracked source, first commit timing, repository URL, and pre-existing-work disclosure gaps.
+39. Run **Source release** before the first commit or source push to verify required files, ignore rules, release plan, and obvious secret patterns.
+40. Run **Check submission compliance** to surface repository, IP/license, public video, customer-redaction, and evidence-response blockers.
+41. Run **License manifest** to export dependency, license, and Google API-use disclosure details.
+42. Run **Judge access pack** to prepare non-secret testing instructions, signed-out smoke checks, safe walkthrough, private credential rules, free-access confirmation, and evidence-response owners.
+43. Run **Generate submission binder** to produce the private judge-readiness manifest, testing-instruction status, under-three-minute demo timeline, and two-business-day evidence request queue.
+44. Run **Devpost pack** to generate claim-safe submission copy, demo scenes, screenshot targets, testing instructions, and the private evidence response plan.
+45. Run **Demo video pack** to verify the generated timeline, public host, English/subtitle confirmation, asset clearance, redaction, functioning-product footage, and live Gemini proof gates before recording or upload.
+46. Run **Market battlecard** to compare Sentinel against Vanta, Drata, and Secureframe while keeping the one-day Workspace risk-scan wedge explicit.
 
 The **Low-risk skip** button verifies that metadata-only events do not call Gemini.
 
@@ -220,7 +222,9 @@ Before Tier 2 runs, Sentinel enforces the configured Gemini model allowlist, mon
 
 `GET /api/production/launch-readiness` returns the operator checklist for moving from local demo to judge-ready production. It consolidates Cloud Run/GCP persistence, live Gemini proof, Workspace OAuth/sync, paid pilot evidence, judge access/media, license/IP review, final gates, environment variables, verification commands, proof artifacts, blockers, and private-handling rules. It stays blocked in local/mock mode and is intended to guide the final production run, not to substitute for real Cloud Run, Gemini, Workspace, revenue, user, or customer-consent evidence.
 
-After deployment, run `npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL` to generate a JSON readiness smoke report across the hosted readiness, launch, submission, compliance, Devpost, license, and Claim Guard endpoints. The command is read-only by default. Add `--include-write-checks` only after production service-account credentials, `SENTINEL_ADMIN_ACTION_TOKEN`, and private evidence handling are configured; that mode also calls Gemini smoke, persistence, cost-control, Workspace reconciliation, and Workspace bootstrap verifier endpoints using the private admin-token header. Add `--strict` when you want the command to exit non-zero for any blocked or needs-review status. Use `--admin-token-env CUSTOM_ENV_NAME` only if the private shell stores the token under a different environment variable.
+After deployment, run `npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL` to generate a JSON readiness smoke report across the hosted readiness, launch, deployment packet, hosted evidence, judge access, submission, compliance, Devpost, license, and Claim Guard endpoints. The command is read-only by default. Add `--include-write-checks` only after production service-account credentials, `SENTINEL_ADMIN_ACTION_TOKEN`, and private evidence handling are configured; that mode also calls Gemini smoke, persistence, cost-control, Workspace reconciliation, and Workspace bootstrap verifier endpoints using the private admin-token header. Add `--strict` when you want the command to exit non-zero for any blocked or needs-review status. Use `--admin-token-env CUSTOM_ENV_NAME` only if the private shell stores the token under a different environment variable.
+
+Run `npm run collect:hosted-proof -- --url https://YOUR-CLOUD-RUN-URL --release-id RELEASE_ID` to write a local hosted proof bundle under `artifacts/hosted-proof/RELEASE_ID/`. The bundle includes `verify-production.json`, deployment packet, hosted evidence, judge access pack, submission binder, Devpost pack, demo-video pack, evidence-intake queue, Claim Guard report, `manifest.json`, and a Markdown summary. The folder is ignored by Git. The collector defensively redacts common token/secret-shaped fields, but every generated artifact still needs human redaction review before judge sharing or Evidence Vault import. Add `--include-write-checks` only from a private operator shell after the production admin token and private evidence handling are configured.
 
 `GET /api/market/positioning` returns the competitor-aware market battlecard. It compares Sentinel against Vanta, Drata, and Secureframe using public positioning, then turns the comparison into a narrow USP, wedge score, differentiators, parity gaps, buyer narrative, market risks, source URLs, and proof actions. It is a positioning aid, not market validation or revenue proof.
 
