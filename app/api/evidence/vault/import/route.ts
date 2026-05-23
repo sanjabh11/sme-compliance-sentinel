@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const authorization = authorizeAdminAction(request);
+    const authorization = authorizeAdminAction(request, "proof import");
     if (!authorization.ok) {
       return NextResponse.json({ ok: false, error: authorization.error }, { status: authorization.status });
     }

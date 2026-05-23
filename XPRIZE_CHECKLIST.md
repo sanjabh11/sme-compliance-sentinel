@@ -49,6 +49,7 @@
 - [x] Local repo includes `npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL` for hosted readiness smoke reports, with optional write-through checks after production credentials are ready.
 - [x] Local repo includes `cloudrun.service.yaml` with production-mode placeholders for Cloud Run, Firestore, BigQuery, Pub/Sub, OAuth, Workspace webhook authentication, Sensitive Data Protection, Gemini guardrails, XPRIZE attestations, judge/demo flags, and Cloud Billing controls.
 - [x] Local repo requires Cloud Run release id, region/service identity, private evidence bucket, and a Secret Manager-backed admin action token before hosted proof imports are treated as production-safe.
+- [x] Production proof POST endpoints require the Secret Manager-backed admin action token before Gemini smoke, GCP write-through, cost-control, Workspace reconciliation, Workspace bootstrap, or Evidence Vault proof import calls run on a hosted deployment.
 - [x] Local repo tests verify that Cloud Run credential values use Secret Manager references and that `GOOGLE_CLOUD_ACCESS_TOKEN` is not committed into the Cloud Run manifest.
 - [x] Local MVP exposes `/api/production/provisioning` with non-secret Google Cloud setup commands, API enablement, service-account/IAM sequence, Secret Manager secret names, Cloud Run dry-run/deploy commands, verification sequence, and private-handling rules.
 - [x] Local MVP exposes `/api/production/deployment-evidence` and `npm run verify:cloudrun-deployment` to validate Cloud Run manifest placeholders, pinned Secret Manager references, manual attestation flags, dry-run commands, and post-deploy verification steps before applying the manifest.
@@ -160,6 +161,7 @@
 - [ ] Run `/api/production/provisioning`, replace placeholders in `cloudrun.service.yaml`, execute the dry-run command, then execute the deployment command in the real Google Cloud project.
 - [ ] Run `npm run verify:cloudrun-deployment -- --strict` after rendering production values into `cloudrun.service.yaml`; preserve the dry-run output as private deployment evidence.
 - [ ] Create `sentinel-admin-action-token` and private evidence storage before importing hosted verification proof from the deployed app.
+- [ ] Run hosted write-through proof commands from a private shell with `SENTINEL_ADMIN_ACTION_TOKEN` configured; do not place the token in source, screenshots, or public Devpost fields.
 - [ ] Run `POST /api/production/gemini-smoke` from the hosted Cloud Run URL after configuring the Gemini API key, then persist the resulting `provider=gemini-api` agent-run row to BigQuery.
 - [x] Local MVP separates mock sync reconciliation from live Google API reconciliation.
 - [x] Local MVP falls back to deterministic staged findings when Gemini is blocked by model or budget policy.

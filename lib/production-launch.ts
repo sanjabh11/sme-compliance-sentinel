@@ -513,7 +513,7 @@ function buildVerificationCommands(): ProductionLaunchCommand[] {
     {
       id: "production-gemini-smoke",
       label: "Production Gemini smoke",
-      command: "curl -X POST -s $NEXT_PUBLIC_PRODUCT_URL/api/production/gemini-smoke",
+      command: "curl -X POST -s $NEXT_PUBLIC_PRODUCT_URL/api/production/gemini-smoke -H 'x-sentinel-admin-token: $SENTINEL_ADMIN_ACTION_TOKEN'",
       ownerRole: "engineering",
       purpose: "Prove the hosted app can perform a Gemini API semantic audit on a synthetic non-customer fixture.",
       expectedProof: "JSON payload with provider=gemini-api, model, agentRunId, eventId, token/cost estimate, and no customer data."
@@ -521,7 +521,7 @@ function buildVerificationCommands(): ProductionLaunchCommand[] {
     {
       id: "persistence-write-through",
       label: "Persistence write-through",
-      command: "curl -X POST -s $NEXT_PUBLIC_PRODUCT_URL/api/production/persistence",
+      command: "curl -X POST -s $NEXT_PUBLIC_PRODUCT_URL/api/production/persistence -H 'x-sentinel-admin-token: $SENTINEL_ADMIN_ACTION_TOKEN'",
       ownerRole: "engineering",
       purpose: "Verify Firestore, BigQuery audit rows, BigQuery agent-run rows, and Secret Manager write-through in production mode.",
       expectedProof: "Passed checks for configuration, Firestore, BigQuery audit, BigQuery agent-run, and Secret Manager targets."
@@ -529,7 +529,7 @@ function buildVerificationCommands(): ProductionLaunchCommand[] {
     {
       id: "cost-controls",
       label: "Cloud cost controls",
-      command: "curl -X POST -s $NEXT_PUBLIC_PRODUCT_URL/api/production/cost-controls",
+      command: "curl -X POST -s $NEXT_PUBLIC_PRODUCT_URL/api/production/cost-controls -H 'x-sentinel-admin-token: $SENTINEL_ADMIN_ACTION_TOKEN'",
       ownerRole: "engineering",
       purpose: "Verify Cloud Billing budget and Gemini API key restriction resources.",
       expectedProof: "Passed budget and API-key checks, with quota evidence noted for private binder."
@@ -537,7 +537,7 @@ function buildVerificationCommands(): ProductionLaunchCommand[] {
     {
       id: "workspace-reconciliation",
       label: "Workspace sync reconciliation",
-      command: "curl -X POST -s $NEXT_PUBLIC_PRODUCT_URL/api/workspace/sync/reconcile",
+      command: "curl -X POST -s $NEXT_PUBLIC_PRODUCT_URL/api/workspace/sync/reconcile -H 'x-sentinel-admin-token: $SENTINEL_ADMIN_ACTION_TOKEN'",
       ownerRole: "security",
       purpose: "Prove Drive/Gmail cursor reconciliation exists after OAuth install.",
       expectedProof: "Reconciliation payload showing live cursor state or explicit blocker if not installed."

@@ -6,7 +6,7 @@ export type AdminActionAuthResult =
 
 const adminTokenHeader = "x-sentinel-admin-token";
 
-export function authorizeAdminAction(request: Request): AdminActionAuthResult {
+export function authorizeAdminAction(request: Request, actionLabel = "production operator action"): AdminActionAuthResult {
   if (!requiresAdminToken()) {
     return { ok: true, mode: "local-bypass" };
   }
@@ -16,7 +16,7 @@ export function authorizeAdminAction(request: Request): AdminActionAuthResult {
     return {
       ok: false,
       status: 503,
-      error: "Production proof imports require SENTINEL_ADMIN_ACTION_TOKEN from Secret Manager."
+      error: `Production ${actionLabel} requires SENTINEL_ADMIN_ACTION_TOKEN from Secret Manager.`
     };
   }
 
@@ -25,12 +25,12 @@ export function authorizeAdminAction(request: Request): AdminActionAuthResult {
     return {
       ok: false,
       status: 401,
-      error: `Missing ${adminTokenHeader} or Bearer token for production proof import.`
+      error: `Missing ${adminTokenHeader} or Bearer token for production ${actionLabel}.`
     };
   }
 
   if (!safeEqual(providedToken, expectedToken)) {
-    return { ok: false, status: 403, error: "Invalid production proof import token." };
+    return { ok: false, status: 403, error: `Invalid production ${actionLabel} token.` };
   }
 
   return { ok: true, mode: "token" };

@@ -109,7 +109,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
         "engineering",
         false,
         true,
-        "JSON report showing Firestore, BigQuery, Secret Manager, cost-control, and Workspace reconciliation checks after credentials are configured."
+        "JSON report showing Firestore, BigQuery, Secret Manager, cost-control, and Workspace reconciliation checks after credentials and SENTINEL_ADMIN_ACTION_TOKEN are configured."
       ),
       command(
         "import-hosted-proof",

@@ -1,6 +1,8 @@
 /* global AbortController, URL, clearTimeout, console, fetch, process, setTimeout */
 
 const defaultTimeoutMs = 15000;
+const defaultAdminTokenEnv = "SENTINEL_ADMIN_ACTION_TOKEN";
+const adminTokenHeader = "x-sentinel-admin-token";
 
 const readOnlyChecks = [
   {
@@ -175,7 +177,9 @@ export function parseArgs(argv) {
     url: "",
     strict: false,
     includeWriteChecks: false,
-    timeoutMs: defaultTimeoutMs
+    timeoutMs: defaultTimeoutMs,
+    adminTokenEnv: defaultAdminTokenEnv,
+    adminToken: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -202,6 +206,17 @@ export function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--admin-token-env") {
+      args.adminTokenEnv = argv[index + 1] ?? defaultAdminTokenEnv;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--admin-token-env=")) {
+      args.adminTokenEnv = arg.slice("--admin-token-env=".length) || defaultAdminTokenEnv;
+      continue;
+    }
+
     if (arg === "--timeout-ms") {
       args.timeoutMs = parseTimeout(argv[index + 1]);
       index += 1;
@@ -214,6 +229,7 @@ export function parseArgs(argv) {
   }
 
   args.url ||= process.env.NEXT_PUBLIC_PRODUCT_URL ?? "";
+  args.adminToken = process.env[args.adminTokenEnv] ?? "";
   return args;
 }
 
@@ -223,7 +239,7 @@ export async function runProductionReadinessVerification(options) {
   const results = [];
 
   for (const check of checks) {
-    results.push(await runCheck(baseUrl, check, options.timeoutMs ?? defaultTimeoutMs));
+    results.push(await runCheck(baseUrl, check, options.timeoutMs ?? defaultTimeoutMs, options.adminToken ?? ""));
   }
 
   const failed = results.filter((result) => result.ok === false);
@@ -234,6 +250,12 @@ export async function runProductionReadinessVerification(options) {
     baseUrl,
     mode: options.includeWriteChecks ? "read-and-write-through" : "read-only",
     strict: Boolean(options.strict),
+    writeAuth: {
+      required: Boolean(options.includeWriteChecks),
+      configured: Boolean(options.adminToken),
+      tokenEnv: options.adminTokenEnv ?? defaultAdminTokenEnv,
+      headerName: adminTokenHeader
+    },
     summary: {
       total: results.length,
       passedTransport: results.length - failed.length,
@@ -266,15 +288,19 @@ function parseTimeout(value) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : defaultTimeoutMs;
 }
 
-async function runCheck(baseUrl, check, timeoutMs) {
+async function runCheck(baseUrl, check, timeoutMs, adminToken) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const url = `${baseUrl}${check.path}`;
+  const headers = {
+    accept: "application/json",
+    ...(check.method === "POST" && adminToken ? { [adminTokenHeader]: adminToken } : {})
+  };
 
   try {
     const response = await fetch(url, {
       method: check.method,
-      headers: { accept: "application/json" },
+      headers,
       signal: controller.signal
     });
     const text = await response.text();
@@ -337,7 +363,7 @@ function buildNextActions(failed, blocked) {
   return [
     ...(failed.length ? [`Fix transport/auth failures for: ${failed.map((result) => result.id).join(", ")}.`] : []),
     ...(blocked.length ? [`Clear blocked or review statuses for: ${blocked.map((result) => result.id).join(", ")}.`] : []),
-    "Run with --include-write-checks only after production service credentials and private evidence handling are configured.",
+    `Run with --include-write-checks only after production service credentials, ${defaultAdminTokenEnv}, and private evidence handling are configured.`,
     "Attach this JSON output to the private launch packet after every hosted deployment verification run."
   ];
 }

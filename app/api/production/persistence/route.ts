@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authorizeAdminAction } from "@/lib/admin-action-auth";
 import {
   buildBigQueryAgentRunInsertRequest,
   buildBigQueryAgentRunTableSchemaPlan,
@@ -27,7 +28,12 @@ export async function GET() {
   });
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  const authorization = authorizeAdminAction(request, "persistence write-through verification");
+  if (!authorization.ok) {
+    return NextResponse.json({ ok: false, error: authorization.error }, { status: authorization.status });
+  }
+
   const snapshot = getDashboardSnapshot();
   const result = await verifyPersistenceWriteThrough({
     auditEvents: snapshot.auditEvents,
