@@ -1694,6 +1694,50 @@ export interface CloudRunDeploymentEvidence {
   disclaimer: string;
 }
 
+export type DeploymentEvidencePacketStatus = "ready-to-capture" | "template-needs-values" | "blocked";
+
+export type DeploymentEvidenceArtifactStatus = "missing" | "ready" | "needs-redaction" | "external-required";
+
+export interface DeploymentEvidenceArtifact {
+  id: string;
+  label: string;
+  ownerRole: SubmissionEvidenceArtifact["ownerRole"];
+  status: DeploymentEvidenceArtifactStatus;
+  sourceCommand: string;
+  privateStorePath: string;
+  evidenceVaultTarget: string;
+  redactionRules: string[];
+  nextAction: string;
+}
+
+export interface DeploymentEvidenceCommand {
+  id: string;
+  label: string;
+  command: string;
+  mutatesProduction: boolean;
+  requiresAdminToken: boolean;
+  expectedArtifactId: string;
+  privateHandling: string;
+}
+
+export interface DeploymentEvidencePacket {
+  generatedAt: string;
+  releaseId: string;
+  status: DeploymentEvidencePacketStatus;
+  productUrl: string;
+  repositoryUrl: string;
+  privateEvidenceBucket: string;
+  deploymentStatus: CloudRunDeploymentEvidenceStatus;
+  artifactManifest: DeploymentEvidenceArtifact[];
+  commandSequence: DeploymentEvidenceCommand[];
+  evidenceVaultImportTemplate: EvidenceVaultImportRequest;
+  redactionChecklist: string[];
+  blockers: string[];
+  nextActions: string[];
+  privateHandling: string[];
+  disclaimer: string;
+}
+
 export type ProductionGeminiProofStatus = "passed" | "blocked" | "mock-only";
 
 export interface ProductionGeminiProofResult {

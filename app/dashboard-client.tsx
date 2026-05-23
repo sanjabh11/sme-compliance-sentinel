@@ -25,6 +25,7 @@ import type {
   CloudCostControlVerificationResult,
   CloudRunDeploymentEvidence,
   DashboardSnapshot,
+  DeploymentEvidencePacket,
   DealImpactReport,
   DemoVideoCompliancePack,
   DevpostSubmissionPack,
@@ -134,6 +135,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
   const [productionProvisioning, setProductionProvisioning] = useState<ProductionProvisioningPack | null>(null);
   const [cloudRunDeploymentEvidence, setCloudRunDeploymentEvidence] = useState<CloudRunDeploymentEvidence | null>(null);
   const [hostedEvidenceCapture, setHostedEvidenceCapture] = useState<HostedEvidenceCapturePacket | null>(null);
+  const [deploymentEvidencePacket, setDeploymentEvidencePacket] = useState<DeploymentEvidencePacket | null>(null);
   const [productionGeminiProof, setProductionGeminiProof] = useState<ProductionGeminiProofResult | null>(null);
   const [marketPositioning, setMarketPositioning] = useState<MarketPositioningCommandCenter | null>(null);
   const [pilotForm, setPilotForm] = useState({
@@ -1095,6 +1097,28 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
     }
   }
 
+  async function checkDeploymentEvidencePacket() {
+    setActionState("running");
+    setLastMessage("Building release deployment evidence packet...");
+
+    try {
+      const response = await fetch("/api/production/deployment-packet");
+      const payload = (await response.json()) as DeploymentEvidencePacket;
+      setDeploymentEvidencePacket(payload);
+      setActionState(payload.status === "blocked" ? "error" : "idle");
+      setLastMessage(
+        payload.status === "ready-to-capture"
+          ? "Deployment evidence packet is ready for hosted capture."
+          : payload.status === "template-needs-values"
+            ? `Deployment evidence packet still needs ${payload.nextActions.length} setup action(s).`
+            : `Deployment evidence packet has ${payload.blockers.length} blocker(s).`
+      );
+    } catch (error) {
+      setActionState("error");
+      setLastMessage(error instanceof Error ? error.message : "Unable to build deployment evidence packet.");
+    }
+  }
+
   async function runProductionGeminiSmoke() {
     setActionState("running");
     setLastMessage("Running synthetic production Gemini proof smoke...");
@@ -2030,6 +2054,10 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
             <FileSearch size={16} aria-hidden="true" />
             Hosted evidence
           </button>
+          <button type="button" className="secondary" onClick={checkDeploymentEvidencePacket} disabled={actionState === "running"}>
+            <Download size={16} aria-hidden="true" />
+            Release packet
+          </button>
           <button type="button" className="secondary" onClick={runProductionGeminiSmoke} disabled={actionState === "running"}>
             <Sparkles size={16} aria-hidden="true" />
             Gemini proof smoke
@@ -2239,6 +2267,46 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
                   {hostedEvidenceCapture.privateArtifactTemplates[0]?.label}:{" "}
                   {hostedEvidenceCapture.privateArtifactTemplates[0]?.registrationHint}
                 </p>
+              </article>
+            </div>
+          ) : null}
+          {deploymentEvidencePacket ? (
+            <div className="verification-list">
+              <span data-status={deploymentEvidencePacket.status}>{deploymentEvidencePacket.status.replaceAll("-", " ")}</span>
+              <article>
+                <strong>Release binding</strong>
+                <p>
+                  {deploymentEvidencePacket.releaseId} · {deploymentEvidencePacket.deploymentStatus.replaceAll("-", " ")} ·{" "}
+                  {deploymentEvidencePacket.productUrl}
+                </p>
+              </article>
+              <article>
+                <strong>Artifact packet</strong>
+                <p>
+                  {deploymentEvidencePacket.artifactManifest.filter((artifact) => artifact.status === "ready").length} ready ·{" "}
+                  {deploymentEvidencePacket.artifactManifest.filter((artifact) => artifact.status === "external-required").length} external ·{" "}
+                  {deploymentEvidencePacket.commandSequence.filter((command) => command.mutatesProduction).length} mutating command(s)
+                </p>
+              </article>
+              {deploymentEvidencePacket.artifactManifest
+                .filter((artifact) => artifact.status !== "ready")
+                .slice(0, 4)
+                .map((artifact) => (
+                  <article key={artifact.id}>
+                    <strong>{artifact.label}</strong>
+                    <p>{artifact.nextAction}</p>
+                  </article>
+                ))}
+              <article>
+                <strong>Import template</strong>
+                <p>
+                  {deploymentEvidencePacket.evidenceVaultImportTemplate.source} · redacted{" "}
+                  {deploymentEvidencePacket.evidenceVaultImportTemplate.redacted ? "true" : "false"}
+                </p>
+              </article>
+              <article>
+                <strong>Next command</strong>
+                <p>{deploymentEvidencePacket.commandSequence[0]?.command}</p>
               </article>
             </div>
           ) : null}

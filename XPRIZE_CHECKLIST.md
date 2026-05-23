@@ -54,6 +54,7 @@
 - [x] Local MVP exposes `/api/production/provisioning` with non-secret Google Cloud setup commands, API enablement, service-account/IAM sequence, Secret Manager secret names, Cloud Run dry-run/deploy commands, verification sequence, and private-handling rules.
 - [x] Local MVP exposes `/api/production/deployment-evidence` and `npm run verify:cloudrun-deployment` to validate Cloud Run manifest placeholders, pinned Secret Manager references, manual attestation flags, dry-run commands, and post-deploy verification steps before applying the manifest.
 - [x] Local MVP exposes `/api/production/hosted-evidence` to separate local/mock proof from hosted Cloud Run, live Gemini, GCP persistence, Workspace sync, Cloud Billing, paid-pilot, judge-access, demo-video, and Evidence Vault capture requirements.
+- [x] Local MVP exposes `/api/production/deployment-packet` to bind release id, Cloud Run manifest state, hosted verification commands, source/provenance checks, redaction rules, private storage paths, and Evidence Vault import template into one private judge-packet plan.
 - [x] Local MVP exposes `/api/evidence/vault/import` to convert redacted hosted verification JSON into checksummed Evidence Vault artifact records while keeping local, mock, or unredacted imports out of final proof.
 - [x] Local MVP exposes `/api/production/gemini-smoke` to run a synthetic non-customer Gemini proof flow and block readiness unless `provider=gemini-api` is recorded.
 - [x] Local MVP exposes a Market Positioning Command Center comparing Sentinel against Vanta, Drata, and Secureframe with USP wedge, differentiators, parity gaps, buyer narrative, and proof actions.
@@ -189,6 +190,7 @@
 - [ ] Run the XPRIZE Submission Gate before final Devpost submission and clear every blocker with real evidence.
 - [ ] Run `/api/production/launch-readiness` from the hosted app and clear each workstream with production proof before final submission.
 - [ ] Run `/api/production/hosted-evidence` from the hosted app and attach the resulting capture packet to the private judge binder after every required artifact is redacted and checksummed.
+- [ ] Run `/api/production/deployment-packet` after rendering production values and before final submission; confirm every command artifact is captured, redacted, and linked to the release id.
 - [ ] Run `npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --strict --include-write-checks` after Cloud Run/GCP credentials are configured and attach the JSON output to the private judge packet.
 - [ ] Import the final redacted hosted verification JSON through `/api/evidence/vault/import` and confirm Cloud Run, Gemini, GCP persistence, Workspace, Cloud Billing, repository, and readiness artifacts have SHA-256 checksums in the Evidence Vault.
 - [ ] Run `/api/market/positioning` before final pitch copy and verify the story remains a focused Workspace risk-scan wedge, not a broad GRC replacement claim.
