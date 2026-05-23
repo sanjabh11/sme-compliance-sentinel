@@ -448,6 +448,13 @@ function buildEnvMatrix(): ProductionLaunchEnvItem[] {
       "Confirm quota values match the pilot budget before launch."
     ),
     envItem(
+      "SENTINEL_GEMINI_QUOTA_EVIDENCE_CONFIRMED",
+      sentinelConfig.geminiQuotaEvidenceConfirmed ? "true" : "",
+      "Private Gemini quota or usage-limit evidence.",
+      false,
+      "Set true only after private Gemini quota or usage-limit proof is captured for judges."
+    ),
+    envItem(
       "SENSITIVE_DATA_PROTECTION_ENABLED",
       sentinelConfig.sensitiveDataProtectionEnabled ? "true" : "",
       "Google Sensitive Data Protection Tier 1 adapter.",

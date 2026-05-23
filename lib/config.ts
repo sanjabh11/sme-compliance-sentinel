@@ -28,6 +28,7 @@ export const sentinelConfig = {
   geminiApiAllowedServerIps: parseCsv(process.env.SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS ?? ""),
   geminiDailyRequestQuota: Math.round(parsePositiveNumber(process.env.SENTINEL_GEMINI_DAILY_REQUEST_QUOTA, 1000)),
   geminiDailyTokenQuota: Math.round(parsePositiveNumber(process.env.SENTINEL_GEMINI_DAILY_TOKEN_QUOTA, 1000000)),
+  geminiQuotaEvidenceConfirmed: process.env.SENTINEL_GEMINI_QUOTA_EVIDENCE_CONFIRMED === "true",
   cloudCostControlsMode: parseCloudCostControlsMode(process.env.SENTINEL_CLOUD_COST_CONTROLS_MODE),
   oauthClientId: process.env.GOOGLE_OAUTH_CLIENT_ID ?? "",
   oauthClientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? "",

@@ -133,6 +133,8 @@ spec:
               value: "1000"
             - name: SENTINEL_GEMINI_DAILY_TOKEN_QUOTA
               value: "1000000"
+            - name: SENTINEL_GEMINI_QUOTA_EVIDENCE_CONFIRMED
+              value: "false"
             - name: GEMINI_INPUT_PER_1K_USD
               value: "0.000075"
             - name: GEMINI_OUTPUT_PER_1K_USD

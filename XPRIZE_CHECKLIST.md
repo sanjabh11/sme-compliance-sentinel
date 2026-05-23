@@ -164,6 +164,9 @@
 - [x] Local MVP documents durable BigQuery agent-run evidence rows for live Gemini proof.
 - [x] Local MVP verifies that memory mode cannot be misreported as production persistence.
 - [x] Local MVP verifies that local AI spend estimates cannot be misreported as live Cloud Billing budget proof.
+- [x] Local MVP normalizes Cloud Billing budget and API key resource names before live cost-control verification.
+- [x] Local MVP fails cost-control verification unless the Gemini API key is restricted to the Generative Language API and configured server IPs.
+- [x] Local MVP keeps Gemini quota/usage evidence blocked until a private proof flag is explicitly reviewed.
 - [ ] Create and verify a real Cloud Billing budget with alert thresholds and Pub/Sub notifications.
 - [ ] Restrict the production Gemini API key to the required Google API target and server-only client boundary.
 - [ ] Capture private proof of Gemini quota/usage controls before public launch.
