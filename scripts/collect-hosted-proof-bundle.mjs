@@ -11,6 +11,12 @@ const adminTokenHeader = "x-sentinel-admin-token";
 
 const bundleEndpoints = [
   {
+    id: "launch-readiness",
+    path: "/api/production/launch-readiness",
+    privateHandling:
+      "Hosted production command center; use only redacted env/proof status and keep credentials, invoices, and customer evidence private."
+  },
+  {
     id: "deployment-packet",
     path: "/api/production/deployment-packet",
     privateHandling: "Release-bound deployment artifact plan; keep raw command outputs private."
@@ -213,7 +219,8 @@ export async function collectHostedProofBundle(options) {
     releaseId,
     verifyReport,
     artifacts,
-    releaseIntegrity
+    releaseIntegrity,
+    endpointPayloads
   });
   artifacts.push(
     await writeJsonArtifact(outputDirectory, {
@@ -464,6 +471,8 @@ function buildManifest(input) {
   const failedArtifacts = input.artifacts.filter((artifact) => artifact.status === "transport-error");
   const blockedArtifacts = input.artifacts.filter((artifact) => isBlockedStatus(artifact.status));
   const releaseIntegrityBlocked = input.releaseIntegrity.status === "blocked";
+  const proofFlagBlocked = input.releaseEvidenceManifest.proofFlagChecks.filter((check) => check.status === "blocked");
+  const proofFlagNeedsReview = input.releaseEvidenceManifest.proofFlagChecks.filter((check) => check.status === "needs-review");
 
   return {
     generatedAt: new Date().toISOString(),
@@ -484,16 +493,21 @@ function buildManifest(input) {
       blockedOrNeedsReview:
         blockedArtifacts.length +
         (input.verifyReport?.summary?.blockedOrNeedsReview ?? 0) +
-        (input.releaseIntegrity.status === "passed" ? 0 : 1),
+        (input.releaseIntegrity.status === "passed" ? 0 : 1) +
+        proofFlagBlocked.length +
+        proofFlagNeedsReview.length,
       releaseEvidenceStatus: input.releaseEvidenceManifest.overallStatus,
       releaseIntegrityStatus: input.releaseIntegrity.status,
+      proofFlagStatus: input.releaseEvidenceManifest.proofFlagStatus,
       releaseEvidenceSlots: input.releaseEvidenceManifest.summary
     },
     releaseIntegrity: input.releaseIntegrity,
     releaseEvidence: {
       artifact: "release-evidence-manifest.json",
       overallStatus: input.releaseEvidenceManifest.overallStatus,
-      summary: input.releaseEvidenceManifest.summary
+      summary: input.releaseEvidenceManifest.summary,
+      proofFlagStatus: input.releaseEvidenceManifest.proofFlagStatus,
+      proofFlagChecks: input.releaseEvidenceManifest.proofFlagChecks
     },
     artifacts: input.artifacts.map((artifact) => ({
       id: artifact.id,
@@ -508,12 +522,14 @@ function buildManifest(input) {
       ...(blockedArtifacts.length
         ? [`Blocked or review status remains for ${blockedArtifacts.map((artifact) => artifact.id).join(", ")}.`]
         : []),
-      ...(releaseIntegrityBlocked ? input.releaseIntegrity.blockers : [])
+      ...(releaseIntegrityBlocked ? input.releaseIntegrity.blockers : []),
+      ...input.releaseEvidenceManifest.proofFlagBlockers
     ],
     nextActions: [
       "Review every JSON artifact for redaction before sharing with judges or importing into the Evidence Vault.",
       "Import only after release integrity passes and the redacted verify-production JSON matches this bundle release id.",
       "Use release-evidence-manifest.json as the release-level proof index; do not treat missing or mock-only slots as complete.",
+      "If any XPRIZE proof flag is true in hosted launch readiness, matching repository, Google Cloud, and provider=gemini-api proof must be present before import.",
       "Attach Cloud Run revision, Gemini usage, GCP persistence, Workspace sync, revenue, cost, CAC, user, demo-video, and judge-access proof privately.",
       "Rerun this collector after every hosted deployment or evidence-status change."
     ],
@@ -551,6 +567,16 @@ function buildReleaseEvidenceManifest(input) {
       privateHandling: slot.privateHandling
     };
   });
+  const proofFlagChecks = buildProofFlagChecks({
+    rowsById,
+    slots,
+    artifactsById,
+    endpointPayloads: input.endpointPayloads
+  });
+  const proofFlagBlockers = proofFlagChecks
+    .filter((check) => check.status === "blocked")
+    .map((check) => `${check.envName}: ${check.detail}`);
+  const proofFlagNeedsReview = proofFlagChecks.filter((check) => check.status === "needs-review");
   const summary = slots.reduce(
     (accumulator, slot) => ({
       ...accumulator,
@@ -573,21 +599,152 @@ function buildReleaseEvidenceManifest(input) {
     overallStatus:
       input.releaseIntegrity.status === "blocked"
         ? "blocked"
+        : proofFlagBlockers.length
+          ? "blocked"
         : summary["transport-error"] > 0
         ? "blocked"
-        : summary.missing + summary["mock-only"] + summary["needs-review"] > 0
+        : summary.missing + summary["mock-only"] + summary["needs-review"] > 0 || proofFlagNeedsReview.length > 0
           ? "needs-proof"
           : "ready-for-private-review",
     summary,
     slots,
+    proofFlagStatus: proofFlagBlockers.length ? "blocked" : proofFlagNeedsReview.length ? "needs-review" : "passed",
+    proofFlagChecks,
+    proofFlagBlockers,
     nextActions: [
       "Clear missing and mock-only slots with hosted Cloud Run, live Gemini, durable GCP, Workspace, financial, user, cost/CAC, demo, judge-access, repository, and license/IP proof.",
+      "Keep XPRIZE_REPOSITORY_ACCESS_CONFIGURED, XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED, and XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED false until these proof-flag checks pass.",
       "Keep customer names, security findings, OAuth artifacts, invoices, payment records, CAC receipts, raw logs, and credentials in the private evidence store.",
       "Rerun collect:hosted-proof after each deployment or proof import and keep the release evidence manifest with the private judge packet."
     ],
     disclaimer:
       "This manifest groups proof status for one release. It is not a guarantee of winning, certification, legal advice, audit assurance, or compliance status."
   };
+}
+
+function buildProofFlagChecks(input) {
+  const launchReadiness = input.endpointPayloads.get("launch-readiness")?.payload ?? {};
+  const envMatrix = Array.isArray(launchReadiness.envMatrix) ? launchReadiness.envMatrix : [];
+  const slotsById = new Map(input.slots.map((slot) => [slot.id, slot]));
+  const definitions = [
+    {
+      envName: "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
+      label: "Repository access proof flag",
+      ruleBucket: "Repository source access",
+      evidenceIds: ["repository-source"],
+      passed: () => slotVerified(slotsById, "repository-source"),
+      requiredEvidence:
+        "repository-source release slot verified from source-release and project-provenance artifacts."
+    },
+    {
+      envName: "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
+      label: "Google Cloud product proof flag",
+      ruleBucket: "Google Cloud product usage",
+      evidenceIds: ["cloud-run-deployment", "gcp-persistence"],
+      passed: () => slotVerified(slotsById, "cloud-run-deployment") || slotVerified(slotsById, "gcp-persistence"),
+      requiredEvidence:
+        "cloud-run-deployment or gcp-persistence release slot verified from hosted Cloud Run/GCP evidence."
+    },
+    {
+      envName: "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
+      label: "Deployed Gemini API-call proof flag",
+      ruleBucket: "Gemini API usage",
+      evidenceIds: ["live-gemini"],
+      passed: () => hasGeminiApiProof(input.rowsById),
+      requiredEvidence:
+        "gemini-proof-status or gemini-smoke-write-through row passed with provider=gemini-api in the hosted report."
+    }
+  ];
+
+  return definitions.map((definition) => {
+    const env = envMatrix.find((item) => item?.name === definition.envName);
+    const claimed = envFlagClaimed(env);
+    const evidence = definition.evidenceIds.map((id) => ({
+      id,
+      status: slotsById.get(id)?.status ?? "missing-source",
+      missingProof: slotsById.get(id)?.missingProof ?? [`${id}: missing-source`]
+    }));
+
+    if (!env) {
+      return {
+        envName: definition.envName,
+        label: definition.label,
+        ruleBucket: definition.ruleBucket,
+        status: "needs-review",
+        claimStatus: "unknown",
+        currentValue: "missing-source",
+        requiredEvidence: definition.requiredEvidence,
+        evidence,
+        detail:
+          "launch-readiness.json did not include this env flag, so the hosted proof bundle cannot cross-check whether the flag is being claimed.",
+        nextAction:
+          "Recapture the hosted proof bundle after /api/production/launch-readiness exposes the XPRIZE proof flag matrix."
+      };
+    }
+
+    if (!claimed) {
+      return {
+        envName: definition.envName,
+        label: definition.label,
+        ruleBucket: definition.ruleBucket,
+        status: "not-claimed",
+        claimStatus: "not-claimed",
+        currentValue: cleanString(env.currentValue || env.status),
+        requiredEvidence: definition.requiredEvidence,
+        evidence,
+        detail: "The hosted launch readiness payload does not claim this proof flag yet.",
+        nextAction: "Keep this flag false until the matching private evidence has been captured and reviewed."
+      };
+    }
+
+    if (!definition.passed()) {
+      return {
+        envName: definition.envName,
+        label: definition.label,
+        ruleBucket: definition.ruleBucket,
+        status: "blocked",
+        claimStatus: "claimed",
+        currentValue: cleanString(env.currentValue || env.status),
+        requiredEvidence: definition.requiredEvidence,
+        evidence,
+        detail: `Hosted launch readiness claims ${definition.envName}=true, but the bundle is missing ${definition.requiredEvidence}`,
+        nextAction: `Do not import this bundle as final proof. Set ${definition.envName}=false or recapture after the matching hosted evidence exists.`
+      };
+    }
+
+    return {
+      envName: definition.envName,
+      label: definition.label,
+      ruleBucket: definition.ruleBucket,
+      status: "passed",
+      claimStatus: "claimed",
+      currentValue: cleanString(env.currentValue || env.status),
+      requiredEvidence: definition.requiredEvidence,
+      evidence,
+      detail: `Hosted launch readiness claims ${definition.envName}=true and matching release evidence is present.`,
+      nextAction: "Keep the redacted artifacts and checksums in the private judge packet."
+    };
+  });
+}
+
+function slotVerified(slotsById, id) {
+  return slotsById.get(id)?.status === "verified";
+}
+
+function hasGeminiApiProof(rowsById) {
+  return ["gemini-proof-status", "gemini-smoke-write-through"].some((id) => {
+    const row = rowsById.get(id);
+    return Boolean(row && verifiedStatuses().includes(normalizeStatus(row.status)) && /gemini-api/iu.test(String(row.detail ?? "")));
+  });
+}
+
+function envFlagClaimed(env) {
+  if (!env || typeof env !== "object") {
+    return false;
+  }
+
+  const currentValue = cleanString(env.currentValue).toLowerCase();
+  return currentValue === "true" || (env.status === "configured" && currentValue !== "missing");
 }
 
 function releaseEvidenceSlotDefinitions() {
@@ -800,6 +957,11 @@ async function writeMarkdownSummary(outputDirectory, manifest) {
     "",
     `- Artifact: ${manifest.releaseEvidence.artifact}`,
     ...Object.entries(manifest.releaseEvidence.summary).map(([status, count]) => `- ${status}: ${count}`),
+    `- proof flags: ${manifest.releaseEvidence.proofFlagStatus}`,
+    "",
+    "## XPRIZE Proof Flag Checks",
+    "",
+    ...manifest.releaseEvidence.proofFlagChecks.map((check) => `- ${check.envName}: ${check.status} (${check.detail})`),
     "",
     "## Artifacts",
     "",

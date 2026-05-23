@@ -38,8 +38,10 @@ interface HostedProofBundleModule {
       status: string;
       checks: Array<{ id: string; status: string }>;
     };
+    blockers: string[];
     releaseEvidence?: {
       overallStatus: string;
+      proofFlagStatus?: string;
       summary: Record<string, number>;
     };
     artifacts: Array<{
@@ -111,6 +113,8 @@ describe("hosted proof bundle collector", () => {
       const releaseEvidence = JSON.parse(releaseEvidenceJson) as {
         overallStatus: string;
         releaseIntegrity: { status: string };
+        proofFlagStatus: string;
+        proofFlagChecks: Array<{ envName: string; status: string; detail: string }>;
         slots: Array<{ id: string; status: string; evidence: Array<{ id: string; status: string }> }>;
       };
       const postCalls = fetchImpl.mock.calls.filter(([, init]) => init?.method === "POST");
@@ -123,6 +127,7 @@ describe("hosted proof bundle collector", () => {
       expect(manifest.artifacts.map((artifact) => artifact.id)).toEqual(
         expect.arrayContaining([
           "verify-production",
+          "launch-readiness",
           "judge-access-pack",
           "deployment-packet",
           "hosted-evidence",
@@ -135,8 +140,17 @@ describe("hosted proof bundle collector", () => {
         ])
       );
       expect(manifest.releaseEvidence?.overallStatus).toBe("needs-proof");
+      expect(manifest.releaseEvidence?.proofFlagStatus).toBe("passed");
       expect(releaseEvidence.overallStatus).toBe("needs-proof");
       expect(releaseEvidence.releaseIntegrity.status).toBe("passed");
+      expect(releaseEvidence.proofFlagStatus).toBe("passed");
+      expect(releaseEvidence.proofFlagChecks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ envName: "XPRIZE_REPOSITORY_ACCESS_CONFIGURED", status: "passed" }),
+          expect.objectContaining({ envName: "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED", status: "passed" }),
+          expect.objectContaining({ envName: "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED", status: "passed" })
+        ])
+      );
       expect(releaseEvidence.slots.map((slot) => slot.id)).toEqual(
         expect.arrayContaining(["cloud-run-deployment", "workspace-sync", "live-gemini", "judge-access", "business-viability"])
       );
@@ -157,6 +171,47 @@ describe("hosted proof bundle collector", () => {
       await rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("blocks the release manifest when a claimed Gemini proof flag lacks provider evidence", async () => {
+    const { collectHostedProofBundle } = await loadCollector();
+    const tempDir = await mkdtemp(join(tmpdir(), "sentinel-proof-"));
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      const method = init?.method ?? "GET";
+
+      return new Response(JSON.stringify(payloadForRequest(href, method, { noGeminiProvider: true })), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+
+    try {
+      const manifest = await collectHostedProofBundle({
+        url: "https://sentinel.example.com",
+        outDir: tempDir,
+        releaseId: "release-test",
+        includeWriteChecks: false,
+        timeoutMs: 1000
+      });
+      const releaseEvidenceJson = await readFile(join(manifest.outputDirectory, "release-evidence-manifest.json"), "utf8");
+      const releaseEvidence = JSON.parse(releaseEvidenceJson) as {
+        overallStatus: string;
+        proofFlagStatus: string;
+        proofFlagBlockers: string[];
+        proofFlagChecks: Array<{ envName: string; status: string }>;
+      };
+
+      expect(releaseEvidence.overallStatus).toBe("blocked");
+      expect(releaseEvidence.proofFlagStatus).toBe("blocked");
+      expect(releaseEvidence.proofFlagBlockers.join(" ")).toContain("XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED");
+      expect(releaseEvidence.proofFlagChecks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ envName: "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED", status: "blocked" })
+        ])
+      );
+      expect(manifest.blockers.join(" ")).toContain("XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 async function loadCollector() {
@@ -173,14 +228,51 @@ function headerValue(init: RequestInit | undefined, name: string) {
   return headers[name];
 }
 
-function payloadForRequest(url: string, method: string) {
+function payloadForRequest(url: string, method: string, options: { noGeminiProvider?: boolean } = {}) {
   if (method === "POST") {
     return {
       overallStatus: "passed",
       status: "passed",
-      provider: "gemini-api",
+      provider: options.noGeminiProvider ? "mock-gemini" : "gemini-api",
       model: "gemini-3.5-flash",
       checks: []
+    };
+  }
+
+  if (url.includes("/api/production/gemini-smoke")) {
+    return {
+      status: options.noGeminiProvider ? "mock-only" : "passed",
+      provider: options.noGeminiProvider ? "mock-gemini" : "gemini-api",
+      model: "gemini-3.5-flash",
+      decisionSummary: options.noGeminiProvider ? "Only mock Gemini evidence is present." : "Hosted Gemini proof status passed."
+    };
+  }
+
+  if (url.includes("/api/production/launch-readiness")) {
+    return {
+      overallStatus: "external-required",
+      envMatrix: [
+        {
+          name: "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
+          status: "configured",
+          currentValue: "true"
+        },
+        {
+          name: "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
+          status: "configured",
+          currentValue: "true"
+        },
+        {
+          name: "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
+          status: "configured",
+          currentValue: "true"
+        }
+      ],
+      proofArtifacts: [
+        { id: "repository-access", status: "ready" },
+        { id: "live-gemini-log", status: options.noGeminiProvider ? "external-required" : "ready" }
+      ],
+      blockers: []
     };
   }
 

@@ -158,6 +158,7 @@ export async function importHostedProofBundle(options) {
       adminTokenConfigured: Boolean(options.adminToken),
       releaseId,
       releaseIntegrityStatus: bundleMetadata?.releaseIntegrityStatus ?? "",
+      proofFlagStatus: bundleMetadata?.proofFlagStatus ?? "",
       responseStatus: 0,
       responsePayload: { ok: true, dryRun: true }
     });
@@ -190,6 +191,7 @@ export async function importHostedProofBundle(options) {
     adminTokenConfigured: Boolean(options.adminToken),
     releaseId,
     releaseIntegrityStatus: bundleMetadata?.releaseIntegrityStatus ?? "",
+    proofFlagStatus: bundleMetadata?.proofFlagStatus ?? "",
     responseStatus: responsePayload.httpStatus,
     responsePayload: redactedResponse
   });
@@ -232,10 +234,13 @@ async function postImport(input) {
 async function readBundleMetadata(bundleDir) {
   const manifest = await readRequiredJson(join(bundleDir, bundleManifestFileName), bundleManifestFileName);
   const releaseEvidence = await readRequiredJson(join(bundleDir, releaseEvidenceFileName), releaseEvidenceFileName);
+  const proofFlagChecks = Array.isArray(releaseEvidence.proofFlagChecks) ? releaseEvidence.proofFlagChecks : [];
 
   return {
     manifest,
     releaseEvidence,
+    proofFlagChecks,
+    proofFlagStatus: cleanString(releaseEvidence.proofFlagStatus),
     releaseId: cleanString(manifest.releaseId),
     releaseIntegrityStatus: cleanString(releaseEvidence.releaseIntegrity?.status || manifest.releaseIntegrity?.status)
   };
@@ -288,6 +293,24 @@ function assertBundleConsistency(input) {
       `Release integrity check failed: expected passed, received ${releaseIntegrityStatus || "missing"}. Rerun collect:hosted-proof after fixing bundle blockers.`
     );
   }
+
+  assertProofFlagChecks(input.bundleMetadata.proofFlagChecks);
+}
+
+function assertProofFlagChecks(proofFlagChecks) {
+  if (!Array.isArray(proofFlagChecks) || !proofFlagChecks.length) {
+    return;
+  }
+
+  const blocked = proofFlagChecks.filter((check) => check?.status === "blocked");
+
+  if (!blocked.length) {
+    return;
+  }
+
+  throw new Error(
+    `XPRIZE proof flag check failed: ${blocked.map((check) => `${cleanString(check.envName)} (${cleanString(check.detail)})`).join("; ")}`
+  );
 }
 
 function buildSummary(input) {
@@ -300,6 +323,7 @@ function buildSummary(input) {
     status: input.status,
     releaseId: input.releaseId || null,
     releaseIntegrityStatus: input.releaseIntegrityStatus || null,
+    proofFlagStatus: input.proofFlagStatus || null,
     bundleDir: input.bundleDir,
     sourceFile: input.sourceFile,
     sourceUrl: input.baseUrl,
@@ -318,6 +342,7 @@ function buildSummary(input) {
     },
     nextActions: [
       "Open evidence-vault-import-response.json and confirm every candidate artifact status before relying on it.",
+      "Confirm release-evidence-manifest.json proofFlagChecks passed before setting repository, Google Cloud, or Gemini proof flags true in production values.",
       "Run /api/evidence/vault and /api/production/hosted-evidence after import to confirm checksummed artifact records are visible.",
       "Keep the source hosted proof bundle private; do not commit generated proof, credentials, invoices, customer findings, or raw cloud responses.",
       "Rerun Claim Guard and the XPRIZE Submission Gate before final Devpost submission."

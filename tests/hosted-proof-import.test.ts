@@ -29,6 +29,7 @@ interface HostedProofImportModule {
     status: string;
     releaseId: string | null;
     releaseIntegrityStatus: string | null;
+    proofFlagStatus: string | null;
     sourceUrl: string;
     requestFile: string;
     responseFile: string | null;
@@ -96,6 +97,7 @@ describe("hosted proof bundle Evidence Vault importer", () => {
     expect(summary.status).toBe("dry-run");
     expect(summary.releaseId).toBe("release-1");
     expect(summary.releaseIntegrityStatus).toBe("passed");
+    expect(summary.proofFlagStatus).toBe("passed");
     expect(summary.sourceUrl).toBe("https://sentinel.example.com");
     expect(summary.responseFile).toBeNull();
     expect(JSON.parse(requestJson)).toMatchObject({
@@ -173,6 +175,24 @@ describe("hosted proof bundle Evidence Vault importer", () => {
     );
   });
 
+  it("rejects final imports when claimed XPRIZE proof flags lack matching bundle evidence", async () => {
+    const { importHostedProofBundle } = await loadImporter();
+    const blockedProofFlagBundle = await makeBundle("https://sentinel.example.com", {}, {
+      proofFlagStatus: "blocked",
+      proofFlagChecks: [
+        {
+          envName: "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
+          status: "blocked",
+          detail: "Hosted launch readiness claims Gemini proof, but provider=gemini-api evidence is missing."
+        }
+      ]
+    });
+
+    await expect(importHostedProofBundle({ bundleDir: blockedProofFlagBundle, dryRun: true })).rejects.toThrow(
+      /XPRIZE proof flag check failed/u
+    );
+  });
+
   it("rejects local, non-verifier, or unredacted source files before import", async () => {
     const { importHostedProofBundle } = await loadImporter();
     const localBundle = await makeBundle("http://127.0.0.1:3000");
@@ -203,6 +223,8 @@ async function makeBundle(
     manifestReleaseId?: string;
     releaseEvidenceReleaseId?: string;
     releaseIntegrityStatus?: string;
+    proofFlagStatus?: string;
+    proofFlagChecks?: Array<Record<string, unknown>>;
   } = {}
 ) {
   const bundleDir = await mkdtemp(join(tmpdir(), "sentinel-import-"));
@@ -210,6 +232,14 @@ async function makeBundle(
   const manifestReleaseId = metadataOverrides.manifestReleaseId ?? releaseId;
   const releaseEvidenceReleaseId = metadataOverrides.releaseEvidenceReleaseId ?? releaseId;
   const releaseIntegrityStatus = metadataOverrides.releaseIntegrityStatus ?? "passed";
+  const proofFlagStatus = metadataOverrides.proofFlagStatus ?? "passed";
+  const proofFlagChecks = metadataOverrides.proofFlagChecks ?? [
+    {
+      envName: "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
+      status: "passed",
+      detail: "Repository proof flag cross-check passed."
+    }
+  ];
   tempDirs.push(bundleDir);
   await writeFile(
     join(bundleDir, "verify-production.json"),
@@ -238,7 +268,9 @@ async function makeBundle(
         releaseId: releaseEvidenceReleaseId,
         baseUrl,
         releaseIntegrity: { status: releaseIntegrityStatus },
-        overallStatus: releaseIntegrityStatus === "passed" ? "ready-for-private-review" : "blocked"
+        overallStatus: releaseIntegrityStatus === "passed" && proofFlagStatus !== "blocked" ? "ready-for-private-review" : "blocked",
+        proofFlagStatus,
+        proofFlagChecks
       },
       null,
       2
