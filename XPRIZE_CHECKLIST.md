@@ -83,6 +83,7 @@
 - [x] Production OAuth state validation uses Firestore in `gcp-rest` mode instead of Cloud Run process memory.
 - [x] Local MVP records OAuth install proof separately from Drive/Gmail cursor initialization.
 - [x] Submission gates do not count Workspace sync as live proof until Drive and Gmail cursors are initialized.
+- [x] Local MVP exposes `/api/workspace/sync/bootstrap` to initialize Drive/Gmail watches from a consented OAuth install only after GCP persistence, product URL, Gmail topic, Drive channel token, OAuth credentials, and Secret Manager token storage are configured.
 - [x] Non-demo Workspace webhook routes reject unauthenticated pushes instead of falling back to demo events.
 - [x] Authenticated production Workspace pushes are recorded as reconciliation hints and cannot directly create findings.
 - [x] Replayed Workspace push notifications are deduplicated before updating sync timestamps or audit evidence, with Firestore create-only reservations in `gcp-rest` mode.
@@ -177,6 +178,7 @@
 - [ ] Configure production evidence signing secret and regenerate the final sealed packet from the hosted product immediately before submission.
 - [ ] Store production evidence in Firestore/BigQuery, not memory.
 - [ ] Store real Drive startPageToken/pageToken and Gmail historyId per tenant after OAuth install.
+- [ ] Run `POST /api/workspace/sync/bootstrap` from Cloud Run after consented OAuth install and attach the redacted Drive/Gmail cursor initialization output to the private judge packet.
 - [ ] Renew Drive channels and Gmail watches before expiration in production.
 - [ ] Run Claim Guard before final Devpost copy, demo video script, judge export, and hosted release.
 - [ ] Run the XPRIZE Submission Gate before final Devpost submission and clear every blocker with real evidence.

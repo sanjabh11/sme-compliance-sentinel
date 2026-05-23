@@ -729,6 +729,34 @@ export async function storeWorkspaceOAuthTokenPayload(
   };
 }
 
+export async function accessWorkspaceOAuthTokenPayload(tenantId = sentinelConfig.tenantId, fetchImpl: typeof fetch = fetch) {
+  const readiness = buildPersistenceReadiness();
+
+  if (!readiness.configured) {
+    throw new Error(
+      `Workspace OAuth token access requires SENTINEL_STORAGE_MODE=gcp-rest and Google Cloud configuration. Missing env: ${readiness.missingEnv.join(", ") || "none"}.`
+    );
+  }
+
+  const accessToken = await fetchCloudRunAccessToken(fetchImpl);
+  const request = buildSecretManagerAccessVersionRequest(tenantId);
+  const result = await executeGoogleJsonRequest(request, accessToken, fetchImpl);
+  const payload = parseSecretManagerPayload(result.body);
+
+  if (!payload.refreshToken) {
+    throw new Error("Workspace OAuth token secret does not contain a refresh token payload.");
+  }
+
+  return {
+    secretName: buildWorkspaceTokenSecretName(tenantId),
+    httpStatus: result.httpStatus,
+    refreshToken: payload.refreshToken,
+    scope: payload.scope,
+    tokenType: payload.tokenType,
+    expiresInSeconds: payload.expiresInSeconds
+  };
+}
+
 export async function persistWorkspaceOAuthLaunchSession(
   session: WorkspaceOAuthLaunchSession,
   fetchImpl: typeof fetch = fetch
@@ -970,6 +998,24 @@ function buildFirestoreCommitRoot() {
     sentinelConfig.firestoreDatabase,
     "documents:commit"
   ].join("/");
+}
+
+function parseSecretManagerPayload(body: unknown) {
+  const payload = body as { payload?: { data?: string } };
+  const encoded = payload.payload?.data;
+
+  if (!encoded) {
+    throw new Error("Secret Manager access response did not include payload data.");
+  }
+
+  const parsed = JSON.parse(Buffer.from(encoded, "base64").toString("utf8")) as {
+    refreshToken?: string;
+    scope?: string;
+    tokenType?: string;
+    expiresInSeconds?: number | null;
+  };
+
+  return parsed;
 }
 
 function serializeWorkspaceOAuthSession(session: WorkspaceOAuthLaunchSession): Record<string, JsonValue> {

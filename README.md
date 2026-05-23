@@ -38,6 +38,7 @@ The product intentionally says **SOC2 readiness evidence**, not “SOC2 complian
 - Private pilot evidence workflow for recording arms-length status, related-party risk, MRR, active users, proof status, consent state, missing/private/verified financial proof, and required private artifact slots.
 - Production persistence contract and verifier for tenant-scoped Firestore documents, one-time OAuth launch states, append-only BigQuery audit rows, and Secret Manager OAuth-token storage.
 - Workspace sync reliability control plane with OAuth install proof, authenticated webhook intake that treats production pushes as reconciliation hints, Drive start/page token plans, Drive changes watch renewal state, Gmail watch historyId state, and gates that do not claim live sync until both Drive and Gmail cursors are initialized.
+- Live Workspace sync bootstrap endpoint that, after consented OAuth and GCP persistence are configured, reads the refresh-token payload from Secret Manager, exchanges it for a short-lived access token, initializes Drive changes and Gmail watches, persists cursor state to Firestore, and redacts all token values from the response.
 - Claim Guard scanner that checks product, docs, and submission copy for overclaims such as certification, guaranteed compliance, audit assurance, or absolute win claims.
 - Submission Compliance Gate plus dependency/license manifest for new-project disclosure, repository access, judge access, third-party license/API review, demo-video asset clearance, customer redaction, and two-business-day evidence response readiness.
 - Project Provenance Report that checks Git history, first-commit timing, tracked/untracked source state, repository URL, human attestation, and pre-existing framework/dependency disclosure.
@@ -92,25 +93,26 @@ npm run build
 20. Capture a score snapshot after scan/remediation/pilot changes and confirm the trend panel shows risk, deal-impact, evidence, and MRR deltas, then confirm the ROI card updates from pilot MRR, remediation, questionnaire, trust packet, and score-history evidence.
 21. Generate a Deal Impact Report and confirm it summarizes buyer proof points, score movement, ROI, and remaining production gaps without claiming a guaranteed outcome.
 22. Run **Reconcile sync cursors** to show the Drive/Gmail cursor path. In mock mode this advances simulated cursors without calling Google APIs; in live mode it blocks until OAuth connection state, Drive startPageToken, and Gmail historyId exist.
-23. Run **Check cost controls** to show the Cloud Billing budget/API-key restriction plan and the production blockers that still need GCP proof.
-24. Run **Launch proof plan** to unify deployment, live Gemini, Workspace sync, paid pilot evidence, judge access, license/IP review, env gaps, verification commands, and proof artifacts.
-25. Run **Provisioning pack** to generate the non-secret Cloud Run/GCP setup sequence, Secret Manager checklist, dry-run command, deploy command, and hosted verification sequence.
-26. Run **Cloud Run evidence** or `npm run verify:cloudrun-deployment` to confirm the checked-in manifest still has only template replacement gaps, Secret Manager references, and manual attestation flags before a real dry-run.
-27. Run **Hosted evidence** to see the private capture packet for hosted Cloud Run URL, production verification JSON, live Gemini, GCP persistence, Workspace sync, Cloud Billing, paid-pilot, and judge-access artifacts.
-28. Run **Gemini proof smoke** after deploying with `GEMINI_API_KEY` to verify the hosted app records `provider=gemini-api` using a synthetic non-customer fixture.
-29. Run **Claim Guard** to verify that product and submission copy does not claim certification, legal advice, audit assurance, guaranteed compliance, or certainty of winning.
-30. Run **Check financial evidence** to confirm mock rows, missing invoices, private judge proof, and verified production proof stay separated.
-31. Run **Check Evidence Vault** to confirm invoices, user logs, cost/CAC receipts, consent records, Gemini/GCP logs, hosted URL, repository URL, and demo-video proof are tracked privately with redaction state.
-32. Run **Build intake queue** to prioritize private proof collection, redaction work, accepted proof types, rejection triggers, and Evidence Vault registration payloads for the next paid pilot.
-33. Run **Check submission gate** to see which XPRIZE requirements are proven, warning, or blocked.
-34. Run **Project provenance** to verify Git history, tracked source, first commit timing, repository URL, and pre-existing-work disclosure gaps.
-35. Run **Source release** before the first commit or source push to verify required files, ignore rules, release plan, and obvious secret patterns.
-36. Run **Check submission compliance** to surface repository, IP/license, public video, customer-redaction, and evidence-response blockers.
-37. Run **License manifest** to export dependency, license, and Google API-use disclosure details.
-38. Run **Generate submission binder** to produce the private judge-readiness manifest, testing-instruction status, under-three-minute demo timeline, and two-business-day evidence request queue.
-39. Run **Devpost pack** to generate claim-safe submission copy, demo scenes, screenshot targets, testing instructions, and the private evidence response plan.
-40. Run **Demo video pack** to verify the generated timeline, public host, English/subtitle confirmation, asset clearance, redaction, functioning-product footage, and live Gemini proof gates before recording or upload.
-41. Run **Market battlecard** to compare Sentinel against Vanta, Drata, and Secureframe while keeping the one-day Workspace risk-scan wedge explicit.
+23. Run **Bootstrap live sync** after consented OAuth, GCP persistence, product URL, Gmail topic, and Drive channel token are configured; it initializes Drive/Gmail watches and persists cursor state without returning token values.
+24. Run **Check cost controls** to show the Cloud Billing budget/API-key restriction plan and the production blockers that still need GCP proof.
+25. Run **Launch proof plan** to unify deployment, live Gemini, Workspace sync, paid pilot evidence, judge access, license/IP review, env gaps, verification commands, and proof artifacts.
+26. Run **Provisioning pack** to generate the non-secret Cloud Run/GCP setup sequence, Secret Manager checklist, dry-run command, deploy command, and hosted verification sequence.
+27. Run **Cloud Run evidence** or `npm run verify:cloudrun-deployment` to confirm the checked-in manifest still has only template replacement gaps, Secret Manager references, and manual attestation flags before a real dry-run.
+28. Run **Hosted evidence** to see the private capture packet for hosted Cloud Run URL, production verification JSON, live Gemini, GCP persistence, Workspace sync, Cloud Billing, paid-pilot, and judge-access artifacts.
+29. Run **Gemini proof smoke** after deploying with `GEMINI_API_KEY` to verify the hosted app records `provider=gemini-api` using a synthetic non-customer fixture.
+30. Run **Claim Guard** to verify that product and submission copy does not claim certification, legal advice, audit assurance, guaranteed compliance, or certainty of winning.
+31. Run **Check financial evidence** to confirm mock rows, missing invoices, private judge proof, and verified production proof stay separated.
+32. Run **Check Evidence Vault** to confirm invoices, user logs, cost/CAC receipts, consent records, Gemini/GCP logs, hosted URL, repository URL, and demo-video proof are tracked privately with redaction state.
+33. Run **Build intake queue** to prioritize private proof collection, redaction work, accepted proof types, rejection triggers, and Evidence Vault registration payloads for the next paid pilot.
+34. Run **Check submission gate** to see which XPRIZE requirements are proven, warning, or blocked.
+35. Run **Project provenance** to verify Git history, tracked source, first commit timing, repository URL, and pre-existing-work disclosure gaps.
+36. Run **Source release** before the first commit or source push to verify required files, ignore rules, release plan, and obvious secret patterns.
+37. Run **Check submission compliance** to surface repository, IP/license, public video, customer-redaction, and evidence-response blockers.
+38. Run **License manifest** to export dependency, license, and Google API-use disclosure details.
+39. Run **Generate submission binder** to produce the private judge-readiness manifest, testing-instruction status, under-three-minute demo timeline, and two-business-day evidence request queue.
+40. Run **Devpost pack** to generate claim-safe submission copy, demo scenes, screenshot targets, testing instructions, and the private evidence response plan.
+41. Run **Demo video pack** to verify the generated timeline, public host, English/subtitle confirmation, asset clearance, redaction, functioning-product footage, and live Gemini proof gates before recording or upload.
+42. Run **Market battlecard** to compare Sentinel against Vanta, Drata, and Secureframe while keeping the one-day Workspace risk-scan wedge explicit.
 
 The **Low-risk skip** button verifies that metadata-only events do not call Gemini.
 
@@ -216,6 +218,8 @@ Use the narrowest scopes that support the selected pilot flow. Avoid a public Wo
 `GET /api/oauth/google/start` returns the pilot OAuth launch plan, missing env values, and signed-consent gate. `GET /api/oauth/google/start?dryRun=false` redirects to Google only when the OAuth client id, client secret, redirect URI, and redacted verified `pilot-consent` artifact are all present. The live redirect records a one-time, short-lived OAuth `state` tied to the signed consent artifact. In `gcp-rest` mode that state is written to tenant-scoped Firestore before redirect so Cloud Run restarts or multi-instance callback routing do not bypass the gate. The pilot consent URL requests Drive metadata and Gmail metadata only; the restricted Drive mutation scope is deferred until a tenant explicitly enables human-approved remediation.
 
 `GET /api/oauth/google/callback` handles the Google authorization-code return path. It validates the one-time launch `state` before token exchange, using Firestore with an update-time precondition in `gcp-rest` mode and the local registry in memory mode. In production mode it exchanges the code at Google’s token endpoint, stores only the refresh-token payload as a new Secret Manager version, records a redacted Workspace OAuth install, and leaves Drive/Gmail sync marked `not_configured` until cursors are initialized. Local mode blocks before token exchange if OAuth state, OAuth credentials, or GCP storage are not configured.
+
+`POST /api/workspace/sync/bootstrap` is the production cursor-initialization path after a consented OAuth install. It blocks before live API calls unless `SENTINEL_MOCK_MODE=false`, `SENTINEL_STORAGE_MODE=gcp-rest`, `NEXT_PUBLIC_PRODUCT_URL`, `WORKSPACE_GMAIL_TOPIC`, `WORKSPACE_DRIVE_CHANNEL_TOKEN`, OAuth client credentials, a live Workspace connection, and the Secret Manager refresh-token payload are all present. When configured, it reads the refresh-token payload from Secret Manager, exchanges it for a short-lived Google access token, calls Drive `changes.getStartPageToken`, creates a Drive changes watch for the hosted webhook, starts a Gmail watch, stores Drive/Gmail cursor state to Firestore, and returns only redacted status metadata.
 
 ## Workspace Sync Reliability
 

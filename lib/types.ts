@@ -1846,11 +1846,13 @@ export interface WorkspaceReconciliationResult {
   checks: Array<{
     target:
       | "configuration"
+      | "access-token"
       | "drive-start-token"
       | "drive-changes"
       | "drive-watch"
       | "gmail-watch"
-      | "gmail-history";
+      | "gmail-history"
+      | "sync-state-firestore";
     status: "blocked" | "passed" | "simulated" | "failed";
     detail: string;
     url?: string;

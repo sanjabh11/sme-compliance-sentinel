@@ -158,7 +158,7 @@ function buildWorkstreams(snapshot: ProductionLaunchSnapshot): ProductionLaunchW
         "Gmail historyId/watch state.",
         "Reconciliation run showing no hidden cursor gaps."
       ],
-      nextAction: "Install OAuth for an allowlisted pilot, store refresh token in Secret Manager, then run sync reconciliation.",
+      nextAction: "Install OAuth for an allowlisted pilot, store refresh token in Secret Manager, run /api/workspace/sync/bootstrap, then run sync reconciliation.",
       verificationEndpoint: "/api/workspace/sync/reconcile",
       privateHandling: "Keep OAuth tokens, tenant emails, and document names out of public screenshots."
     },

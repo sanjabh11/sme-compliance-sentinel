@@ -9,7 +9,7 @@ import { makeGmailPiiEvent, makeLowRiskThumbnailEvent, makePublicSecretDriveEven
 import { scanResourceEvent } from "@/lib/scanner";
 import { buildStrategySnapshot } from "@/lib/strategy";
 import { buildReadinessCommandCenter } from "@/lib/readiness";
-import { buildInitialWorkspaceSyncState, reconcileWorkspaceSyncState } from "@/lib/workspace-sync";
+import { bootstrapLiveWorkspaceSyncState, buildInitialWorkspaceSyncState, reconcileWorkspaceSyncState } from "@/lib/workspace-sync";
 import { buildTrustPacket, defaultTrustPacketSections } from "@/lib/trust-center";
 import { buildQuestionnaireExport, buildQuestionnaireResponsePack, normalizeQuestionText } from "@/lib/questionnaire";
 import { buildDefaultPlaybooks, validatePlaybookDraft } from "@/lib/playbooks";
@@ -1035,6 +1035,32 @@ export function runWorkspaceSyncReconciliation(): {
     }
   );
   appendRiskScoreSnapshot(state, "sync_reconciliation_completed", "workspace_sync", true);
+
+  return { result, snapshot: getDashboardSnapshot() };
+}
+
+export async function runWorkspaceSyncBootstrap(): Promise<{
+  result: WorkspaceReconciliationResult;
+  snapshot: DashboardSnapshot;
+}> {
+  const state = getState();
+  const result = await bootstrapLiveWorkspaceSyncState({
+    syncState: state.syncState,
+    connections: state.connections
+  });
+
+  writeAudit(
+    "system",
+    "sync_reconciliation_completed",
+    `Workspace live sync bootstrap ${result.status}: Drive/Gmail cursor initialization ${result.attemptedLiveApi ? "attempted" : "blocked before API calls"}.`,
+    "workspace_sync_bootstrap",
+    {
+      status: result.status,
+      attemptedLiveApi: result.attemptedLiveApi,
+      processedChanges: result.processedChanges
+    }
+  );
+  appendRiskScoreSnapshot(state, "sync_reconciliation_completed", "workspace_sync_bootstrap", true);
 
   return { result, snapshot: getDashboardSnapshot() };
 }

@@ -158,6 +158,15 @@ const writeThroughChecks = [
       status: payload?.status ?? payload?.mode ?? "unknown",
       detail: payload?.message ?? payload?.blocker ?? "Workspace reconcile response received."
     })
+  },
+  {
+    id: "workspace-bootstrap",
+    method: "POST",
+    path: "/api/workspace/sync/bootstrap",
+    summarize: (payload) => ({
+      status: payload?.result?.status ?? payload?.status ?? "unknown",
+      detail: `${payload?.result?.checks?.length ?? "unknown"} bootstrap check(s); attempted live API ${payload?.result?.attemptedLiveApi ?? "unknown"}.`
+    })
   }
 ];
 

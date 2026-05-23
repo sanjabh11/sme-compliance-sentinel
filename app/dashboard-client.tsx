@@ -703,6 +703,34 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
     }
   }
 
+  async function bootstrapLiveSync() {
+    setActionState("running");
+    setLastMessage("Bootstrapping live Drive/Gmail sync cursors...");
+
+    try {
+      const response = await fetch("/api/workspace/sync/bootstrap", { method: "POST" });
+      const payload = (await response.json()) as { result: WorkspaceReconciliationResult; snapshot: DashboardSnapshot };
+
+      if (!response.ok) {
+        throw new Error("Unable to bootstrap live Workspace sync.");
+      }
+
+      setSyncCheck(payload.result);
+      setSnapshot(payload.snapshot);
+      setActionState(payload.result.status === "failed" ? "error" : "idle");
+      setLastMessage(
+        payload.result.status === "passed"
+          ? "Live Workspace sync cursors initialized and persisted."
+          : payload.result.status === "blocked"
+            ? "Live sync bootstrap is blocked until OAuth, GCP persistence, product URL, and webhook secrets are configured."
+            : `Live sync bootstrap ${payload.result.status}.`
+      );
+    } catch (error) {
+      setActionState("error");
+      setLastMessage(error instanceof Error ? error.message : "Unable to bootstrap live Workspace sync.");
+    }
+  }
+
   async function checkCostControls() {
     setActionState("running");
     setLastMessage("Checking Google Cloud budget and Gemini key controls...");
@@ -1920,6 +1948,10 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
           <button type="button" className="secondary" onClick={runSyncReconciliation} disabled={actionState === "running"}>
             <RefreshCw size={16} aria-hidden="true" />
             Reconcile sync cursors
+          </button>
+          <button type="button" className="secondary" onClick={bootstrapLiveSync} disabled={actionState === "running"}>
+            <RefreshCw size={16} aria-hidden="true" />
+            Bootstrap live sync
           </button>
           <button type="button" className="secondary" onClick={checkCostControls} disabled={actionState === "running"}>
             <Database size={16} aria-hidden="true" />
