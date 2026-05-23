@@ -23,8 +23,9 @@ describe("XPRIZE submission gate", () => {
     expect(checksById["human-approval"].status).toBe("passed");
     expect(checksById["related-party-separation"].status).toBe("passed");
     expect(checksById["google-cloud-product"].status).toBe("blocked");
-    expect(checksById["google-cloud-product"].fix).toContain("agent-run");
+    expect(checksById["google-cloud-product"].fix).toContain("XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED");
     expect(checksById["gemini-api-production"].status).toBe("warning");
+    expect(checksById["gemini-api-production"].fix).toContain("XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED");
     expect(checksById["ai-business-operations"].status).toBe("warning");
     expect(checksById["ai-business-operations"].fix).toContain("BigQuery agent-run");
     expect(checksById["workspace-production-sync"].status).toBe("blocked");
@@ -33,7 +34,7 @@ describe("XPRIZE submission gate", () => {
     expect(checksById["cloud-cost-controls"].fix).toContain("Cloud Billing budget");
     expect(checksById["product-url"].status).toBe("blocked");
     expect(checksById["repository-url"].status).toBe("blocked");
-    expect(checksById["repository-url"].fix).toContain("XPRIZE_REPOSITORY_URL");
+    expect(checksById["repository-url"].fix).toContain("XPRIZE_REPOSITORY_ACCESS_CONFIGURED");
     expect(checksById["demo-video"].status).toBe("blocked");
     expect(checksById["demo-video"].fix).toContain("demo-video clearance flags");
     expect(gate.blockingSummary.join(" ")).toContain("Deploy");

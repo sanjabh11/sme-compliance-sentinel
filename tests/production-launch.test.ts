@@ -30,6 +30,9 @@ describe("Production launch command center", () => {
     expect(envByName["WORKSPACE_DRIVE_CHANNEL_TOKEN"].secret).toBe(true);
     expect(envByName["SENTINEL_BUDGET_PUBSUB_TOPIC"].status).toBe("missing");
     expect(envByName["SENSITIVE_DATA_PROTECTION_ENABLED"].status).toBe("missing");
+    expect(envByName["XPRIZE_REPOSITORY_ACCESS_CONFIGURED"].status).toBe("missing");
+    expect(envByName["XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED"].status).toBe("missing");
+    expect(envByName["XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED"].status).toBe("missing");
     expect(envByName["XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED"].status).toBe("missing");
     expect(envByName["XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED"].status).toBe("missing");
     expect(envByName["XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED"].status).toBe("missing");
@@ -78,6 +81,8 @@ describe("Production launch command center", () => {
       ])
     );
     expect(proofArtifactsById["bigquery-agent-run"].privateHandling).toContain("provider/model/fallback/cost");
+    expect(proofArtifactsById["live-gemini-log"].nextAction).toContain("XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED");
+    expect(proofArtifactsById["repository-access"].nextAction).toContain("judge/testing access");
     expect(proofArtifactsById["demo-video"].nextAction).toContain("human-review");
     expect(proofArtifactsById["license-ip-review"].status).toBe("external-required");
     expect(center.claimBoundaries.join(" ")).toContain("Local mock data");

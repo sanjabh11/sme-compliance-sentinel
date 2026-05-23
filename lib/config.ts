@@ -56,7 +56,11 @@ export const sentinelConfig = {
   evidenceSigningSecret: process.env.SENTINEL_EVIDENCE_SIGNING_SECRET ?? "",
   productUrl: process.env.NEXT_PUBLIC_PRODUCT_URL ?? "",
   repositoryUrl: process.env.XPRIZE_REPOSITORY_URL ?? "",
+  xprizeRepositoryAccessConfigured: process.env.XPRIZE_REPOSITORY_ACCESS_CONFIGURED === "true",
   xprizeCategory: process.env.XPRIZE_CATEGORY ?? "Small Business Services",
+  xprizeGoogleCloudProductEvidenceConfigured:
+    process.env.XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED === "true",
+  xprizeGeminiApiCallEvidenceConfigured: process.env.XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED === "true",
   demoVideoUrl: process.env.XPRIZE_DEMO_VIDEO_URL ?? "",
   demoVideoUnderThreeMinutesConfirmed: process.env.XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED === "true",
   demoVideoPubliclyAccessibleConfirmed: process.env.XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED === "true",

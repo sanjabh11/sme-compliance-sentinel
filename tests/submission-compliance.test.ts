@@ -18,6 +18,7 @@ describe("submission compliance gate", () => {
     expect(checksById["organization-corporate-id"].status).toBe("blocked");
     expect(checksById["organization-corporate-id"].fix).toContain("XPRIZE_ENTRANT_TYPE");
     expect(checksById["repository-access"].status).toBe("blocked");
+    expect(checksById["repository-access"].fix).toContain("XPRIZE_REPOSITORY_ACCESS_CONFIGURED");
     expect(checksById["product-access"].status).toBe("blocked");
     expect(checksById["product-access"].evidence).toContain("free judging-period access missing");
     expect(checksById["demo-video-clearance"].status).toBe("blocked");

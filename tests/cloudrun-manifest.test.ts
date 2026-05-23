@@ -26,7 +26,10 @@ describe("Cloud Run deployment manifest", () => {
       "SENTINEL_PRIVATE_EVIDENCE_BUCKET",
       "NEXT_PUBLIC_PRODUCT_URL",
       "XPRIZE_REPOSITORY_URL",
+      "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
       "XPRIZE_CATEGORY",
+      "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
+      "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
       "XPRIZE_DEMO_VIDEO_URL",
       "XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED",
       "XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED",
@@ -96,7 +99,10 @@ describe("Cloud Run deployment manifest", () => {
     expectEnvValue("SENTINEL_SOURCE_BRANCH", "origin/main");
     expectEnvValue("SENTINEL_PRIVATE_EVIDENCE_BUCKET", "gs://PROJECT_ID-sentinel-private-evidence");
     expectEnvValue("XPRIZE_REPOSITORY_URL", "https://github.com/sanjabh11/sme-compliance-sentinel");
+    expectEnvValue("XPRIZE_REPOSITORY_ACCESS_CONFIGURED", "false");
     expectEnvValue("XPRIZE_CATEGORY", "Small Business Services");
+    expectEnvValue("XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED", "false");
+    expectEnvValue("XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED", "false");
     expectEnvValue("XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED", "false");
     expectEnvValue("XPRIZE_REAL_USER_EVIDENCE_CONFIGURED", "false");
     expectEnvValue("XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED", "false");

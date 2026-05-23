@@ -117,24 +117,31 @@ function buildChecks(snapshot: GateSnapshot): XPrizeGateCheck[] {
       id: "google-cloud-product",
       label: "Google Cloud product in production path",
       criterion: "AI-Native Operations",
-      status: persistence.configured ? "passed" : "blocked",
+      status: persistence.configured && sentinelConfig.xprizeGoogleCloudProductEvidenceConfigured ? "passed" : "blocked",
       evidence: persistence.configured
-        ? `Configured project ${persistence.projectId}; persistence targets Firestore, BigQuery audit table ${persistence.bigQueryAuditTable}, BigQuery agent-run table ${persistence.bigQueryAgentRunsTable}, and Secret Manager.`
+        ? `Configured project ${persistence.projectId}; persistence targets Firestore, BigQuery audit table ${persistence.bigQueryAuditTable}, BigQuery agent-run table ${persistence.bigQueryAgentRunsTable}, and Secret Manager; evidence flag ${sentinelConfig.xprizeGoogleCloudProductEvidenceConfigured ? "confirmed" : "missing"}.`
         : `Not configured: ${persistence.missingEnv.join(", ") || "storage mode is memory"}.`,
-      fix: "Deploy to Cloud Run and configure Firestore, BigQuery audit and agent-run tables, Secret Manager, and service-account IAM."
+      fix: "Deploy to Cloud Run, configure Firestore, BigQuery audit and agent-run tables, Secret Manager, and service-account IAM, then set XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED=true only after private proof exists."
     },
     {
       id: "gemini-api-production",
       label: "Deployed Gemini API call",
       criterion: "AI-Native Operations",
-      status: geminiRuns > 0 ? "passed" : mockGeminiRuns > 0 ? "warning" : "blocked",
+      status:
+        geminiRuns > 0 && sentinelConfig.xprizeGeminiApiCallEvidenceConfigured
+          ? "passed"
+          : geminiRuns > 0 || mockGeminiRuns > 0
+            ? "warning"
+            : "blocked",
       evidence:
-        geminiRuns > 0
-          ? `${geminiRuns} Gemini API run(s) recorded.`
+        geminiRuns > 0 && sentinelConfig.xprizeGeminiApiCallEvidenceConfigured
+          ? `${geminiRuns} Gemini API run(s) recorded and deployment evidence flag is confirmed.`
+          : geminiRuns > 0
+            ? `${geminiRuns} Gemini API run(s) recorded, but XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED is not confirmed.`
           : mockGeminiRuns > 0
             ? `${mockGeminiRuns} mock Gemini run(s) recorded; no live Gemini API proof yet.`
             : "No semantic agent run has been recorded yet.",
-      fix: "Run a deployed high-risk scan with GEMINI_API_KEY configured and preserve the agent/API log."
+      fix: "Run a deployed high-risk scan with GEMINI_API_KEY configured, preserve the agent/API log, and set XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED=true only after private proof exists."
     },
     {
       id: "workspace-production-sync",
@@ -243,9 +250,11 @@ function buildChecks(snapshot: GateSnapshot): XPrizeGateCheck[] {
       id: "repository-url",
       label: "Repository URL",
       criterion: "Submission Logistics",
-      status: sentinelConfig.repositoryUrl ? "passed" : "blocked",
-      evidence: sentinelConfig.repositoryUrl || "XPRIZE_REPOSITORY_URL is not configured.",
-      fix: "Publish or share the repository as required by Devpost and set XPRIZE_REPOSITORY_URL."
+      status: sentinelConfig.repositoryUrl && sentinelConfig.xprizeRepositoryAccessConfigured ? "passed" : "blocked",
+      evidence: sentinelConfig.repositoryUrl
+        ? `${sentinelConfig.repositoryUrl}; judge/testing access ${sentinelConfig.xprizeRepositoryAccessConfigured ? "confirmed" : "missing"}.`
+        : "XPRIZE_REPOSITORY_URL is not configured.",
+      fix: "Publish or share the repository as required by Devpost, set XPRIZE_REPOSITORY_URL, and set XPRIZE_REPOSITORY_ACCESS_CONFIGURED=true only after access is verified."
     },
     {
       id: "demo-video",

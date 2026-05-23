@@ -266,7 +266,28 @@ function buildEnvMatrix(): ProductionLaunchEnvItem[] {
   return [
     envItem("NEXT_PUBLIC_PRODUCT_URL", sentinelConfig.productUrl, "Hosted judge-accessible product URL.", false, "Deploy the app and set the public product URL."),
     envItem("XPRIZE_REPOSITORY_URL", sentinelConfig.repositoryUrl, "Repository access for judging/testing.", false, "Publish or share the repository and set the URL."),
+    envItem(
+      "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
+      sentinelConfig.xprizeRepositoryAccessConfigured ? "true" : "",
+      "Verified repository access for judge/testing accounts.",
+      false,
+      "Set true only after the repository is public or the required judge/testing accounts have access."
+    ),
     envItem("XPRIZE_CATEGORY", sentinelConfig.xprizeCategory, "Selected Devpost category.", false, "Keep this aligned to Small Business Services unless the final strategy is formally changed."),
+    envItem(
+      "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
+      sentinelConfig.xprizeGoogleCloudProductEvidenceConfigured ? "true" : "",
+      "Private proof that at least one Google Cloud product is used by the deployed app.",
+      false,
+      "Set true only after Cloud Run/GCP proof exists in the private evidence packet."
+    ),
+    envItem(
+      "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
+      sentinelConfig.xprizeGeminiApiCallEvidenceConfigured ? "true" : "",
+      "Private proof that deployed LLM functionality includes a Gemini API call.",
+      false,
+      "Set true only after a hosted Gemini API call log or agent-run proof is captured."
+    ),
     envItem("XPRIZE_DEMO_VIDEO_URL", sentinelConfig.demoVideoUrl, "Public under-three-minute demo video.", false, "Record and publish the final demo video."),
     envItem("SENTINEL_CLOUD_RUN_SERVICE_NAME", sentinelConfig.cloudRunServiceName, "Cloud Run service identity for hosted proof.", false, "Confirm the deployed service name before capturing Cloud Run evidence."),
     envItem("SENTINEL_CLOUD_RUN_REGION", sentinelConfig.cloudRunRegion, "Cloud Run region for deploy and describe commands.", false, "Confirm the deployed region matches the Cloud Run manifest and verification commands."),
@@ -655,12 +676,12 @@ function buildProofArtifacts(snapshot: ProductionLaunchSnapshot): ProductionLaun
     proofArtifact("bigquery-audit", "BigQuery audit evidence row", buildPersistenceReadiness().configured, "engineering", "/api/production/persistence", "Production operation proof.", "Share row metadata, not private finding content.", "Run write-through and capture BigQuery row proof."),
     proofArtifact("bigquery-agent-run", "BigQuery agent-run evidence row", buildPersistenceReadiness().configured && snapshot.agentRuns.length > 0, "engineering", "/api/production/persistence", "Durable AI-native operations proof.", "Share provider/model/fallback/cost metadata only; redact prompt, output, and customer content.", "Run a production high-risk scan, then verify the agent-run insert/read path."),
     proofArtifact("secret-manager-token", "Secret Manager OAuth token path", buildPersistenceReadiness().configured && hasLiveWorkspaceConnection, "security", "/api/oauth/google/callback", "Workspace OAuth credential safety.", "Never expose token values; show secret path and IAM only.", "Complete OAuth callback and verify token storage."),
-    proofArtifact("live-gemini-log", "Live Gemini API semantic run", hasGeminiRun, "engineering", "/api/production/gemini-smoke", "Required deployed LLM functionality proof.", "Share model/cost metadata only; redact prompt and customer content.", "Run the hosted synthetic Gemini smoke after configuring GEMINI_API_KEY."),
+    proofArtifact("live-gemini-log", "Live Gemini API semantic run", hasGeminiRun && sentinelConfig.xprizeGeminiApiCallEvidenceConfigured, "engineering", "/api/production/gemini-smoke", "Required deployed LLM functionality proof.", "Share model/cost metadata only; redact prompt and customer content.", "Run the hosted synthetic Gemini smoke after configuring GEMINI_API_KEY and set XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED only after proof exists."),
     proofArtifact("workspace-sync-log", "Workspace sync reconciliation log", hasLiveWorkspaceConnection && hasLiveWorkspaceSyncEvidence(snapshot.syncState), "security", "/api/workspace/sync/reconcile", "AI-native operations continuity.", "Redact email addresses, domains, and file names.", "Run reconciliation after OAuth install."),
     proofArtifact("workspace-watch-renewal", "Workspace watch renewal log", hasLiveWorkspaceConnection && hasLiveWorkspaceSyncEvidence(snapshot.syncState), "security", "/api/workspace/sync/renew", "AI-native operations continuity.", "Redact OAuth tokens, channel tokens, file names, and mailbox details.", "Run watch renewal before Drive/Gmail expiration and register the redacted output."),
     proofArtifact("financial-records", "Revenue, cost, CAC, and invoice proof", paidProofReady, "founder", "/api/financial-evidence/ledger", "Business Viability.", "Keep invoices/payment exports private and redacted.", "Attach real paid customer records and costs."),
     proofArtifact("user-consent", "Real user and testimonial consent proof", productionEvidence && snapshot.tenant.evidence.activeUsers > 0, "sales", "/api/evidence/vault", "Real user evidence.", "Share testimonials only when explicit consent is recorded.", "Register consent and active-user artifacts."),
-    proofArtifact("repository-access", "Repository access proof", Boolean(sentinelConfig.repositoryUrl), "engineering", "XPRIZE_REPOSITORY_URL", "Submission testing.", "Keep secrets and private evidence out of source.", "Publish or privately share the complete source repository."),
+    proofArtifact("repository-access", "Repository access proof", Boolean(sentinelConfig.repositoryUrl) && sentinelConfig.xprizeRepositoryAccessConfigured, "engineering", "XPRIZE_REPOSITORY_URL", "Submission testing.", "Keep secrets and private evidence out of source.", "Publish or privately share the complete source repository and verify judge/testing access."),
     proofArtifact("demo-video", "Public under-three-minute demo video", hasDemoVideoClearance(), "sales", "XPRIZE_DEMO_VIDEO_URL", "Submission media.", "Use only owned/permitted assets and redacted data.", "Record, publish, and human-review the final video for duration, visibility, assets, and customer-data redaction."),
     proofArtifact(
       "license-ip-review",

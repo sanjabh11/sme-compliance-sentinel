@@ -50,10 +50,12 @@ function buildChecks(
   thirdPartyManifest: ReturnType<typeof buildThirdPartyManifest>,
   projectProvenance: ReturnType<typeof buildProjectProvenanceReport>
 ): SubmissionComplianceCheck[] {
-  const hasRepo = Boolean(sentinelConfig.repositoryUrl);
+  const hasRepo = Boolean(sentinelConfig.repositoryUrl) && sentinelConfig.xprizeRepositoryAccessConfigured;
   const demoVideoCleared = hasDemoVideoClearance();
   const hasEvidenceExport = snapshot.auditEvents.some((event) => event.type === "evidence_exported");
-  const hasGeminiRun = snapshot.agentRuns.some((run) => run.provider === "gemini-api");
+  const hasGeminiRun =
+    snapshot.agentRuns.some((run) => run.provider === "gemini-api") &&
+    sentinelConfig.xprizeGeminiApiCallEvidenceConfigured;
   const productionEvidence = sentinelConfig.evidenceMode === "production";
   const hasFinancialProof =
     productionEvidence &&
@@ -77,8 +79,10 @@ function buildChecks(
       label: "Repository access and source completeness",
       ruleArea: "Testing Access",
       status: hasRepo ? "passed" : "blocked",
-      evidence: hasRepo ? sentinelConfig.repositoryUrl : "XPRIZE_REPOSITORY_URL is not configured.",
-      fix: "Publish the repository or share a private repository with the required judge/testing accounts, then set XPRIZE_REPOSITORY_URL.",
+      evidence: sentinelConfig.repositoryUrl
+        ? `${sentinelConfig.repositoryUrl}; judge/testing access ${sentinelConfig.xprizeRepositoryAccessConfigured ? "confirmed" : "missing"}.`
+        : "XPRIZE_REPOSITORY_URL is not configured.",
+      fix: "Publish the repository or share a private repository with the required judge/testing accounts, then set XPRIZE_REPOSITORY_URL and XPRIZE_REPOSITORY_ACCESS_CONFIGURED=true only after access is verified.",
       ownerRole: "engineering",
       requiredBeforeSubmit: true
     },

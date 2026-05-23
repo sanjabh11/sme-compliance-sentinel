@@ -46,6 +46,15 @@ describe("Cloud Run deployment evidence verifier", () => {
       status: "passed",
       currentValue: "Small Business Services"
     });
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_REPOSITORY_ACCESS_CONFIGURED")?.status).toBe(
+      "manual-review"
+    );
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED")?.status).toBe(
+      "manual-review"
+    );
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED")?.status).toBe(
+      "manual-review"
+    );
     expect(evidence.envChecks.find((check) => check.name === "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED")?.status).toBe(
       "manual-review"
     );
@@ -69,6 +78,9 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(evidence.manualReviewFlags).toEqual(
       expect.arrayContaining([
         "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED",
+        "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
+        "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
+        "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
         "XPRIZE_THIRD_PARTY_REVIEW_APPROVED",
         "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
         "XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED"

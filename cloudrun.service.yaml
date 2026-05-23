@@ -55,8 +55,14 @@ spec:
               value: "https://YOUR-SERVICE-URL"
             - name: XPRIZE_REPOSITORY_URL
               value: "https://github.com/sanjabh11/sme-compliance-sentinel"
+            - name: XPRIZE_REPOSITORY_ACCESS_CONFIGURED
+              value: "false"
             - name: XPRIZE_CATEGORY
               value: "Small Business Services"
+            - name: XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED
+              value: "false"
+            - name: XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED
+              value: "false"
             - name: XPRIZE_DEMO_VIDEO_URL
               value: "https://youtu.be/YOUR_VIDEO"
             - name: XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED

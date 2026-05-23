@@ -88,6 +88,9 @@ describe("Cloud Run manifest renderer", () => {
       SENTINEL_SOURCE_COMMIT: "SOURCE_COMMIT",
       SENTINEL_SOURCE_COMMIT_AT: "SOURCE_COMMIT_AT",
       XPRIZE_CATEGORY: "Small Business Services",
+      XPRIZE_REPOSITORY_ACCESS_CONFIGURED: "false",
+      XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED: "false",
+      XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED: "false",
       XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED: "false",
       XPRIZE_JUDGE_ACCESS_CONFIGURED: "false",
       XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED: "false",
@@ -133,6 +136,9 @@ describe("Cloud Run manifest renderer", () => {
     expect(renderedManifest).toContain('value: "0123456789abcdef0123456789abcdef01234567"');
     expect(renderedManifest).toContain('value: "2026-05-23T17:24:17.894Z"');
     expect(renderedManifest).toContain('value: "https://sme-workspace-sentinel-abc-uc.a.run.app"');
+    expect(renderedManifest).toContain('name: XPRIZE_REPOSITORY_ACCESS_CONFIGURED\n              value: "false"');
+    expect(renderedManifest).toContain('name: XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED\n              value: "false"');
+    expect(renderedManifest).toContain('name: XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED\n              value: "false"');
     expect(renderedManifest).toContain('key: "2"');
     expect(renderedManifest).toContain("secretKeyRef:");
     expect(renderedManifest).not.toContain("PROJECT_ID");
