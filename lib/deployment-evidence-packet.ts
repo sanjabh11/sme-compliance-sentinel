@@ -6,6 +6,7 @@ import type {
   DeploymentEvidenceCommand,
   DeploymentEvidencePacket,
   DeploymentEvidencePacketStatus,
+  DeploymentRunbookStep,
   EvidenceVaultImportRequest
 } from "@/lib/types";
 
@@ -33,6 +34,11 @@ export function buildDeploymentEvidencePacket(): DeploymentEvidencePacket {
     region: sentinelConfig.cloudRunRegion,
     serviceName: sentinelConfig.cloudRunServiceName
   });
+  const artifactManifest = buildArtifactManifest({
+    releaseId,
+    privateEvidenceBucket,
+    deploymentStatus: deployment.overallStatus
+  });
 
   return {
     generatedAt,
@@ -42,8 +48,9 @@ export function buildDeploymentEvidencePacket(): DeploymentEvidencePacket {
     repositoryUrl,
     privateEvidenceBucket,
     deploymentStatus: deployment.overallStatus,
-    artifactManifest: buildArtifactManifest({ releaseId, privateEvidenceBucket, deploymentStatus: deployment.overallStatus }),
+    artifactManifest,
     commandSequence,
+    runbook: buildRunbook({ artifactManifest, commandSequence }),
     evidenceVaultImportTemplate: buildEvidenceVaultImportTemplate({ generatedAt, releaseId, productUrl, repositoryUrl, privateEvidenceBucket }),
     redactionChecklist: [
       "Remove admin tokens, OAuth client secrets, refresh tokens, Drive channel tokens, Gemini API key values, and raw Authorization headers.",
@@ -62,6 +69,83 @@ export function buildDeploymentEvidencePacket(): DeploymentEvidencePacket {
     disclaimer:
       "Deployment evidence remains pending until the command sequence is executed against the hosted product and the resulting redacted artifacts are registered with checksums."
   };
+}
+
+function buildRunbook(input: {
+  artifactManifest: DeploymentEvidenceArtifact[];
+  commandSequence: DeploymentEvidenceCommand[];
+}): DeploymentRunbookStep[] {
+  const proofFiles = (...ids: string[]) =>
+    ids.map((id) => input.artifactManifest.find((artifact) => artifact.id === id)?.privateStorePath ?? `missing:${id}`);
+  const commandIds = (...ids: string[]) => input.commandSequence.filter((command) => ids.includes(command.id)).map((command) => command.id);
+
+  return [
+    runbookStep({
+      id: "local-release-preflight",
+      phase: "local-preflight",
+      label: "Freeze source and local quality proof",
+      ownerRole: "engineering",
+      commandIds: commandIds("lint", "typecheck", "test", "build", "source-release", "provenance"),
+      requiredArtifactIds: ["local-quality-gates-log", "source-release-json", "provenance-json"],
+      proofFiles: proofFiles("local-quality-gates-log", "source-release-json", "provenance-json"),
+      stopCondition: "Stop if source-release reports forbidden files, secret findings, untracked source, or provenance is not tied to the pushed repository.",
+      redactionCheck: "Do not preserve shell history, environment dumps, local paths containing private customer names, or untracked evidence files.",
+      nextStep: "Render the private Cloud Run manifest only after the source commit and release id are fixed.",
+      externalProofRequired: false
+    }),
+    runbookStep({
+      id: "render-and-verify-manifest",
+      phase: "manifest-render",
+      label: "Render and verify private Cloud Run manifest",
+      ownerRole: "engineering",
+      commandIds: commandIds("cloudrun-render-manifest", "cloudrun-template-strict"),
+      requiredArtifactIds: ["cloudrun-render-summary-json", "cloudrun-manifest-verifier-json"],
+      proofFiles: proofFiles("cloudrun-render-summary-json", "cloudrun-manifest-verifier-json"),
+      stopCondition: "Stop unless the rendered verifier status is ready-to-dry-run with zero blockers and no raw credential values.",
+      redactionCheck: "Keep rendered manifest and command files private; share only redacted verifier status, Secret Manager lookup names, and release id.",
+      nextStep: "Run the generated Cloud Run dry-run command from a private operator shell.",
+      externalProofRequired: false
+    }),
+    runbookStep({
+      id: "dry-run-and-deploy-cloudrun",
+      phase: "cloud-deploy",
+      label: "Dry-run, deploy, and capture Cloud Run revision",
+      ownerRole: "engineering",
+      commandIds: commandIds("cloudrun-dry-run", "cloudrun-deploy", "cloudrun-describe"),
+      requiredArtifactIds: ["cloudrun-dry-run-log", "cloudrun-deploy-log", "cloudrun-describe-json"],
+      proofFiles: proofFiles("cloudrun-dry-run-log", "cloudrun-deploy-log", "cloudrun-describe-json"),
+      stopCondition: "Stop if dry-run fails, if the deployed revision uses a different image or service account, or if Secret Manager refs are missing.",
+      redactionCheck: "Redact unrelated project metadata and any accidental env dumps; never include admin tokens, OAuth secrets, Gemini key values, or judge credentials.",
+      nextStep: "Use the deployed URL for hosted read-only and write-through verification.",
+      externalProofRequired: true
+    }),
+    runbookStep({
+      id: "hosted-production-proof",
+      phase: "hosted-proof",
+      label: "Capture hosted product, AI, persistence, Workspace, and cost proof",
+      ownerRole: "engineering",
+      commandIds: commandIds("hosted-readonly", "hosted-write-through", "hosted-evidence"),
+      requiredArtifactIds: ["verify-production-readonly-json", "verify-production-write-json", "hosted-evidence-json"],
+      proofFiles: proofFiles("verify-production-readonly-json", "verify-production-write-json", "hosted-evidence-json"),
+      stopCondition: "Stop if hosted checks are local/mock-only, if Gemini proof is not provider=gemini-api, or if GCP/Workspace write-through checks are blocked.",
+      redactionCheck: "Redact customer identifiers, Workspace resource ids, raw findings, tokens, and cloud response details before judge or Evidence Vault use.",
+      nextStep: "Import only the redacted hosted verification JSON into the Evidence Vault.",
+      externalProofRequired: true
+    }),
+    runbookStep({
+      id: "redacted-evidence-vault-import",
+      phase: "evidence-import",
+      label: "Import redacted proof and prepare judge packet",
+      ownerRole: "legal",
+      commandIds: commandIds("vault-import"),
+      requiredArtifactIds: ["evidence-vault-import-response-json"],
+      proofFiles: proofFiles("evidence-vault-import-response-json"),
+      stopCondition: "Stop if import input is not redacted, if checksums are missing, or if customer consent and Devpost disclosure review are incomplete.",
+      redactionCheck: "Share checksums, statuses, consent flags, and aggregate evidence; keep raw logs, invoices, security findings, and customer contact data private.",
+      nextStep: "Attach release id, source commit, Cloud Run revision, checksums, demo video link, judge access instructions, and revenue/user evidence to Devpost.",
+      externalProofRequired: true
+    })
+  ];
 }
 
 function buildConfigGaps(input: {
@@ -426,6 +510,10 @@ function command(
     expectedArtifactId,
     privateHandling
   };
+}
+
+function runbookStep(input: DeploymentRunbookStep): DeploymentRunbookStep {
+  return input;
 }
 
 function isPlaceholder(value: string) {

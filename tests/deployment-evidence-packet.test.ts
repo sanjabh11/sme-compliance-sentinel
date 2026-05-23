@@ -70,6 +70,36 @@ describe("deployment evidence packet", () => {
     expect(packet.redactionChecklist.join(" ")).toContain("OAuth client secrets");
   });
 
+  it("turns commands and artifacts into a stop-gated private deployment runbook", () => {
+    const packet = buildDeploymentEvidencePacket();
+
+    expect(packet.runbook.map((step) => step.id)).toEqual([
+      "local-release-preflight",
+      "render-and-verify-manifest",
+      "dry-run-and-deploy-cloudrun",
+      "hosted-production-proof",
+      "redacted-evidence-vault-import"
+    ]);
+    expect(packet.runbook[0]).toMatchObject({
+      phase: "local-preflight",
+      externalProofRequired: false
+    });
+    expect(packet.runbook[1]).toMatchObject({
+      phase: "manifest-render",
+      requiredArtifactIds: ["cloudrun-render-summary-json", "cloudrun-manifest-verifier-json"]
+    });
+    expect(packet.runbook[1].proofFiles).toEqual(
+      expect.arrayContaining([
+        "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-summary.json",
+        "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-manifest-verifier.json"
+      ])
+    );
+    expect(packet.runbook[2].stopCondition).toContain("dry-run fails");
+    expect(packet.runbook[3].stopCondition).toContain("provider=gemini-api");
+    expect(packet.runbook[4].redactionCheck).toContain("checksums");
+    expect(packet.runbook.filter((step) => step.externalProofRequired)).toHaveLength(3);
+  });
+
   it("prepares an import template without replacing real hosted proof JSON", () => {
     const packet = buildDeploymentEvidencePacket();
 
@@ -96,6 +126,7 @@ describe("deployment evidence packet", () => {
 
     expect(packet.status).toBe("template-needs-values");
     expect(packet.commandSequence.length).toBeGreaterThan(8);
+    expect(packet.runbook.length).toBe(5);
   });
 
   it("keeps packet copy inside the claim guard boundary", () => {

@@ -2309,12 +2309,21 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
                 <p>
                   {deploymentEvidencePacket.artifactManifest.filter((artifact) => artifact.status === "ready").length} ready ·{" "}
                   {deploymentEvidencePacket.artifactManifest.filter((artifact) => artifact.status === "external-required").length} external ·{" "}
-                  {deploymentEvidencePacket.commandSequence.filter((command) => command.mutatesProduction).length} mutating command(s)
+                  {deploymentEvidencePacket.commandSequence.filter((command) => command.mutatesProduction).length} mutating command(s) ·{" "}
+                  {deploymentEvidencePacket.runbook.length} runbook step(s)
                 </p>
               </article>
+              {deploymentEvidencePacket.runbook.slice(0, 3).map((step) => (
+                <article key={step.id}>
+                  <strong>{step.label}</strong>
+                  <p>
+                    {step.phase.replaceAll("-", " ")} · {step.requiredArtifactIds.length} proof file(s) · {step.stopCondition}
+                  </p>
+                </article>
+              ))}
               {deploymentEvidencePacket.artifactManifest
                 .filter((artifact) => artifact.status !== "ready")
-                .slice(0, 4)
+                .slice(0, 3)
                 .map((artifact) => (
                   <article key={artifact.id}>
                     <strong>{artifact.label}</strong>

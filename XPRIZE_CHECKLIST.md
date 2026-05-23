@@ -59,6 +59,7 @@
 - [x] Local MVP exposes `/api/production/deployment-evidence` and `npm run verify:cloudrun-deployment` to validate Cloud Run manifest placeholders, pinned Secret Manager references, matching Cloud Run YAML secret annotations, manual attestation flags, dry-run commands, and post-deploy verification steps before applying the manifest.
 - [x] Local MVP exposes `/api/production/hosted-evidence` to separate local/mock proof from hosted Cloud Run, live Gemini, GCP persistence, Workspace sync, Cloud Billing, paid-pilot, judge-access, demo-video, and Evidence Vault capture requirements.
 - [x] Local MVP exposes `/api/production/deployment-packet` to bind release id, Cloud Run manifest state, hosted verification commands, source/provenance checks, redaction rules, private storage paths, and Evidence Vault import template into one private judge-packet plan.
+- [x] Local MVP exposes a stop-gated private deployment runbook inside `/api/production/deployment-packet`, mapping each command phase to exact proof files, redaction checks, stop conditions, and external-proof boundaries.
 - [x] Local MVP exposes `/api/evidence/vault/import` to convert redacted hosted verification JSON into checksummed Evidence Vault artifact records while keeping local, mock, or unredacted imports out of final proof.
 - [x] Local MVP exposes `/api/production/gemini-smoke` to run a synthetic non-customer Gemini proof flow and block readiness unless `provider=gemini-api` is recorded.
 - [x] Local MVP exposes a Market Positioning Command Center comparing Sentinel against Vanta, Drata, and Secureframe with USP wedge, differentiators, parity gaps, buyer narrative, and proof actions.
@@ -196,6 +197,7 @@
 - [ ] Run `/api/production/launch-readiness` from the hosted app and clear each workstream with production proof before final submission.
 - [ ] Run `/api/production/hosted-evidence` from the hosted app and attach the resulting capture packet to the private judge binder after every required artifact is redacted and checksummed.
 - [ ] Run `/api/production/deployment-packet` after rendering production values and before final submission; confirm every command artifact is captured, redacted, and linked to the release id.
+- [ ] Walk the deployment packet runbook from local preflight through Evidence Vault import; stop on any failed stop condition instead of treating partial logs as final proof.
 - [ ] Run `/api/xprize/judge-access-pack` immediately before Devpost submission and paste only non-secret testing guidance into public fields; keep credentials in private testing instructions.
 - [ ] Run `npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --strict --include-write-checks` after Cloud Run/GCP credentials are configured and attach the JSON output to the private judge packet.
 - [ ] Run `npm run collect:hosted-proof -- --url $NEXT_PUBLIC_PRODUCT_URL --release-id $SENTINEL_RELEASE_ID --include-write-checks` from a private operator shell after credentials are configured; review the generated `artifacts/hosted-proof/` bundle for redaction before judge sharing.

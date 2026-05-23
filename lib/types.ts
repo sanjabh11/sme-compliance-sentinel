@@ -1767,6 +1767,22 @@ export interface DeploymentEvidenceCommand {
   privateHandling: string;
 }
 
+export type DeploymentRunbookPhase = "local-preflight" | "manifest-render" | "cloud-deploy" | "hosted-proof" | "evidence-import";
+
+export interface DeploymentRunbookStep {
+  id: string;
+  phase: DeploymentRunbookPhase;
+  label: string;
+  ownerRole: SubmissionEvidenceArtifact["ownerRole"];
+  commandIds: string[];
+  requiredArtifactIds: string[];
+  proofFiles: string[];
+  stopCondition: string;
+  redactionCheck: string;
+  nextStep: string;
+  externalProofRequired: boolean;
+}
+
 export interface DeploymentEvidencePacket {
   generatedAt: string;
   releaseId: string;
@@ -1777,6 +1793,7 @@ export interface DeploymentEvidencePacket {
   deploymentStatus: CloudRunDeploymentEvidenceStatus;
   artifactManifest: DeploymentEvidenceArtifact[];
   commandSequence: DeploymentEvidenceCommand[];
+  runbook: DeploymentRunbookStep[];
   evidenceVaultImportTemplate: EvidenceVaultImportRequest;
   redactionChecklist: string[];
   blockers: string[];
