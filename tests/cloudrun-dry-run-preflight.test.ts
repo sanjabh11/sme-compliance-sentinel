@@ -9,6 +9,7 @@ interface CloudRunDryRunPreflightModule {
     outDir: string;
     releaseId: string;
     template: string;
+    verifyPacketPath: string;
     strict: boolean;
   };
   prepareCloudRunDryRunPacket: (options: {
@@ -40,6 +41,27 @@ interface CloudRunDryRunPreflightModule {
     }>;
     nextActions: string[];
   }>;
+  verifyCloudRunDryRunPacket: (packetPath: string) => Promise<{
+    status: string;
+    readyForDryRun: boolean;
+    releaseId: string;
+    packetStatus: string;
+    digestCount: number;
+    matchedDigestCount: number;
+    failedDigestCount: number;
+    digestChecks: Array<{
+      role: string;
+      path: string;
+      status: string;
+      expectedSha256: string;
+      actualSha256: string;
+      expectedByteLength: number;
+      actualByteLength: number;
+      fix: string;
+    }>;
+    stopConditions: string[];
+    nextActions: string[];
+  }>;
 }
 
 const tempDirs: string[] = [];
@@ -67,6 +89,11 @@ describe("Cloud Run dry-run preflight packet", () => {
       outDir: "/tmp/sentinel-deploy",
       releaseId: "release-1",
       template: "cloudrun.service.yaml",
+      verifyPacketPath: "",
+      strict: true
+    });
+    expect(parseArgs(["--verify-packet", "/secure/local/preflight.json", "--strict"])).toMatchObject({
+      verifyPacketPath: "/secure/local/preflight.json",
       strict: true
     });
     expect(() => parseArgs(["--values", "/tmp/values.json", "--admin-token=secret"])).toThrow(/Raw secret CLI args/u);
@@ -133,6 +160,51 @@ describe("Cloud Run dry-run preflight packet", () => {
     expect(packetMarkdown).toContain("## Evidence File Digests");
     expect(JSON.stringify(packet)).not.toContain("AIza");
     expect(JSON.stringify(packet)).not.toContain("private-admin-token");
+  });
+
+  it("verifies preflight packet digests and blocks if rendered artifacts drift before dry-run", async () => {
+    const { prepareCloudRunDryRunPacket, verifyCloudRunDryRunPacket } = await loadPreflight();
+    const tempDir = await makeTempDir();
+    const valuesPath = await writeValues(tempDir, safeRenderValues());
+
+    const packet = await prepareCloudRunDryRunPacket({
+      valuesPath,
+      outDir: tempDir,
+      releaseId: "release-20260523-001",
+      strict: true
+    });
+    const packetPath = join(packet.outputDirectory, "cloudrun-dry-run-preflight-packet.json");
+    const verified = await verifyCloudRunDryRunPacket(packetPath);
+
+    expect(verified).toMatchObject({
+      status: "verified",
+      readyForDryRun: true,
+      releaseId: "release-20260523-001",
+      packetStatus: "ready-to-dry-run",
+      digestCount: 5,
+      matchedDigestCount: 5,
+      failedDigestCount: 0
+    });
+    expect(verified.digestChecks.every((check) => check.status === "matched")).toBe(true);
+    expect(verified.nextActions.join(" ")).toContain("Run the generated dry-run command");
+
+    const manifestDigest = packet.evidenceFileDigests.find((item) => item.role === "rendered-manifest");
+    if (!manifestDigest) {
+      throw new Error("Test setup expected rendered-manifest digest.");
+    }
+    await writeFile(manifestDigest.path, `${await readFile(manifestDigest.path, "utf8")}\n# drift after preflight\n`, "utf8");
+    const drifted = await verifyCloudRunDryRunPacket(packetPath);
+
+    expect(drifted).toMatchObject({
+      status: "blocked",
+      readyForDryRun: false,
+      failedDigestCount: 1
+    });
+    expect(drifted.digestChecks.find((check) => check.role === "rendered-manifest")).toMatchObject({
+      status: "mismatch",
+      expectedSha256: manifestDigest.sha256
+    });
+    expect(drifted.stopConditions.join(" ")).toContain("Do not run Cloud Run dry-run");
   });
 
   it("stops before dry-run when render values are still placeholders", async () => {

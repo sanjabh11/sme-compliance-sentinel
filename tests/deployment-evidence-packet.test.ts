@@ -51,6 +51,7 @@ describe("deployment evidence packet", () => {
         "cloudrun-render-manifest",
         "cloudrun-template-strict",
         "cloudrun-dry-run-preflight",
+        "cloudrun-dry-run-packet-verify",
         "cloudrun-dry-run",
         "cloudrun-deploy",
         "hosted-readonly",
@@ -69,6 +70,9 @@ describe("deployment evidence packet", () => {
     );
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-dry-run-preflight")?.command).toContain(
       "npm run prepare:cloudrun-dry-run"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-dry-run-packet-verify")?.command).toContain(
+      "npm run verify:cloudrun-dry-run-packet"
     );
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-dry-run")?.command).toContain(
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml"

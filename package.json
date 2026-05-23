@@ -21,6 +21,7 @@
     "audit:cloudrun-values": "node scripts/audit-cloudrun-render-values.mjs",
     "render:cloudrun-manifest": "node scripts/render-cloudrun-manifest.mjs",
     "prepare:cloudrun-dry-run": "node scripts/prepare-cloudrun-dry-run-packet.mjs",
+    "verify:cloudrun-dry-run-packet": "node scripts/prepare-cloudrun-dry-run-packet.mjs --verify-packet",
     "verify:production": "node scripts/verify-production-readiness.mjs",
     "collect:hosted-proof": "node scripts/collect-hosted-proof-bundle.mjs",
     "import:hosted-proof": "node scripts/import-hosted-proof-bundle.mjs"

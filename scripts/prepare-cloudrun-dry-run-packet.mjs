@@ -27,6 +27,7 @@ export function parseArgs(argv) {
     outDir: process.env.SENTINEL_CLOUD_RUN_RENDER_OUT_DIR ?? defaultOutDir,
     releaseId: process.env.SENTINEL_RELEASE_ID ?? "",
     template: defaultTemplate,
+    verifyPacketPath: "",
     strict: false
   };
 
@@ -81,6 +82,17 @@ export function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--verify-packet") {
+      args.verifyPacketPath = argv[index + 1] ?? "";
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--verify-packet=")) {
+      args.verifyPacketPath = arg.slice("--verify-packet=".length);
+      continue;
+    }
+
     if (arg === "--strict") {
       args.strict = true;
     }
@@ -118,6 +130,38 @@ export async function prepareCloudRunDryRunPacket(options) {
   }
 
   return packet;
+}
+
+export async function verifyCloudRunDryRunPacket(packetPath) {
+  if (!packetPath) {
+    throw new Error("Cloud Run dry-run packet verification requires --verify-packet artifacts/deployment/RELEASE_ID/cloudrun-dry-run-preflight-packet.json.");
+  }
+
+  const absolutePacketPath = resolve(packetPath);
+  const packet = JSON.parse(await readFile(absolutePacketPath, "utf8"));
+  const digestEntries = Array.isArray(packet.evidenceFileDigests) ? packet.evidenceFileDigests : [];
+  const digestChecks = await Promise.all(digestEntries.map(verifyDigestEntry));
+  const failedChecks = digestChecks.filter((check) => check.status !== "matched");
+  const packetReady = packet.status === "ready-to-dry-run" && packet.readyForDryRun === true;
+  const status = packetReady && digestEntries.length > 0 && failedChecks.length === 0 ? "verified" : "blocked";
+
+  return {
+    generatedAt: new Date().toISOString(),
+    status,
+    readyForDryRun: status === "verified",
+    packetPath: absolutePacketPath,
+    releaseId: packet.releaseId ?? "missing",
+    packetStatus: packet.status ?? "missing",
+    digestCount: digestEntries.length,
+    matchedDigestCount: digestChecks.filter((check) => check.status === "matched").length,
+    failedDigestCount: failedChecks.length,
+    digestChecks,
+    dryRunCommand: packet.dryRunCommand ?? "",
+    stopConditions: buildVerificationStopConditions({ packetReady, digestEntries, failedChecks }),
+    nextActions: buildVerificationNextActions({ status, packet }),
+    disclaimer:
+      "This verifies local preflight artifact digests only. It does not run Cloud Run dry-run, deploy Cloud Run, or prove hosted production readiness."
+  };
 }
 
 export function buildDryRunPacket({ renderSummary, verifier, valuesPath, evidenceFileDigests = [] }) {
@@ -309,6 +353,78 @@ async function readDigest(file) {
   };
 }
 
+async function verifyDigestEntry(entry) {
+  const expectedSha256 = String(entry.sha256 ?? "");
+  const expectedByteLength = Number(entry.byteLength ?? 0);
+
+  try {
+    const buffer = await readFile(entry.path);
+    const actualSha256 = createHash("sha256").update(buffer).digest("hex");
+    const actualByteLength = buffer.length;
+    const matched = actualSha256 === expectedSha256 && actualByteLength === expectedByteLength;
+
+    return {
+      role: String(entry.role ?? "unknown"),
+      path: String(entry.path ?? ""),
+      status: matched ? "matched" : "mismatch",
+      expectedSha256,
+      actualSha256,
+      expectedByteLength,
+      actualByteLength,
+      fix: matched ? "No action." : "Regenerate the Cloud Run dry-run preflight packet before running gcloud dry-run."
+    };
+  } catch {
+    return {
+      role: String(entry.role ?? "unknown"),
+      path: String(entry.path ?? ""),
+      status: "missing",
+      expectedSha256,
+      actualSha256: "missing",
+      expectedByteLength,
+      actualByteLength: 0,
+      fix: "Regenerate the Cloud Run dry-run preflight packet; the referenced evidence file is missing."
+    };
+  }
+}
+
+function buildVerificationStopConditions({ packetReady, digestEntries, failedChecks }) {
+  if (!packetReady) {
+    return ["Do not run Cloud Run dry-run because the packet itself is not ready-to-dry-run."];
+  }
+
+  if (!digestEntries.length) {
+    return ["Do not run Cloud Run dry-run because the packet has no evidenceFileDigests to verify."];
+  }
+
+  if (failedChecks.length) {
+    return [
+      "Do not run Cloud Run dry-run because one or more rendered artifact digests changed after preflight.",
+      ...failedChecks.slice(0, 5).map((check) => `${check.role}: ${check.fix}`)
+    ];
+  }
+
+  return [
+    "Stop if the dry-run command printed by this verifier differs from the command in the private operator runbook.",
+    "Stop if terminal output includes raw credentials, OAuth tokens, admin tokens, customer findings, invoices, or unredacted Workspace data."
+  ];
+}
+
+function buildVerificationNextActions({ status, packet }) {
+  if (status !== "verified") {
+    return [
+      "Regenerate the preflight packet from the private render-values file.",
+      "Rerun this packet verifier before any Cloud Run dry-run.",
+      "Do not edit the rendered manifest bundle by hand between preflight and dry-run."
+    ];
+  }
+
+  return [
+    `Run the generated dry-run command from a private operator shell: ${packet.dryRunCommand}`,
+    "Save the dry-run output beside the verified preflight packet in the private evidence store.",
+    "Deploy only after dry-run review and then capture hosted production proof."
+  ];
+}
+
 async function writeJson(path, value) {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
@@ -316,8 +432,16 @@ async function writeJson(path, value) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     const options = parseArgs(process.argv.slice(2));
-    const packet = await prepareCloudRunDryRunPacket(options);
-    console.log(JSON.stringify(packet, null, 2));
+    if (options.verifyPacketPath) {
+      const report = await verifyCloudRunDryRunPacket(options.verifyPacketPath);
+      console.log(JSON.stringify(report, null, 2));
+      if (options.strict && report.status !== "verified") {
+        process.exitCode = 1;
+      }
+    } else {
+      const packet = await prepareCloudRunDryRunPacket(options);
+      console.log(JSON.stringify(packet, null, 2));
+    }
   } catch (error) {
     if (error?.packet) {
       console.error(JSON.stringify(error.packet, null, 2));

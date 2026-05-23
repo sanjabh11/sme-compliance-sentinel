@@ -98,7 +98,13 @@ function buildRunbook(input: {
       phase: "manifest-render",
       label: "Render and verify private Cloud Run manifest",
       ownerRole: "engineering",
-      commandIds: commandIds("cloudrun-render-values-audit", "cloudrun-render-manifest", "cloudrun-template-strict", "cloudrun-dry-run-preflight"),
+      commandIds: commandIds(
+        "cloudrun-render-values-audit",
+        "cloudrun-render-manifest",
+        "cloudrun-template-strict",
+        "cloudrun-dry-run-preflight",
+        "cloudrun-dry-run-packet-verify"
+      ),
       requiredArtifactIds: [
         "cloudrun-render-values-audit-json",
         "cloudrun-render-summary-json",
@@ -410,6 +416,15 @@ function buildCommandSequence(input: {
       false,
       "cloudrun-dry-run-preflight-json",
       "Writes the private preflight packet and redaction checklist; do not dry-run unless status is ready-to-dry-run."
+    ),
+    command(
+      "cloudrun-dry-run-packet-verify",
+      "Verify Cloud Run dry-run packet digests",
+      "npm run verify:cloudrun-dry-run-packet -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json --strict",
+      false,
+      false,
+      "cloudrun-dry-run-preflight-json",
+      "Rechecks rendered manifest bundle SHA-256 digests immediately before dry-run; regenerate the preflight packet if any file drifted."
     ),
     command(
       "cloudrun-dry-run",
