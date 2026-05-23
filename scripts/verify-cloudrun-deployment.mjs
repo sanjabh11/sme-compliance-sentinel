@@ -245,7 +245,9 @@ function buildReport(manifest) {
     image,
     runtimeServiceAccount,
     summary,
+    envChecks: checks,
     replacementFindings: replacements,
+    manualReviewFlags: checks.filter((check) => check.status === "manual-review").map((check) => check.name),
     secretRefs: requiredSecretEnv
       .map((name) => envByName.get(name))
       .filter((entry) => entry?.secretName)
