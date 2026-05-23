@@ -43,6 +43,12 @@ spec:
               value: "us-central1"
             - name: SENTINEL_RELEASE_ID
               value: "RELEASE_ID"
+            - name: SENTINEL_SOURCE_COMMIT
+              value: "SOURCE_COMMIT"
+            - name: SENTINEL_SOURCE_COMMIT_AT
+              value: "SOURCE_COMMIT_AT"
+            - name: SENTINEL_SOURCE_BRANCH
+              value: "origin/main"
             - name: SENTINEL_PRIVATE_EVIDENCE_BUCKET
               value: "gs://PROJECT_ID-sentinel-private-evidence"
             - name: NEXT_PUBLIC_PRODUCT_URL

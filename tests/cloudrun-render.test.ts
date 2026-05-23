@@ -90,6 +90,8 @@ describe("Cloud Run manifest renderer", () => {
     expect(renderedManifest).toContain("us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:release-20260523-001");
     expect(renderedManifest).toContain("sentinel-runtime@sentinel-prod.iam.gserviceaccount.com");
     expect(renderedManifest).toContain("sentinel-admin-action-token:projects/123456789012/secrets/sentinel-admin-action-token");
+    expect(renderedManifest).toContain('value: "0123456789abcdef0123456789abcdef01234567"');
+    expect(renderedManifest).toContain('value: "2026-05-23T17:24:17.894Z"');
     expect(renderedManifest).toContain('value: "https://sme-workspace-sentinel-abc-uc.a.run.app"');
     expect(renderedManifest).toContain('key: "2"');
     expect(renderedManifest).toContain("secretKeyRef:");
@@ -157,6 +159,9 @@ function safeRenderValues() {
     GOOGLE_CLOUD_PROJECT_NUMBER: "123456789012",
     SENTINEL_CLOUD_RUN_REGION: "us-central1",
     SENTINEL_RELEASE_ID: "release-20260523-001",
+    SENTINEL_SOURCE_COMMIT: "0123456789abcdef0123456789abcdef01234567",
+    SENTINEL_SOURCE_COMMIT_AT: "2026-05-23T17:24:17.894Z",
+    SENTINEL_SOURCE_BRANCH: "origin/main",
     NEXT_PUBLIC_PRODUCT_URL: "https://sme-workspace-sentinel-abc-uc.a.run.app",
     XPRIZE_DEMO_VIDEO_URL: "https://youtu.be/sentinel-demo",
     XPRIZE_REPOSITORY_URL: "https://github.com/sanjabh11/sme-compliance-sentinel",

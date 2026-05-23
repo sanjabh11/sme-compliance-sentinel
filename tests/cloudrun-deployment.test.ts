@@ -20,6 +20,8 @@ describe("Cloud Run deployment evidence verifier", () => {
         "container image",
         "runtime service account",
         "SENTINEL_RELEASE_ID",
+        "SENTINEL_SOURCE_COMMIT",
+        "SENTINEL_SOURCE_COMMIT_AT",
         "SENTINEL_PRIVATE_EVIDENCE_BUCKET",
         "NEXT_PUBLIC_PRODUCT_URL",
         "GOOGLE_CLOUD_PROJECT"
@@ -138,6 +140,8 @@ describe("Cloud Run deployment evidence verifier", () => {
         "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:release-20260523-001",
         "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:latest"
       )
+      .replace('name: SENTINEL_SOURCE_COMMIT\n              value: "0123456789abcdef0123456789abcdef01234567"', 'name: SENTINEL_SOURCE_COMMIT\n              value: "short-sha"')
+      .replace('name: SENTINEL_SOURCE_COMMIT_AT\n              value: "2026-05-23T17:24:17.894Z"', 'name: SENTINEL_SOURCE_COMMIT_AT\n              value: "not-a-date"')
       .replace('name: SENTINEL_GEMINI_MODEL_ALLOWLIST\n              value: "gemini-3.5-flash,gemini-2.5-flash,gemini-2.5-pro"', 'name: SENTINEL_GEMINI_MODEL_ALLOWLIST\n              value: "gemini-2.5-flash"')
       .replace('name: sentinel-admin-action-token\n                  key: "1"', 'name: sentinel-admin-action-token\n                  key: "latest"');
     const evidence = buildCloudRunDeploymentEvidence(driftedManifest);
@@ -148,6 +152,8 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(checksByName.MISMATCHED_GOOGLE_OAUTH_REDIRECT_URI).toMatchObject({ status: "blocked" });
     expect(checksByName.MISMATCHED_WORKSPACE_PUBSUB_PUSH_AUDIENCE).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_CLOUD_RUN_IMAGE_TAG).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_SENTINEL_SOURCE_COMMIT).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_SENTINEL_SOURCE_COMMIT_AT).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_GEMINI_MODEL_ALLOWLIST).toMatchObject({ status: "blocked" });
     expect(checksByName.SENTINEL_ADMIN_ACTION_TOKEN).toMatchObject({ status: "blocked" });
     expect(JSON.stringify(evidence)).not.toContain("private-admin-token");
@@ -161,10 +167,14 @@ describe("Cloud Run deployment evidence verifier", () => {
     const report = JSON.parse(output) as {
       overallStatus: string;
       secretRefs: Array<{ envName: string; secretName: string; version: string }>;
+      replacementFindings: Array<{ target: string }>;
       blockers: string[];
     };
 
     expect(report.overallStatus).toBe("template-needs-values");
+    expect(report.replacementFindings.map((finding) => finding.target)).toEqual(
+      expect.arrayContaining(["SENTINEL_SOURCE_COMMIT", "SENTINEL_SOURCE_COMMIT_AT"])
+    );
     expect(report.secretRefs).toEqual(
       expect.arrayContaining([
         { envName: "SENTINEL_ADMIN_ACTION_TOKEN", secretName: "sentinel-admin-action-token", version: "1" },
@@ -233,6 +243,14 @@ function renderProductionCandidateManifest() {
     .replaceAll("https://YOUR-SERVICE-URL", "https://sme-workspace-sentinel-abc-uc.a.run.app")
     .replace("https://youtu.be/YOUR_VIDEO", "https://youtu.be/sentinel-demo")
     .replace('name: SENTINEL_RELEASE_ID\n              value: "RELEASE_ID"', 'name: SENTINEL_RELEASE_ID\n              value: "release-20260523-001"')
+    .replace(
+      'name: SENTINEL_SOURCE_COMMIT\n              value: "SOURCE_COMMIT"',
+      'name: SENTINEL_SOURCE_COMMIT\n              value: "0123456789abcdef0123456789abcdef01234567"'
+    )
+    .replace(
+      'name: SENTINEL_SOURCE_COMMIT_AT\n              value: "SOURCE_COMMIT_AT"',
+      'name: SENTINEL_SOURCE_COMMIT_AT\n              value: "2026-05-23T17:24:17.894Z"'
+    )
     .replace(
       'name: SENTINEL_PRIVATE_EVIDENCE_BUCKET\n              value: "gs://PROJECT_ID-sentinel-private-evidence"',
       'name: SENTINEL_PRIVATE_EVIDENCE_BUCKET\n              value: "gs://sentinel-prod-sentinel-private-evidence"'

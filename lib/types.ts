@@ -1448,6 +1448,7 @@ export interface DemoVideoCompliancePack {
 
 export interface ProjectProvenanceGitSignals {
   gitAvailable: boolean;
+  sourceEvidenceMode?: "git" | "deployment-env" | "missing";
   commitCount: number;
   headCommit?: string;
   remoteUrl?: string;

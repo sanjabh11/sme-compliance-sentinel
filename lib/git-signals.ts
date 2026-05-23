@@ -5,8 +5,15 @@ export function collectGitSignals(cwd = process.cwd()): ProjectProvenanceGitSign
   try {
     runGit(["rev-parse", "--show-toplevel"], cwd);
   } catch (error) {
+    const deploymentSignals = collectDeploymentSourceSignals();
+
+    if (deploymentSignals) {
+      return deploymentSignals;
+    }
+
     return {
       gitAvailable: false,
+      sourceEvidenceMode: "missing",
       commitCount: 0,
       trackedFileCount: 0,
       untrackedPaths: [],
@@ -48,6 +55,7 @@ export function collectGitSignals(cwd = process.cwd()): ProjectProvenanceGitSign
 
   return {
     gitAvailable: true,
+    sourceEvidenceMode: "git",
     commitCount,
     headCommit,
     remoteUrl,
@@ -59,6 +67,40 @@ export function collectGitSignals(cwd = process.cwd()): ProjectProvenanceGitSign
     untrackedPaths,
     error
   };
+}
+
+function collectDeploymentSourceSignals(): ProjectProvenanceGitSignals | undefined {
+  const sourceCommit = cleanEnv("SENTINEL_SOURCE_COMMIT");
+
+  if (!sourceCommit) {
+    return undefined;
+  }
+
+  const sourceCommitAt = cleanEnv("SENTINEL_SOURCE_COMMIT_AT");
+  const sourceBranch = cleanEnv("SENTINEL_SOURCE_BRANCH") || "deployment-source";
+
+  return {
+    gitAvailable: false,
+    sourceEvidenceMode: "deployment-env",
+    commitCount: 0,
+    headCommit: sourceCommit,
+    remoteUrl: cleanEnv("XPRIZE_REPOSITORY_URL") || undefined,
+    upstreamBranch: sourceBranch,
+    remoteHeadCommit: cleanEnv("SENTINEL_SOURCE_REMOTE_COMMIT") || sourceCommit,
+    headCommitAt: sourceCommitAt || undefined,
+    trackedFileCount: 0,
+    untrackedPaths: [],
+    error: "Git history is unavailable in this runtime; using non-secret deployment source metadata."
+  };
+}
+
+function cleanEnv(name: string) {
+  const value = process.env[name]?.trim();
+  if (!value || /^SOURCE_/u.test(value) || value === "RELEASE_ID") {
+    return "";
+  }
+
+  return value;
 }
 
 function runGit(args: string[], cwd: string) {

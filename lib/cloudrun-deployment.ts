@@ -21,6 +21,9 @@ const requiredNonSecretEnv = [
   "SENTINEL_CLOUD_RUN_SERVICE_NAME",
   "SENTINEL_CLOUD_RUN_REGION",
   "SENTINEL_RELEASE_ID",
+  "SENTINEL_SOURCE_COMMIT",
+  "SENTINEL_SOURCE_COMMIT_AT",
+  "SENTINEL_SOURCE_BRANCH",
   "SENTINEL_PRIVATE_EVIDENCE_BUCKET",
   "NEXT_PUBLIC_PRODUCT_URL",
   "XPRIZE_REPOSITORY_URL",
@@ -164,7 +167,10 @@ const placeholderPatterns = [
   /BILLING_ACCOUNT_ID/u,
   /BUDGET_ID/u,
   /GEMINI_API_KEY_ID/u,
-  /RELEASE_ID/u
+  /RELEASE_ID/u,
+  /SOURCE_COMMIT/u,
+  /SOURCE_COMMIT_AT/u,
+  /SOURCE_BRANCH/u
 ];
 
 const unsafeRawValuePatterns = [
@@ -583,6 +589,8 @@ function checkProductionValueInvariants(
   const geminiModel = cleanEnvValue(envByName, "GEMINI_MODEL");
   const geminiAllowlist = cleanEnvValue(envByName, "SENTINEL_GEMINI_MODEL_ALLOWLIST");
   const releaseId = cleanEnvValue(envByName, "SENTINEL_RELEASE_ID");
+  const sourceCommit = cleanEnvValue(envByName, "SENTINEL_SOURCE_COMMIT");
+  const sourceCommitAt = cleanEnvValue(envByName, "SENTINEL_SOURCE_COMMIT_AT");
 
   for (const [name, expectedValue] of Object.entries(fixedProductionEnvValues)) {
     const value = cleanEnvValue(envByName, name);
@@ -754,6 +762,34 @@ function checkProductionValueInvariants(
         )
       );
     }
+  }
+
+  if (sourceCommit && !/^[a-f0-9]{40}$/iu.test(sourceCommit)) {
+    checks.push(
+      envCheck(
+        "INVALID_SENTINEL_SOURCE_COMMIT",
+        "evidence",
+        "blocked",
+        false,
+        sourceCommit,
+        "SENTINEL_SOURCE_COMMIT must be the full 40-character Git commit SHA used to build the deployed image.",
+        "Render SENTINEL_SOURCE_COMMIT from git rev-parse HEAD before Cloud Run dry-run."
+      )
+    );
+  }
+
+  if (sourceCommitAt && Number.isNaN(Date.parse(sourceCommitAt))) {
+    checks.push(
+      envCheck(
+        "INVALID_SENTINEL_SOURCE_COMMIT_AT",
+        "evidence",
+        "blocked",
+        false,
+        sourceCommitAt,
+        "SENTINEL_SOURCE_COMMIT_AT must be an ISO timestamp for the source commit used to build the deployed image.",
+        "Render SENTINEL_SOURCE_COMMIT_AT from git log -1 --format=%cI before Cloud Run dry-run."
+      )
+    );
   }
 
   if (billingAccountId && !/^[A-Z0-9]{6}-[A-Z0-9]{6}-[A-Z0-9]{6}$/u.test(billingAccountId)) {
@@ -1003,7 +1039,7 @@ function categoryForEnv(name: string): CloudRunDeploymentEnvCheck["category"] {
     return "google-cloud";
   }
 
-  if (name.includes("EVIDENCE") || name === "SENTINEL_RELEASE_ID") {
+  if (name.includes("EVIDENCE") || name === "SENTINEL_RELEASE_ID" || name.startsWith("SENTINEL_SOURCE_")) {
     return "evidence";
   }
 

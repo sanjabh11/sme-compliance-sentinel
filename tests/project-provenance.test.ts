@@ -16,6 +16,20 @@ const cleanGitSignals: ProjectProvenanceGitSignals = {
   untrackedPaths: []
 };
 
+const hostedSourceMetadataSignals: ProjectProvenanceGitSignals = {
+  gitAvailable: false,
+  sourceEvidenceMode: "deployment-env",
+  commitCount: 0,
+  headCommit: "0123456789abcdef0123456789abcdef01234567",
+  remoteUrl: "https://github.com/example/sme-workspace-sentinel",
+  upstreamBranch: "origin/main",
+  remoteHeadCommit: "0123456789abcdef0123456789abcdef01234567",
+  headCommitAt: "2026-05-23T17:24:17.894Z",
+  trackedFileCount: 0,
+  untrackedPaths: [],
+  error: "Git history is unavailable in this runtime; using non-secret deployment source metadata."
+};
+
 describe("project provenance disclosure report", () => {
   it("blocks submission when git history, tracked source, repository URL, or attestation are missing", () => {
     const report = buildProjectProvenanceReport({
@@ -64,6 +78,21 @@ describe("project provenance disclosure report", () => {
     expect(report.repositoryUrl).toBe("https://github.com/example/sme-workspace-sentinel");
     expect(report.repositoryUrlSource).toBe("git-remote");
     expect(report.checks.find((check) => check.id === "repository-url")?.status).toBe("passed");
+  });
+
+  it("uses deployment source metadata when hosted runtime Git is unavailable", () => {
+    const report = buildProjectProvenanceReport(hostedSourceMetadataSignals, {
+      projectCreatedAfterStartConfirmed: true,
+      repositoryUrl: "https://github.com/example/sme-workspace-sentinel"
+    });
+    const checksById = Object.fromEntries(report.checks.map((check) => [check.id, check]));
+
+    expect(report.overallStatus).toBe("warning");
+    expect(checksById["git-history-present"].status).toBe("warning");
+    expect(checksById["first-commit-after-start"].status).toBe("warning");
+    expect(checksById["source-tracked"].status).toBe("warning");
+    expect(checksById["repository-pushed"].status).toBe("passed");
+    expect(checksById["repository-pushed"].evidence).toContain("0123456789abcdef0123456789abcdef01234567");
   });
 
   it("keeps provenance language inside claim guard boundaries", () => {

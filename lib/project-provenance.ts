@@ -12,6 +12,7 @@ export const xprizeHackathonStartAt = "2026-05-19T00:00:00.000Z";
 
 const unavailableGitSignals: ProjectProvenanceGitSignals = {
   gitAvailable: false,
+  sourceEvidenceMode: "missing",
   commitCount: 0,
   trackedFileCount: 0,
   untrackedPaths: [],
@@ -67,14 +68,17 @@ function buildChecks(
   const startMs = Date.parse(xprizeHackathonStartAt);
   const firstCommitAfterStart = Number.isFinite(firstCommitMs) && firstCommitMs >= startMs;
   const hasUntracked = git.untrackedPaths.length > 0;
+  const deploymentSourceMetadata = git.sourceEvidenceMode === "deployment-env" && Boolean(git.headCommit);
 
   return [
     check(
       "git-history-present",
       "Git history exists",
-      git.gitAvailable && git.commitCount > 0 ? "passed" : "blocked",
+      git.gitAvailable && git.commitCount > 0 ? "passed" : deploymentSourceMetadata ? "warning" : "blocked",
       git.gitAvailable
         ? `${git.commitCount} commit(s) found; ${git.error ?? "no git error"}`
+        : deploymentSourceMetadata
+          ? `Runtime Git is unavailable, but deployed source commit metadata is present: ${git.headCommit}.`
         : git.error ?? "Git is unavailable.",
       "Create the first commit and push the repository before relying on creation-date proof for the May 19, 2026 hackathon start reference.",
       "engineering"
@@ -82,9 +86,11 @@ function buildChecks(
     check(
       "first-commit-after-start",
       "First commit is after hackathon start",
-      firstCommitAfterStart ? "passed" : "blocked",
+      firstCommitAfterStart ? "passed" : deploymentSourceMetadata ? "warning" : "blocked",
       git.firstCommitAt
         ? `First commit timestamp ${git.firstCommitAt}; hackathon start reference ${xprizeHackathonStartAt}.`
+        : deploymentSourceMetadata
+          ? `Hosted runtime declares source commit ${git.headCommit}; first-commit timing still requires local repository provenance.`
         : "No first commit timestamp is available.",
       "Verify the first commit is after the official hackathon start date and disclose any pre-existing work.",
       "founder"
@@ -92,8 +98,10 @@ function buildChecks(
     check(
       "source-tracked",
       "Source files are tracked for repository submission",
-      git.trackedFileCount > 0 && !hasUntracked ? "passed" : "blocked",
-      `${git.trackedFileCount} tracked file(s); ${git.untrackedPaths.length} untracked path(s).`,
+      git.trackedFileCount > 0 && !hasUntracked ? "passed" : deploymentSourceMetadata ? "warning" : "blocked",
+      deploymentSourceMetadata
+        ? `Hosted runtime cannot inspect tracked source files; deployed commit metadata is ${git.headCommit}.`
+        : `${git.trackedFileCount} tracked file(s); ${git.untrackedPaths.length} untracked path(s).`,
       "Add all intended source files to Git, keep secrets/private evidence excluded, and confirm the repository contains the necessary source code.",
       "engineering"
     ),

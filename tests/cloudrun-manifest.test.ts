@@ -20,6 +20,9 @@ describe("Cloud Run deployment manifest", () => {
       "SENTINEL_CLOUD_RUN_SERVICE_NAME",
       "SENTINEL_CLOUD_RUN_REGION",
       "SENTINEL_RELEASE_ID",
+      "SENTINEL_SOURCE_COMMIT",
+      "SENTINEL_SOURCE_COMMIT_AT",
+      "SENTINEL_SOURCE_BRANCH",
       "SENTINEL_PRIVATE_EVIDENCE_BUCKET",
       "NEXT_PUBLIC_PRODUCT_URL",
       "XPRIZE_REPOSITORY_URL",
@@ -76,6 +79,9 @@ describe("Cloud Run deployment manifest", () => {
     expectEnvValue("SENTINEL_CLOUD_RUN_SERVICE_NAME", "sme-workspace-sentinel");
     expectEnvValue("SENTINEL_CLOUD_RUN_REGION", "us-central1");
     expectEnvValue("SENTINEL_RELEASE_ID", "RELEASE_ID");
+    expectEnvValue("SENTINEL_SOURCE_COMMIT", "SOURCE_COMMIT");
+    expectEnvValue("SENTINEL_SOURCE_COMMIT_AT", "SOURCE_COMMIT_AT");
+    expectEnvValue("SENTINEL_SOURCE_BRANCH", "origin/main");
     expectEnvValue("SENTINEL_PRIVATE_EVIDENCE_BUCKET", "gs://PROJECT_ID-sentinel-private-evidence");
     expectEnvValue("XPRIZE_REPOSITORY_URL", "https://github.com/sanjabh11/sme-compliance-sentinel");
     expectEnvValue("SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE", "oidc");
