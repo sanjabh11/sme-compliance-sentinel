@@ -10,7 +10,13 @@ interface CloudRunRenderModule {
     outDir: string;
     releaseId: string;
     strict: boolean;
+    writeValuesTemplatePath: string;
   };
+  writeRenderValuesTemplate: (outputPath?: string) => Promise<{
+    path: string;
+    keyCount: number;
+    privateHandling: string;
+  }>;
   renderCloudRunManifest: (options: {
     template?: string;
     valuesPath?: string;
@@ -50,6 +56,8 @@ describe("Cloud Run manifest renderer", () => {
       "/tmp/sentinel-render",
       "--release-id",
       "release-1",
+      "--write-values-template",
+      "/tmp/sentinel-render-values.json",
       "--strict"
     ]);
 
@@ -58,10 +66,35 @@ describe("Cloud Run manifest renderer", () => {
       valuesPath: "/secure/local/render-values.json",
       outDir: "/tmp/sentinel-render",
       releaseId: "release-1",
+      writeValuesTemplatePath: "/tmp/sentinel-render-values.json",
       strict: true
     });
     expect(() => parseArgs(["--gemini-api-key", "secret"])).toThrow(/Raw secret CLI args/u);
     expect(() => parseArgs(["--token=secret"])).toThrow(/Raw secret CLI args/u);
+  });
+
+  it("writes a non-secret render values template and rejects placeholders in strict mode", async () => {
+    const { renderCloudRunManifest, writeRenderValuesTemplate } = await loadRenderer();
+    const tempDir = await makeTempDir();
+    const valuesPath = join(tempDir, "cloudrun-render-values.template.json");
+
+    const summary = await writeRenderValuesTemplate(valuesPath);
+    const templateValues = JSON.parse(await readFile(valuesPath, "utf8")) as Record<string, string>;
+
+    expect(summary.path).toBe(valuesPath);
+    expect(summary.keyCount).toBeGreaterThan(15);
+    expect(summary.privateHandling).toContain("non-secret template");
+    expect(templateValues).toMatchObject({
+      SENTINEL_SOURCE_COMMIT: "SOURCE_COMMIT",
+      SENTINEL_SOURCE_COMMIT_AT: "SOURCE_COMMIT_AT",
+      SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS: "STATIC_EGRESS_IPS"
+    });
+    expect(Object.keys(templateValues)).not.toEqual(
+      expect.arrayContaining(["GEMINI_API_KEY", "GOOGLE_OAUTH_CLIENT_SECRET", "SENTINEL_ADMIN_ACTION_TOKEN"])
+    );
+    await expect(renderCloudRunManifest({ valuesPath, outDir: tempDir, strict: true })).rejects.toThrow(
+      /Strict Cloud Run render values missing or placeholder: .*SENTINEL_SOURCE_COMMIT/u
+    );
   });
 
   it("renders a private production candidate manifest and verifier bundle from non-secret values", async () => {
@@ -131,7 +164,7 @@ describe("Cloud Run manifest renderer", () => {
     const tempDir = await makeTempDir();
 
     await expect(renderCloudRunManifest({ outDir: tempDir, releaseId: "missing-values", strict: true })).rejects.toThrow(
-      /Rendered manifest is template-needs-values/u
+      /Strict Cloud Run render values missing/u
     );
   });
 });

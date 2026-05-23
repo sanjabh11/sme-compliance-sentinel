@@ -8,6 +8,7 @@ import type {
 const serviceName = sentinelConfig.cloudRunServiceName || "sme-workspace-sentinel";
 const recommendedRegion = sentinelConfig.cloudRunRegion || "us-central1";
 const manifestPath = "cloudrun.service.yaml";
+const renderValuesTemplatePath = "docs/deployment/cloudrun-render-values.template.json";
 const renderedManifestPath = "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml";
 const projectId = sentinelConfig.googleCloudProject || "PROJECT_ID";
 const projectNumber = sentinelConfig.googleCloudProjectNumber || "PROJECT_NUMBER";
@@ -66,6 +67,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
     generatedAt: new Date().toISOString(),
     status: blockers.length ? "needs-values" : "ready-to-run",
     manifestPath,
+    renderValuesTemplatePath,
     serviceName,
     recommendedRegion,
     requiredApis,
@@ -84,6 +86,15 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
         false,
         false,
         "Terminal output showing the submitted source passes before cloud deployment."
+      ),
+      command(
+        "write-render-values-template",
+        "Write private render values template",
+        "node scripts/render-cloudrun-manifest.mjs --write-values-template /secure/local/cloudrun-render-values.json",
+        "engineering",
+        false,
+        false,
+        "Private non-secret values file template ready for project ids, source revision metadata, hosted URLs, secret versions, and reviewed XPRIZE flags."
       ),
       command(
         "render-cloudrun-manifest",
@@ -134,6 +145,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
     blockers,
     privateHandlingRules: [
       "Never put API keys, OAuth client secrets, evidence-signing secrets, Drive channel tokens, judge credentials, invoices, or customer findings in the repository.",
+      `Use ${renderValuesTemplatePath} only as a non-secret starting point; filled render values belong in a private path such as /secure/local/cloudrun-render-values.json.`,
       "Use Secret Manager for the runtime secrets and grant access only to the Cloud Run runtime service account.",
       "Use Devpost private testing instructions for judge credentials; keep public README and video free of login secrets.",
       "Use the admin action token only from private operator tooling when importing hosted proof JSON.",
@@ -196,6 +208,15 @@ function buildChecklist(): ProductionProvisioningChecklistItem[] {
       "Traceability from Cloud Run revision, source commit, production smoke output, and Evidence Vault import checksum.",
       "Set SENTINEL_RELEASE_ID before dry-run and deployment.",
       "Release ids are non-secret, but tie them only to redacted proof packets."
+    ),
+    item(
+      "source-revision-metadata",
+      "Source revision metadata configured",
+      Boolean(sentinelConfig.sourceCommit && sentinelConfig.sourceCommitAt && sentinelConfig.sourceBranch),
+      "engineering",
+      "Hosted provenance fallback and Cloud Run revision-to-source traceability.",
+      "Set SENTINEL_SOURCE_COMMIT, SENTINEL_SOURCE_COMMIT_AT, and SENTINEL_SOURCE_BRANCH from the pushed source commit before rendering Cloud Run.",
+      "Source commit metadata is non-secret; keep the full local provenance transcript in the private judge packet."
     ),
     item(
       "gemini-key-resource",

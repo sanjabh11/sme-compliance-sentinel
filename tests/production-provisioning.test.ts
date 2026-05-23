@@ -8,6 +8,7 @@ describe("production provisioning pack", () => {
 
     expect(pack.status).toBe("needs-values");
     expect(pack.manifestPath).toBe("cloudrun.service.yaml");
+    expect(pack.renderValuesTemplatePath).toBe("docs/deployment/cloudrun-render-values.template.json");
     expect(pack.serviceName).toBe("sme-workspace-sentinel");
     expect(pack.requiredApis).toEqual(
       expect.arrayContaining([
@@ -50,7 +51,14 @@ describe("production provisioning pack", () => {
       "--location us-central1"
     );
     expect(pack.verificationSequence.map((command) => command.id)).toEqual(
-      expect.arrayContaining(["local-quality-gates", "render-cloudrun-manifest", "manifest-regression", "hosted-smoke", "write-through-smoke"])
+      expect.arrayContaining([
+        "local-quality-gates",
+        "write-render-values-template",
+        "render-cloudrun-manifest",
+        "manifest-regression",
+        "hosted-smoke",
+        "write-through-smoke"
+      ])
     );
     expect(pack.verificationSequence.map((command) => command.id)).toContain("import-hosted-proof");
   });
@@ -73,7 +81,9 @@ describe("production provisioning pack", () => {
     );
     expect(pack.checklist.find((item) => item.id === "human-attestations")?.status).toBe("manual-review");
     expect(pack.checklist.find((item) => item.id === "admin-action-token")?.status).toBe("missing");
+    expect(pack.checklist.find((item) => item.id === "source-revision-metadata")?.status).toBe("missing");
     expect(pack.privateHandlingRules.join(" ")).toContain("Secret Manager");
+    expect(pack.privateHandlingRules.join(" ")).toContain("cloudrun-render-values.template.json");
 
     const violations = scanClaimText({
       artifact: "production-provisioning",

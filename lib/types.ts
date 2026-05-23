@@ -1744,6 +1744,7 @@ export interface ProductionProvisioningPack {
   generatedAt: string;
   status: ProductionProvisioningStatus;
   manifestPath: string;
+  renderValuesTemplatePath: string;
   serviceName: string;
   recommendedRegion: string;
   requiredApis: string[];

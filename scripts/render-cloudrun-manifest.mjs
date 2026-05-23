@@ -2,7 +2,7 @@
 
 import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -13,6 +13,7 @@ const verifierFileName = "cloudrun-manifest-verifier.json";
 const summaryFileName = "cloudrun-render-summary.json";
 const dryRunCommandFileName = "cloudrun-dry-run-command.txt";
 const deployCommandFileName = "cloudrun-deploy-command.txt";
+const defaultValuesTemplatePath = "docs/deployment/cloudrun-render-values.template.json";
 
 const renderValueKeys = [
   "NEXT_PUBLIC_APP_NAME",
@@ -121,13 +122,67 @@ const prohibitedRenderedEnvKeys = prohibitedRawSecretKeys.filter(
 
 const safeFileKeys = new Set([...renderValueKeys, ...derivedValueKeys, ...secretVersionKeys]);
 
+const strictRequiredValueKeys = [
+  "GOOGLE_CLOUD_PROJECT",
+  "GOOGLE_CLOUD_PROJECT_NUMBER",
+  "SENTINEL_CLOUD_RUN_REGION",
+  "SENTINEL_RELEASE_ID",
+  "SENTINEL_SOURCE_COMMIT",
+  "SENTINEL_SOURCE_COMMIT_AT",
+  "SENTINEL_SOURCE_BRANCH",
+  "SENTINEL_CLOUD_RUN_IMAGE",
+  "SENTINEL_CLOUD_RUN_SERVICE_ACCOUNT_EMAIL",
+  "SENTINEL_PRIVATE_EVIDENCE_BUCKET",
+  "NEXT_PUBLIC_PRODUCT_URL",
+  "XPRIZE_REPOSITORY_URL",
+  "XPRIZE_DEMO_VIDEO_URL",
+  "GOOGLE_CLOUD_BILLING_ACCOUNT_ID",
+  "SENTINEL_GCP_BUDGET_ID",
+  "SENTINEL_BUDGET_PUBSUB_TOPIC",
+  "WORKSPACE_GMAIL_TOPIC",
+  "WORKSPACE_GMAIL_SUBSCRIPTION",
+  "WORKSPACE_PUBSUB_PUSH_AUDIENCE",
+  "WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL",
+  "GOOGLE_OAUTH_CLIENT_ID",
+  "GOOGLE_OAUTH_REDIRECT_URI",
+  "SENTINEL_GEMINI_API_KEY_ID",
+  "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
+  "XPRIZE_ENTRANT_TYPE",
+  ...secretVersionKeys
+];
+
+const renderValuesTemplate = {
+  GOOGLE_CLOUD_PROJECT: "PROJECT_ID",
+  GOOGLE_CLOUD_PROJECT_NUMBER: "PROJECT_NUMBER",
+  SENTINEL_CLOUD_RUN_REGION: "us-central1",
+  SENTINEL_RELEASE_ID: "RELEASE_ID",
+  SENTINEL_SOURCE_COMMIT: "SOURCE_COMMIT",
+  SENTINEL_SOURCE_COMMIT_AT: "SOURCE_COMMIT_AT",
+  SENTINEL_SOURCE_BRANCH: "origin/main",
+  NEXT_PUBLIC_PRODUCT_URL: "https://YOUR-SERVICE-URL",
+  XPRIZE_REPOSITORY_URL: "https://github.com/sanjabh11/sme-compliance-sentinel",
+  XPRIZE_DEMO_VIDEO_URL: "https://youtu.be/YOUR_VIDEO",
+  GOOGLE_CLOUD_BILLING_ACCOUNT_ID: "BILLING_ACCOUNT_ID",
+  SENTINEL_GCP_BUDGET_SHORT_ID: "BUDGET_ID",
+  GOOGLE_OAUTH_CLIENT_ID: "YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+  SENTINEL_GEMINI_API_KEY_SHORT_ID: "GEMINI_API_KEY_ID",
+  SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS: "STATIC_EGRESS_IPS",
+  XPRIZE_ENTRANT_TYPE: "team",
+  SENTINEL_ADMIN_ACTION_TOKEN_VERSION: "1",
+  GEMINI_API_KEY_VERSION: "1",
+  GOOGLE_OAUTH_CLIENT_SECRET_VERSION: "1",
+  SENTINEL_EVIDENCE_SIGNING_SECRET_VERSION: "1",
+  WORKSPACE_DRIVE_CHANNEL_TOKEN_VERSION: "1"
+};
+
 export function parseArgs(argv) {
   const args = {
     template: defaultTemplate,
     valuesPath: "",
     outDir: process.env.SENTINEL_CLOUD_RUN_RENDER_OUT_DIR ?? defaultOutDir,
     releaseId: process.env.SENTINEL_RELEASE_ID ?? "",
-    strict: false
+    strict: false,
+    writeValuesTemplatePath: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -181,6 +236,17 @@ export function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--write-values-template") {
+      args.writeValuesTemplatePath = argv[index + 1] ?? defaultValuesTemplatePath;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--write-values-template=")) {
+      args.writeValuesTemplatePath = arg.slice("--write-values-template=".length) || defaultValuesTemplatePath;
+      continue;
+    }
+
     if (arg === "--strict") {
       args.strict = true;
     }
@@ -192,6 +258,9 @@ export function parseArgs(argv) {
 export async function renderCloudRunManifest(options) {
   const fileValues = await loadValuesFile(options.valuesPath);
   const renderValues = buildRenderValues(fileValues);
+  if (options.strict) {
+    assertStrictRenderValues(renderValues);
+  }
   const releaseId = sanitizePathSegment(options.releaseId || renderValues.SENTINEL_RELEASE_ID || "release-candidate");
   const outputDirectory = resolve(options.outDir ?? defaultOutDir, releaseId);
   await mkdir(outputDirectory, { recursive: true });
@@ -266,6 +335,24 @@ export async function renderCloudRunManifest(options) {
   return summary;
 }
 
+export function buildRenderValuesTemplate() {
+  return { ...renderValuesTemplate };
+}
+
+export async function writeRenderValuesTemplate(outputPath = defaultValuesTemplatePath) {
+  const absolutePath = resolve(outputPath || defaultValuesTemplatePath);
+  await mkdir(dirname(absolutePath), { recursive: true });
+  await writeJson(absolutePath, buildRenderValuesTemplate());
+
+  return {
+    generatedAt: new Date().toISOString(),
+    path: absolutePath,
+    keyCount: Object.keys(renderValuesTemplate).length,
+    privateHandling:
+      "This is a non-secret template. Copy it to a private path, replace placeholders with reviewed production values, and keep filled values out of Git."
+  };
+}
+
 async function loadValuesFile(valuesPath) {
   if (!valuesPath) {
     return {};
@@ -333,6 +420,16 @@ function buildRenderValues(fileValues) {
   }
 
   return values;
+}
+
+function assertStrictRenderValues(values) {
+  const missing = strictRequiredValueKeys.filter((key) => isMissingStrictValue(values[key]));
+
+  if (missing.length) {
+    throw new Error(
+      `Strict Cloud Run render values missing or placeholder: ${missing.join(", ")}. Copy ${defaultValuesTemplatePath} to a private path, fill production values, and rerun with --strict.`
+    );
+  }
 }
 
 function renderManifest(template, values) {
@@ -429,6 +526,25 @@ function assertSafeValue(key, value) {
   }
 }
 
+function isMissingStrictValue(value) {
+  return value === undefined || value === "" || hasTemplatePlaceholder(String(value));
+}
+
+function hasTemplatePlaceholder(value) {
+  return [
+    /PROJECT_ID/u,
+    /PROJECT_NUMBER/u,
+    /YOUR[-_A-Z0-9]*/u,
+    /BILLING_ACCOUNT_ID/u,
+    /BUDGET_ID/u,
+    /GEMINI_API_KEY_ID/u,
+    /RELEASE_ID/u,
+    /SOURCE_COMMIT/u,
+    /SOURCE_COMMIT_AT/u,
+    /STATIC_EGRESS_IPS/u
+  ].some((pattern) => pattern.test(value));
+}
+
 function assertNoUnsafeRenderedSecrets(renderedManifest) {
   for (const secretKey of prohibitedRenderedEnvKeys) {
     if (renderedManifest.includes(`- name: ${secretKey}`)) {
@@ -506,7 +622,10 @@ function escapeRegExp(value) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
-    const summary = await renderCloudRunManifest(parseArgs(process.argv.slice(2)));
+    const options = parseArgs(process.argv.slice(2));
+    const summary = options.writeValuesTemplatePath
+      ? await writeRenderValuesTemplate(options.writeValuesTemplatePath)
+      : await renderCloudRunManifest(options);
     console.log(JSON.stringify(summary, null, 2));
   } catch (error) {
     if (error?.summary) {
