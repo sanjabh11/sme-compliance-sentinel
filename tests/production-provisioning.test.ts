@@ -16,6 +16,7 @@ describe("production provisioning pack", () => {
         "firestore.googleapis.com",
         "bigquery.googleapis.com",
         "pubsub.googleapis.com",
+        "storage.googleapis.com",
         "dlp.googleapis.com",
         "generativelanguage.googleapis.com"
       ])
@@ -23,6 +24,7 @@ describe("production provisioning pack", () => {
     expect(pack.secretNames).toEqual(
       expect.arrayContaining([
         "gemini-api-key",
+        "sentinel-admin-action-token",
         "google-oauth-client-secret",
         "sentinel-evidence-signing-secret",
         "workspace-drive-channel-token"
@@ -33,6 +35,7 @@ describe("production provisioning pack", () => {
         "enable-apis",
         "create-runtime-service-account",
         "grant-pubsub-token-creator",
+        "create-private-evidence-bucket",
         "dry-run-cloudrun",
         "deploy-cloudrun",
         "describe-cloudrun"
@@ -43,6 +46,7 @@ describe("production provisioning pack", () => {
     expect(pack.verificationSequence.map((command) => command.id)).toEqual(
       expect.arrayContaining(["local-quality-gates", "manifest-regression", "hosted-smoke", "write-through-smoke"])
     );
+    expect(pack.verificationSequence.map((command) => command.id)).toContain("import-hosted-proof");
   });
 
   it("keeps secrets and XPRIZE attestations inside explicit safety boundaries", () => {
@@ -53,11 +57,14 @@ describe("production provisioning pack", () => {
     expect(allCommands).not.toContain("GOOGLE_OAUTH_CLIENT_SECRET=");
     expect(allCommands).not.toContain("WORKSPACE_DRIVE_CHANNEL_TOKEN=");
     expect(allCommands).not.toContain("SENTINEL_EVIDENCE_SIGNING_SECRET=");
+    expect(allCommands).not.toContain("SENTINEL_ADMIN_ACTION_TOKEN=");
     expect(allCommands).not.toContain("GOOGLE_CLOUD_ACCESS_TOKEN");
-    expect(pack.commands.filter((command) => command.requiresSecretInput).every((command) => command.command.includes("--data-file="))).toBe(
-      true
+    expect(pack.commands.filter((command) => command.requiresSecretInput).every((command) => command.command.includes("--data-file="))).toBe(true);
+    expect(pack.verificationSequence.find((command) => command.id === "import-hosted-proof")?.command).toContain(
+      "x-sentinel-admin-token: $SENTINEL_ADMIN_ACTION_TOKEN"
     );
     expect(pack.checklist.find((item) => item.id === "human-attestations")?.status).toBe("manual-review");
+    expect(pack.checklist.find((item) => item.id === "admin-action-token")?.status).toBe("missing");
     expect(pack.privateHandlingRules.join(" ")).toContain("Secret Manager");
 
     const violations = scanClaimText({

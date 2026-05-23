@@ -17,6 +17,10 @@ const requiredNonSecretEnv = [
   "SENTINEL_STORAGE_MODE",
   "SENTINEL_EVIDENCE_MODE",
   "SENTINEL_CLOUD_COST_CONTROLS_MODE",
+  "SENTINEL_CLOUD_RUN_SERVICE_NAME",
+  "SENTINEL_CLOUD_RUN_REGION",
+  "SENTINEL_RELEASE_ID",
+  "SENTINEL_PRIVATE_EVIDENCE_BUCKET",
   "NEXT_PUBLIC_PRODUCT_URL",
   "XPRIZE_REPOSITORY_URL",
   "XPRIZE_DEMO_VIDEO_URL",
@@ -67,6 +71,7 @@ const requiredNonSecretEnv = [
 ];
 
 const requiredSecretEnv = [
+  "SENTINEL_ADMIN_ACTION_TOKEN",
   "GEMINI_API_KEY",
   "GOOGLE_OAUTH_CLIENT_SECRET",
   "SENTINEL_EVIDENCE_SIGNING_SECRET",
@@ -97,7 +102,8 @@ const placeholderPatterns = [
   /YOUR[-_A-Z0-9]*/u,
   /BILLING_ACCOUNT_ID/u,
   /BUDGET_ID/u,
-  /GEMINI_API_KEY_ID/u
+  /GEMINI_API_KEY_ID/u,
+  /RELEASE_ID/u
 ];
 
 interface ParsedEnvEntry {
@@ -147,25 +153,28 @@ export function buildCloudRunDeploymentEvidence(
   const needsValues = envChecks.some((check) => check.status === "needs-value") || replacementFindings.length > 0;
   const overallStatus = blockers.length ? "blocked" : needsValues ? "template-needs-values" : "ready-to-dry-run";
   const projectId = envByName.get("GOOGLE_CLOUD_PROJECT")?.value || "PROJECT_ID";
+  const deploymentRegion = envByName.get("SENTINEL_CLOUD_RUN_REGION")?.value || recommendedRegion;
+  const configuredServiceName = envByName.get("SENTINEL_CLOUD_RUN_SERVICE_NAME")?.value || serviceName;
 
   return {
     generatedAt: options.generatedAt ?? new Date().toISOString(),
     overallStatus,
     manifestPath,
-    serviceName,
+    serviceName: configuredServiceName,
     image,
     runtimeServiceAccount,
     envChecks,
     replacementFindings,
     manualReviewFlags: envChecks.filter((check) => check.status === "manual-review").map((check) => check.name),
     secretRefs,
-    dryRunCommand: `gcloud run services replace ${manifestPath} --region ${recommendedRegion} --project ${projectId} --dry-run`,
-    deployCommand: `gcloud run services replace ${manifestPath} --region ${recommendedRegion} --project ${projectId}`,
+    dryRunCommand: `gcloud run services replace ${manifestPath} --region ${deploymentRegion} --project ${projectId} --dry-run`,
+    deployCommand: `gcloud run services replace ${manifestPath} --region ${deploymentRegion} --project ${projectId}`,
     postDeployVerification: [
       "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --strict",
       "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --strict --include-write-checks",
       "POST /api/production/gemini-smoke from the hosted service after GEMINI_API_KEY is configured.",
       "POST /api/production/persistence from the hosted service after Firestore, BigQuery, and Secret Manager IAM are configured.",
+      "POST /api/evidence/vault/import with x-sentinel-admin-token after redacting the hosted verify:production JSON.",
       "Register the resulting redacted JSON/screenshot artifacts in the private Evidence Vault."
     ],
     blockers,
@@ -425,6 +434,10 @@ function categoryForEnv(name: string): CloudRunDeploymentEnvCheck["category"] {
 
   if (name.startsWith("GOOGLE_CLOUD_") || name.startsWith("FIRESTORE_") || name.startsWith("BIGQUERY_")) {
     return "google-cloud";
+  }
+
+  if (name.includes("EVIDENCE") || name === "SENTINEL_RELEASE_ID") {
+    return "evidence";
   }
 
   if (name.startsWith("WORKSPACE_") || name.startsWith("GOOGLE_OAUTH_")) {

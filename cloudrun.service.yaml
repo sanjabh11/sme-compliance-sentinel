@@ -36,6 +36,14 @@ spec:
               value: "production"
             - name: SENTINEL_CLOUD_COST_CONTROLS_MODE
               value: "production"
+            - name: SENTINEL_CLOUD_RUN_SERVICE_NAME
+              value: "sme-workspace-sentinel"
+            - name: SENTINEL_CLOUD_RUN_REGION
+              value: "us-central1"
+            - name: SENTINEL_RELEASE_ID
+              value: "RELEASE_ID"
+            - name: SENTINEL_PRIVATE_EVIDENCE_BUCKET
+              value: "gs://PROJECT_ID-sentinel-private-evidence"
             - name: NEXT_PUBLIC_PRODUCT_URL
               value: "https://YOUR-SERVICE-URL"
             - name: XPRIZE_REPOSITORY_URL
@@ -130,6 +138,11 @@ spec:
               value: "0.0003"
             - name: SENSITIVE_DATA_PROTECTION_ENABLED
               value: "true"
+            - name: SENTINEL_ADMIN_ACTION_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: sentinel-admin-action-token
+                  key: "1"
             - name: GEMINI_API_KEY
               valueFrom:
                 secretKeyRef:

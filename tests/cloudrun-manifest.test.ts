@@ -16,6 +16,10 @@ describe("Cloud Run deployment manifest", () => {
       "SENTINEL_STORAGE_MODE",
       "SENTINEL_EVIDENCE_MODE",
       "SENTINEL_CLOUD_COST_CONTROLS_MODE",
+      "SENTINEL_CLOUD_RUN_SERVICE_NAME",
+      "SENTINEL_CLOUD_RUN_REGION",
+      "SENTINEL_RELEASE_ID",
+      "SENTINEL_PRIVATE_EVIDENCE_BUCKET",
       "NEXT_PUBLIC_PRODUCT_URL",
       "XPRIZE_REPOSITORY_URL",
       "XPRIZE_DEMO_VIDEO_URL",
@@ -67,12 +71,17 @@ describe("Cloud Run deployment manifest", () => {
     expectEnvValue("SENTINEL_STORAGE_MODE", "gcp-rest");
     expectEnvValue("SENTINEL_EVIDENCE_MODE", "production");
     expectEnvValue("SENTINEL_CLOUD_COST_CONTROLS_MODE", "production");
+    expectEnvValue("SENTINEL_CLOUD_RUN_SERVICE_NAME", "sme-workspace-sentinel");
+    expectEnvValue("SENTINEL_CLOUD_RUN_REGION", "us-central1");
+    expectEnvValue("SENTINEL_RELEASE_ID", "RELEASE_ID");
+    expectEnvValue("SENTINEL_PRIVATE_EVIDENCE_BUCKET", "gs://PROJECT_ID-sentinel-private-evidence");
     expectEnvValue("XPRIZE_REPOSITORY_URL", "https://github.com/sanjabh11/sme-compliance-sentinel");
     expectEnvValue("SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE", "oidc");
     expectEnvValue("SENSITIVE_DATA_PROTECTION_ENABLED", "true");
   });
 
   it("uses Secret Manager references for credentials and does not commit access-token envs", () => {
+    expectSecretEnv("SENTINEL_ADMIN_ACTION_TOKEN", "sentinel-admin-action-token", "1");
     expectSecretEnv("GEMINI_API_KEY", "gemini-api-key", "1");
     expectSecretEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-oauth-client-secret", "1");
     expectSecretEnv("SENTINEL_EVIDENCE_SIGNING_SECRET", "sentinel-evidence-signing-secret", "1");

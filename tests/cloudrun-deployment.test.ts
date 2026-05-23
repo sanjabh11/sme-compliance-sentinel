@@ -15,10 +15,18 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(evidence.manifestPath).toBe("cloudrun.service.yaml");
     expect(evidence.image).toContain("REGION-docker.pkg.dev/PROJECT_ID");
     expect(evidence.replacementFindings.map((finding) => finding.target)).toEqual(
-      expect.arrayContaining(["container image", "runtime service account", "NEXT_PUBLIC_PRODUCT_URL", "GOOGLE_CLOUD_PROJECT"])
+      expect.arrayContaining([
+        "container image",
+        "runtime service account",
+        "SENTINEL_RELEASE_ID",
+        "SENTINEL_PRIVATE_EVIDENCE_BUCKET",
+        "NEXT_PUBLIC_PRODUCT_URL",
+        "GOOGLE_CLOUD_PROJECT"
+      ])
     );
     expect(evidence.secretRefs).toEqual(
       expect.arrayContaining([
+        { envName: "SENTINEL_ADMIN_ACTION_TOKEN", secretName: "sentinel-admin-action-token", version: "1" },
         { envName: "GEMINI_API_KEY", secretName: "gemini-api-key", version: "1" },
         { envName: "GOOGLE_OAUTH_CLIENT_SECRET", secretName: "google-oauth-client-secret", version: "1" }
       ])
@@ -60,9 +68,13 @@ describe("Cloud Run deployment evidence verifier", () => {
 
     expect(report.overallStatus).toBe("template-needs-values");
     expect(report.secretRefs).toEqual(
-      expect.arrayContaining([{ envName: "WORKSPACE_DRIVE_CHANNEL_TOKEN", secretName: "workspace-drive-channel-token", version: "1" }])
+      expect.arrayContaining([
+        { envName: "SENTINEL_ADMIN_ACTION_TOKEN", secretName: "sentinel-admin-action-token", version: "1" },
+        { envName: "WORKSPACE_DRIVE_CHANNEL_TOKEN", secretName: "workspace-drive-channel-token", version: "1" }
+      ])
     );
     expect(output).not.toContain("GOOGLE_CLOUD_ACCESS_TOKEN");
+    expect(output).not.toContain("SENTINEL_ADMIN_ACTION_TOKEN=");
     expect(output).not.toContain("AIza");
     expect(report.blockers).toEqual([]);
   });
@@ -84,6 +96,11 @@ function renderProductionCandidateManifest() {
     .replace("sentinel-runtime@PROJECT_ID.iam.gserviceaccount.com", "sentinel-runtime@sentinel-prod.iam.gserviceaccount.com")
     .replaceAll("https://YOUR-SERVICE-URL", "https://sme-workspace-sentinel-abc-uc.a.run.app")
     .replace("https://youtu.be/YOUR_VIDEO", "https://youtu.be/sentinel-demo")
+    .replace('name: SENTINEL_RELEASE_ID\n              value: "RELEASE_ID"', 'name: SENTINEL_RELEASE_ID\n              value: "release-20260523-001"')
+    .replace(
+      'name: SENTINEL_PRIVATE_EVIDENCE_BUCKET\n              value: "gs://PROJECT_ID-sentinel-private-evidence"',
+      'name: SENTINEL_PRIVATE_EVIDENCE_BUCKET\n              value: "gs://sentinel-prod-sentinel-private-evidence"'
+    )
     .replace('name: GOOGLE_CLOUD_PROJECT\n              value: "PROJECT_ID"', 'name: GOOGLE_CLOUD_PROJECT\n              value: "sentinel-prod"')
     .replace(
       'name: GOOGLE_CLOUD_PROJECT_NUMBER\n              value: "PROJECT_NUMBER"',

@@ -5,8 +5,8 @@ import type {
   ProductionProvisioningPack
 } from "@/lib/types";
 
-const serviceName = "sme-workspace-sentinel";
-const recommendedRegion = "us-central1";
+const serviceName = sentinelConfig.cloudRunServiceName || "sme-workspace-sentinel";
+const recommendedRegion = sentinelConfig.cloudRunRegion || "us-central1";
 const manifestPath = "cloudrun.service.yaml";
 const projectId = sentinelConfig.googleCloudProject || "PROJECT_ID";
 const projectNumber = sentinelConfig.googleCloudProjectNumber || "PROJECT_NUMBER";
@@ -20,6 +20,7 @@ const requiredApis = [
   "run.googleapis.com",
   "artifactregistry.googleapis.com",
   "cloudbuild.googleapis.com",
+  "storage.googleapis.com",
   "secretmanager.googleapis.com",
   "firestore.googleapis.com",
   "bigquery.googleapis.com",
@@ -33,6 +34,7 @@ const requiredApis = [
 ];
 
 const secretNames = [
+  "sentinel-admin-action-token",
   "gemini-api-key",
   "google-oauth-client-secret",
   "sentinel-evidence-signing-secret",
@@ -108,13 +110,23 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
         false,
         true,
         "JSON report showing Firestore, BigQuery, Secret Manager, cost-control, and Workspace reconciliation checks after credentials are configured."
+      ),
+      command(
+        "import-hosted-proof",
+        "Import redacted hosted proof",
+        "curl -s -X POST https://YOUR-CLOUD-RUN-URL/api/evidence/vault/import -H 'content-type: application/json' -H 'x-sentinel-admin-token: $SENTINEL_ADMIN_ACTION_TOKEN' --data @/secure/local/redacted-verify-production.json",
+        "engineering",
+        true,
+        false,
+        "Evidence Vault response with checksum-bearing Cloud Run, Gemini, GCP persistence, Workspace, cost-control, repository, and readiness artifact records."
       )
     ],
     blockers,
     privateHandlingRules: [
       "Never put API keys, OAuth client secrets, evidence-signing secrets, Drive channel tokens, judge credentials, invoices, or customer findings in the repository.",
-      "Use Secret Manager for the four runtime secrets and grant access only to the Cloud Run runtime service account.",
+      "Use Secret Manager for the runtime secrets and grant access only to the Cloud Run runtime service account.",
       "Use Devpost private testing instructions for judge credentials; keep public README and video free of login secrets.",
+      "Use the admin action token only from private operator tooling when importing hosted proof JSON.",
       "Capture Cloud Run, Firestore, BigQuery, Secret Manager, Pub/Sub, Gemini, and Workspace proof as redacted screenshots or JSON logs for the private binder.",
       "Keep human-attestation flags false until the private proof exists; a deployed service URL alone is not XPRIZE readiness."
     ],
@@ -158,6 +170,24 @@ function buildChecklist(): ProductionProvisioningChecklistItem[] {
       "Share budget ids and thresholds without exposing billing account administration details."
     ),
     item(
+      "private-evidence-store",
+      "Private evidence bucket or store configured",
+      Boolean(sentinelConfig.privateEvidenceBucket),
+      "engineering",
+      "Private storage for hosted verification JSON, Cloud Run proof, billing screenshots, and redacted judge packet artifacts.",
+      "Set SENTINEL_PRIVATE_EVIDENCE_BUCKET after creating a private evidence store.",
+      "Never put raw invoices, OAuth tokens, customer findings, or security screenshots in the public repository."
+    ),
+    item(
+      "release-identity",
+      "Release id configured",
+      Boolean(sentinelConfig.releaseId),
+      "engineering",
+      "Traceability from Cloud Run revision, source commit, production smoke output, and Evidence Vault import checksum.",
+      "Set SENTINEL_RELEASE_ID before dry-run and deployment.",
+      "Release ids are non-secret, but tie them only to redacted proof packets."
+    ),
+    item(
       "gemini-key-resource",
       "Gemini API key resource id recorded",
       Boolean(sentinelConfig.geminiApiKeyId),
@@ -174,6 +204,15 @@ function buildChecklist(): ProductionProvisioningChecklistItem[] {
       "Consent-gated Google Workspace OAuth install.",
       "Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_REDIRECT_URI to the hosted callback values.",
       "Keep the OAuth client secret in Secret Manager only."
+    ),
+    item(
+      "admin-action-token",
+      "Admin action token configured",
+      sentinelConfig.adminActionTokenConfigured,
+      "security",
+      "Production evidence import protection.",
+      "Create sentinel-admin-action-token in Secret Manager and deploy it as SENTINEL_ADMIN_ACTION_TOKEN.",
+      "Do not print the token in terminal logs, screenshots, README files, or Devpost."
     ),
     item(
       "workspace-pubsub",
@@ -299,6 +338,15 @@ function buildCommands(dryRunCommand: string, deployCommand: string): Production
       false,
       true,
       "Docker repository exists for the Cloud Run image."
+    ),
+    command(
+      "create-private-evidence-bucket",
+      "Create private evidence bucket",
+      `gcloud storage buckets create gs://${projectId}-sentinel-private-evidence --location ${recommendedRegion} --uniform-bucket-level-access --project ${projectId}`,
+      "engineering",
+      false,
+      true,
+      "Private bucket exists for redacted hosted verification JSON, screenshots, and judge packet artifacts."
     ),
     command(
       "build-container",

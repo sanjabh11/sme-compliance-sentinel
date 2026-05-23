@@ -65,6 +65,7 @@ const defaultArtifactPaths = [
   "lib/strategy.ts",
   "lib/hosted-evidence-capture.ts",
   "lib/workspace-sync.ts",
+  "lib/admin-action-auth.ts",
   "lib/cloud-cost-controls.ts",
   "lib/cloudrun-deployment.ts",
   "lib/approval-ops.ts",

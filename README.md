@@ -131,6 +131,10 @@ The **Low-risk skip** button verifies that metadata-only events do not call Gemi
 - `SENTINEL_GCP_BUDGET_ID`: configured Cloud Billing budget id after the production budget is created.
 - `SENTINEL_BUDGET_PUBSUB_TOPIC`: Pub/Sub topic for programmatic budget alerts.
 - `SENTINEL_CLOUD_COST_CONTROLS_MODE`: keep `plan` locally; set `production` only when budget, key, and quota evidence should be verified against GCP.
+- `SENTINEL_CLOUD_RUN_SERVICE_NAME` / `SENTINEL_CLOUD_RUN_REGION`: Cloud Run identity used by deployment, describe, and evidence-capture commands.
+- `SENTINEL_RELEASE_ID`: non-secret release identifier that ties Cloud Run revision proof, source commit, verification JSON, and Evidence Vault imports together.
+- `SENTINEL_PRIVATE_EVIDENCE_BUCKET`: private bucket or equivalent store for redacted hosted verification JSON, Cloud Run proof, screenshots, invoices, and judge packet artifacts.
+- `SENTINEL_ADMIN_ACTION_TOKEN`: Secret Manager-backed token required for production proof imports. Send it only through private operator tooling, for example the `x-sentinel-admin-token` header.
 - `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`: required before `/api/oauth/google/start?dryRun=false` can redirect pilot users through Google Workspace OAuth.
 - `WORKSPACE_GMAIL_TOPIC`: fully qualified Pub/Sub topic name for Gmail watch notifications, for example `projects/PROJECT_ID/topics/workspace-gmail-updates`.
 - `WORKSPACE_GMAIL_SUBSCRIPTION`: exact Pub/Sub push subscription name expected by the Gmail webhook, for example `projects/PROJECT_ID/subscriptions/workspace-gmail-push`.
@@ -180,8 +184,9 @@ The intended production deployment uses:
 - Sensitive Data Protection for PII/secrets detection.
 - Gemini API for semantic risk classification and evidence summaries.
 
-The checked-in `cloudrun.service.yaml` is a deployment template, not a proof artifact by itself. Before applying it, replace `PROJECT_ID`, `PROJECT_NUMBER`, service URLs, billing ids, OAuth ids, Pub/Sub resources, and XPRIZE placeholders with the final production values. Keep human-attestation flags such as demo-video clearance, judge access, eligibility, and third-party review set to `false` until the private proof exists. The manifest references these Secret Manager secrets by name and never stores their values in source:
+The checked-in `cloudrun.service.yaml` is a deployment template, not a proof artifact by itself. Before applying it, replace `PROJECT_ID`, `PROJECT_NUMBER`, `RELEASE_ID`, service URLs, private evidence bucket, billing ids, OAuth ids, Pub/Sub resources, and XPRIZE placeholders with the final production values. Keep human-attestation flags such as demo-video clearance, judge access, eligibility, and third-party review set to `false` until the private proof exists. The manifest references these Secret Manager secrets by name and never stores their values in source:
 
+- `sentinel-admin-action-token`
 - `gemini-api-key`
 - `google-oauth-client-secret`
 - `sentinel-evidence-signing-secret`
@@ -191,7 +196,7 @@ Do not set `GOOGLE_CLOUD_ACCESS_TOKEN` in Cloud Run. The deployed service should
 
 Cloud Run secret env vars are pinned to Secret Manager version `1` in the template. After rotating any secret, update the referenced version in `cloudrun.service.yaml` and deploy a new revision instead of relying on `latest`.
 
-`GET /api/production/provisioning` returns the non-secret provisioning pack for operators: required Google APIs, service accounts, IAM roles, Secret Manager names, Artifact Registry build command, Pub/Sub setup, Cloud Run dry-run/deploy commands, and post-deploy verification sequence. The pack intentionally marks human attestations as manual review and never includes API key values, OAuth client secrets, evidence-signing secrets, Drive channel tokens, judge credentials, invoices, or customer findings.
+`GET /api/production/provisioning` returns the non-secret provisioning pack for operators: required Google APIs, service accounts, IAM roles, Secret Manager names, private evidence bucket setup, Artifact Registry build command, Pub/Sub setup, Cloud Run dry-run/deploy commands, and post-deploy verification sequence. The pack intentionally marks human attestations as manual review and never includes admin tokens, API key values, OAuth client secrets, evidence-signing secrets, Drive channel tokens, judge credentials, invoices, or customer findings.
 
 `GET /api/production/deployment-evidence` and `npm run verify:cloudrun-deployment` validate the Cloud Run manifest before an operator applies it. The verifier reports whether the manifest is still `template-needs-values`, `ready-to-dry-run`, or `blocked`; lists placeholder replacements, manual XPRIZE attestation flags, pinned Secret Manager references, dry-run/deploy commands, and post-deploy verification commands; and blocks raw secret values or `latest` secret references. A `ready-to-dry-run` result is only local deployment-template evidence, not hosted Cloud Run proof.
 
@@ -301,7 +306,7 @@ Approved answers are added to the Answer Library with an owner, source pack, seg
 
 `POST /api/evidence/vault` registers or updates a private artifact by id. The local vault improves workflow discipline, but it does not turn local files or seeded records into production proof until `SENTINEL_EVIDENCE_MODE=production`, `SENTINEL_STORAGE_MODE=gcp-rest`, and real private documents/logs are available for judge request.
 
-`POST /api/evidence/vault/import` accepts a redacted JSON object from `npm run verify:production`, `/api/production/hosted-evidence`, `/api/production/deployment-evidence`, `/api/production/gemini-smoke`, `/api/production/persistence`, `/api/workspace/sync/bootstrap`, or `/api/production/cost-controls`. The importer computes a SHA-256 checksum, maps supported rows to expected Evidence Vault artifact slots, marks local or unredacted imports as non-final proof, and stores only redacted source summaries in the dashboard response. Keep full source JSON in the private evidence store, not in the repository.
+`POST /api/evidence/vault/import` accepts a redacted JSON object from `npm run verify:production`, `/api/production/hosted-evidence`, `/api/production/deployment-evidence`, `/api/production/gemini-smoke`, `/api/production/persistence`, `/api/workspace/sync/bootstrap`, or `/api/production/cost-controls`. The importer computes a SHA-256 checksum, maps supported rows to expected Evidence Vault artifact slots, marks local or unredacted imports as non-final proof, and stores only redacted source summaries in the dashboard response. In production mode it requires the Secret Manager-backed `SENTINEL_ADMIN_ACTION_TOKEN` through `x-sentinel-admin-token` or a Bearer token. Keep full source JSON in the private evidence store, not in the repository.
 
 `GET /api/evidence/vault?view=intake` returns the Evidence Intake Queue. It sorts required artifacts by pilot-conversion priority, proof status, and redaction risk; lists accepted proof examples and rejection triggers; and provides safe registration payload templates for `POST /api/evidence/vault`. It stays blocked in mock mode and does not treat registered local artifacts as production proof.
 

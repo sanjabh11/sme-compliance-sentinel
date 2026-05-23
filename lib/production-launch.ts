@@ -267,6 +267,10 @@ function buildEnvMatrix(): ProductionLaunchEnvItem[] {
     envItem("NEXT_PUBLIC_PRODUCT_URL", sentinelConfig.productUrl, "Hosted judge-accessible product URL.", false, "Deploy the app and set the public product URL."),
     envItem("XPRIZE_REPOSITORY_URL", sentinelConfig.repositoryUrl, "Repository access for judging/testing.", false, "Publish or share the repository and set the URL."),
     envItem("XPRIZE_DEMO_VIDEO_URL", sentinelConfig.demoVideoUrl, "Public under-three-minute demo video.", false, "Record and publish the final demo video."),
+    envItem("SENTINEL_CLOUD_RUN_SERVICE_NAME", sentinelConfig.cloudRunServiceName, "Cloud Run service identity for hosted proof.", false, "Confirm the deployed service name before capturing Cloud Run evidence."),
+    envItem("SENTINEL_CLOUD_RUN_REGION", sentinelConfig.cloudRunRegion, "Cloud Run region for deploy and describe commands.", false, "Confirm the deployed region matches the Cloud Run manifest and verification commands."),
+    envItem("SENTINEL_RELEASE_ID", sentinelConfig.releaseId, "Release identifier for tying Cloud Run revision proof to source and evidence imports.", false, "Set a release id before dry-run and deployment, for example release-20260523-001."),
+    envItem("SENTINEL_PRIVATE_EVIDENCE_BUCKET", sentinelConfig.privateEvidenceBucket, "Private storage location for redacted hosted proof JSON and screenshots.", false, "Create a private evidence bucket or equivalent private store before importing final proof metadata."),
     envItem(
       "XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED",
       sentinelConfig.demoVideoUnderThreeMinutesConfirmed ? "true" : "",
@@ -379,6 +383,7 @@ function buildEnvMatrix(): ProductionLaunchEnvItem[] {
       "Set SENTINEL_STORAGE_MODE=gcp-rest only after Cloud Run service credentials are ready."
     ),
     envItem("GEMINI_API_KEY", process.env.GEMINI_API_KEY ? "configured" : "", "Live Gemini API semantic audit.", true, "Configure the Gemini API key as a secret, not in source control."),
+    envItem("SENTINEL_ADMIN_ACTION_TOKEN", sentinelConfig.adminActionTokenConfigured ? "configured" : "", "Protect production evidence imports.", true, "Configure the admin action token in Secret Manager and pass it only through private operator tooling."),
     envItem("GEMINI_MODEL", sentinelConfig.geminiModel, "Stable Gemini model routing.", false, "Verify the model string against current Gemini API docs before final submission."),
     envItem("GOOGLE_OAUTH_CLIENT_ID", sentinelConfig.oauthClientId, "Workspace OAuth pilot install.", false, "Configure an OAuth client for the hosted callback URL."),
     envItem("GOOGLE_OAUTH_CLIENT_SECRET", sentinelConfig.oauthClientSecretConfigured ? "configured" : "", "Workspace OAuth token exchange.", true, "Store the OAuth client secret in the deployment secret store."),

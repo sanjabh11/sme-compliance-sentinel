@@ -167,6 +167,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
     escalationTarget: "founder@mainstreet-security.example",
     status: "active"
   });
+  const [evidenceImportToken, setEvidenceImportToken] = useState("");
   const [evidenceImportJson, setEvidenceImportJson] = useState(
     JSON.stringify(
       {
@@ -1222,7 +1223,10 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
       const parsed = JSON.parse(evidenceImportJson) as unknown;
       const response = await fetch("/api/evidence/vault/import", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(evidenceImportToken.trim() ? { "x-sentinel-admin-token": evidenceImportToken.trim() } : {})
+        },
         body: JSON.stringify(parsed)
       });
       const payload = (await response.json()) as {
@@ -2806,6 +2810,14 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               value={evidenceImportJson}
               onChange={(event) => setEvidenceImportJson(event.target.value)}
               rows={5}
+            />
+            <input
+              aria-label="Evidence import admin token"
+              type="password"
+              value={evidenceImportToken}
+              onChange={(event) => setEvidenceImportToken(event.target.value)}
+              placeholder="Admin token"
+              autoComplete="off"
             />
             {evidenceVaultImportResult ? (
               <small>

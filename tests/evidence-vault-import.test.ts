@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { POST as postEvidenceVaultImport } from "@/app/api/evidence/vault/import/route";
 import { scanClaimText } from "@/lib/claim-guard";
 import { buildEvidenceVaultImport } from "@/lib/evidence-vault-import";
 import { getDashboardSnapshot, importEvidenceVaultArtifacts, resetState } from "@/lib/store";
@@ -51,6 +52,10 @@ const hostedVerifyProductionReport = {
 describe("Evidence Vault hosted proof import", () => {
   beforeEach(() => {
     resetState();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("builds checksummed artifact candidates from hosted verify-production JSON", () => {
@@ -132,4 +137,37 @@ describe("Evidence Vault hosted proof import", () => {
     expect(scanClaimText({ artifact: "evidence-vault-import", text: JSON.stringify(result, null, 2) })).toEqual([]);
     expect(getDashboardSnapshot().readiness.evidenceVault.requiredArtifacts.length).toBeGreaterThan(0);
   });
+
+  it("requires the admin action token on the production import route", async () => {
+    vi.stubEnv("SENTINEL_MOCK_MODE", "false");
+    vi.stubEnv("SENTINEL_ADMIN_ACTION_TOKEN", "private-admin-token");
+
+    const blockedResponse = await postEvidenceVaultImport(importRequest());
+    expect(blockedResponse.status).toBe(401);
+    expect(await blockedResponse.json()).toMatchObject({ ok: false });
+
+    const wrongTokenResponse = await postEvidenceVaultImport(importRequest("wrong-token"));
+    expect(wrongTokenResponse.status).toBe(403);
+
+    const allowedResponse = await postEvidenceVaultImport(importRequest("private-admin-token"));
+    expect(allowedResponse.status).toBe(200);
+    const payload = (await allowedResponse.json()) as { importResult: { status: string; artifactCount: number } };
+    expect(payload.importResult.status).toBe("ready");
+    expect(payload.importResult.artifactCount).toBeGreaterThan(0);
+  });
 });
+
+function importRequest(token?: string) {
+  return new Request("https://sentinel.example.com/api/evidence/vault/import", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { "x-sentinel-admin-token": token } : {})
+    },
+    body: JSON.stringify({
+      source: "verify-production",
+      redacted: true,
+      payload: hostedVerifyProductionReport
+    })
+  });
+}

@@ -1655,7 +1655,7 @@ export type CloudRunDeploymentEvidenceStatus = "ready-to-dry-run" | "template-ne
 
 export interface CloudRunDeploymentEnvCheck {
   name: string;
-  category: "runtime" | "xprize" | "google-cloud" | "workspace" | "gemini" | "cost" | "secret";
+  category: "runtime" | "xprize" | "google-cloud" | "workspace" | "gemini" | "cost" | "evidence" | "secret";
   status: "passed" | "needs-value" | "manual-review" | "blocked";
   secret: boolean;
   currentValue: string;
