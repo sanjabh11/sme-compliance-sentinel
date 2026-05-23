@@ -33,6 +33,7 @@
 - [x] Local MVP exposes a private XPRIZE Submission Binder with artifact statuses, owner roles, testing instructions, demo timeline, and judge evidence request queue.
 - [x] Local MVP exposes a Devpost Submission Pack with claim-safe copy, under-three-minute demo script, screenshot checklist, testing instructions draft, and private evidence response plan.
 - [x] Local MVP exposes a Demo Video Compliance Pack for runtime, public platform, English/subtitle, live-Gemini, asset-clearance, and redaction gates.
+- [x] Local MVP exposes `/api/xprize/judge-access-pack` with non-secret judge testing instructions, signed-out smoke checks, safe walkthrough, private credential rules, free-access confirmation, and evidence-response ownership.
 - [x] Local MVP enforces Gemini model allowlist, monthly budget, and per-event content byte guardrails before Tier 2 calls.
 - [x] Local MVP keeps local regex findings labeled as deterministic and uses `tier1_sdp` only when Google Sensitive Data Protection is actually attempted.
 - [x] Local MVP exposes Cloud Billing budget, Pub/Sub alert, Gemini API-key restriction, and quota-runbook evidence plans.
@@ -70,6 +71,7 @@
 - [ ] Human owner reviews `/api/xprize/license-manifest` and sets `XPRIZE_THIRD_PARTY_REVIEW_APPROVED=true` only after dependency and API-use clearance.
 - [x] Local proof gates keep license/IP clearance blocked while the generated manifest still has restricted-license review items.
 - [ ] Judge testing instructions and private access are configured outside the repository.
+- [ ] Run `/api/xprize/judge-access-pack` after deployment, verify the hosted walkthrough from a signed-out browser, and store smoke output/screenshots privately.
 - [ ] Revenue evidence is captured by month: May, June, July, August 2026.
 - [ ] Total costs are captured separately from marketing/CAC spend.
 - [ ] Real user evidence is captured with user awareness.
@@ -191,6 +193,7 @@
 - [ ] Run `/api/production/launch-readiness` from the hosted app and clear each workstream with production proof before final submission.
 - [ ] Run `/api/production/hosted-evidence` from the hosted app and attach the resulting capture packet to the private judge binder after every required artifact is redacted and checksummed.
 - [ ] Run `/api/production/deployment-packet` after rendering production values and before final submission; confirm every command artifact is captured, redacted, and linked to the release id.
+- [ ] Run `/api/xprize/judge-access-pack` immediately before Devpost submission and paste only non-secret testing guidance into public fields; keep credentials in private testing instructions.
 - [ ] Run `npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --strict --include-write-checks` after Cloud Run/GCP credentials are configured and attach the JSON output to the private judge packet.
 - [ ] Import the final redacted hosted verification JSON through `/api/evidence/vault/import` and confirm Cloud Run, Gemini, GCP persistence, Workspace, Cloud Billing, repository, and readiness artifacts have SHA-256 checksums in the Evidence Vault.
 - [ ] Run `/api/market/positioning` before final pitch copy and verify the story remains a focused Workspace risk-scan wedge, not a broad GRC replacement claim.

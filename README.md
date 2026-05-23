@@ -46,6 +46,7 @@ The product intentionally says **SOC2 readiness evidence**, not “SOC2 complian
 - Project Provenance Report that checks Git history, first-commit timing, tracked/untracked source state, repository URL, human attestation, and pre-existing framework/dependency disclosure.
 - Source Release Guard that checks required source surfaces, `.gitignore` coverage, release file plan, and obvious secret patterns before the first commit or judge-facing source push.
 - XPRIZE Submission Gate that blocks readiness until current evidence satisfies production Google Cloud, Gemini, real revenue/user proof, consent, product URL, repository URL, and demo-video requirements.
+- Judge Access Pack that prepares non-secret testing instructions, signed-out smoke commands, private credential rules, safe walkthrough steps, and evidence-response owners without committing judge credentials.
 - Private XPRIZE Submission Binder that maps every gate item to an artifact owner, status, testing instruction, demo-timeline step, private evidence queue, and final pre-submit checklist.
 - Devpost Submission Pack that generates claim-safe public copy, Google stack wording, under-three-minute demo script, screenshot checklist, testing instructions draft, and private judge evidence response plan.
 - Demo Video Compliance Pack that turns the script into runtime, public-platform, English/subtitle, live-Gemini, asset-clearance, and customer-redaction gates before recording or upload.
@@ -113,10 +114,11 @@ npm run build
 38. Run **Source release** before the first commit or source push to verify required files, ignore rules, release plan, and obvious secret patterns.
 39. Run **Check submission compliance** to surface repository, IP/license, public video, customer-redaction, and evidence-response blockers.
 40. Run **License manifest** to export dependency, license, and Google API-use disclosure details.
-41. Run **Generate submission binder** to produce the private judge-readiness manifest, testing-instruction status, under-three-minute demo timeline, and two-business-day evidence request queue.
-42. Run **Devpost pack** to generate claim-safe submission copy, demo scenes, screenshot targets, testing instructions, and the private evidence response plan.
-43. Run **Demo video pack** to verify the generated timeline, public host, English/subtitle confirmation, asset clearance, redaction, functioning-product footage, and live Gemini proof gates before recording or upload.
-44. Run **Market battlecard** to compare Sentinel against Vanta, Drata, and Secureframe while keeping the one-day Workspace risk-scan wedge explicit.
+41. Run **Judge access pack** to prepare non-secret testing instructions, signed-out smoke checks, safe walkthrough, private credential rules, free-access confirmation, and evidence-response owners.
+42. Run **Generate submission binder** to produce the private judge-readiness manifest, testing-instruction status, under-three-minute demo timeline, and two-business-day evidence request queue.
+43. Run **Devpost pack** to generate claim-safe submission copy, demo scenes, screenshot targets, testing instructions, and the private evidence response plan.
+44. Run **Demo video pack** to verify the generated timeline, public host, English/subtitle confirmation, asset clearance, redaction, functioning-product footage, and live Gemini proof gates before recording or upload.
+45. Run **Market battlecard** to compare Sentinel against Vanta, Drata, and Secureframe while keeping the one-day Workspace risk-scan wedge explicit.
 
 The **Low-risk skip** button verifies that metadata-only events do not call Gemini.
 
@@ -291,6 +293,8 @@ Approved answers are added to the Answer Library with an owner, source pack, seg
 ## Submission Compliance Gate
 
 `GET /api/xprize/submission-compliance` returns the rule-clearance gate for Devpost logistics that can disqualify an otherwise strong product: new-project/pre-existing-work disclosure, source repository access, judge product access, demo-video length/visibility/asset clearance, third-party SDK/API authorization, open-source/license review, customer consent, public redaction, and two-business-day evidence-response readiness. It keeps these items separate from product quality so the team can fix submission risks before upload.
+
+`GET /api/xprize/judge-access-pack` returns the non-secret judge access packet. It verifies whether the product URL, repository URL, public demo video, private judge testing instructions, and free judging-period access are ready; lists signed-out smoke commands and a safe walkthrough; defines credential-handling rules; and routes support/evidence-response ownership. It never includes judge credentials, admin tokens, OAuth secrets, customer findings, invoices, or private evidence in the response.
 
 `GET /api/xprize/license-manifest` returns the dependency and third-party API manifest generated from `package.json` and `package-lock.json`. It summarizes direct runtime dependencies, development dependencies, transitive packages, license review status, Google API integrations, disclosure text, blockers, and next actions. The scanner separates restricted blockers from license-review and obligation-review packages; for example, optional transitive packages with LGPL-style obligations are routed to human obligation review instead of being treated as automatic replacement blockers. The manifest is submission-support evidence only; set `XPRIZE_THIRD_PARTY_REVIEW_APPROVED=true` only after a human owner reviews dependency licenses, notice/distribution obligations, Google API terms, and final asset/IP use. A human approval flag does not mark license/IP proof ready while the generated manifest still has blocked restricted-license or unknown-license items.
 

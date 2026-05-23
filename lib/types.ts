@@ -1160,6 +1160,53 @@ export interface XPrizeSubmissionBinder {
   finalPreSubmitChecks: string[];
 }
 
+export type JudgeAccessPackStatus = "ready" | "needs-review" | "blocked";
+
+export interface JudgeAccessCheck {
+  id: string;
+  label: string;
+  status: SubmissionEvidenceStatus;
+  evidence: string;
+  fix: string;
+  ownerRole: SubmissionEvidenceArtifact["ownerRole"];
+  requiredBeforeSubmit: boolean;
+  privateHandling: string;
+}
+
+export interface JudgeAccessWalkthroughStep {
+  id: string;
+  label: string;
+  routeOrAction: string;
+  expectedResult: string;
+  proofBoundary: string;
+  resetOrSafetyNote: string;
+}
+
+export interface JudgeAccessSmokeCommand {
+  id: string;
+  label: string;
+  command: string;
+  expectedEvidence: string;
+  redactionRequired: boolean;
+}
+
+export interface JudgeAccessPack {
+  generatedAt: string;
+  overallStatus: JudgeAccessPackStatus;
+  productUrl: string;
+  repositoryUrl: string;
+  demoVideoUrl: string;
+  testingInstructionsSummary: string;
+  accessChecks: JudgeAccessCheck[];
+  walkthrough: JudgeAccessWalkthroughStep[];
+  smokeCommands: JudgeAccessSmokeCommand[];
+  privateCredentialRules: string[];
+  evidenceResponsePlan: SubmissionPrivateEvidenceRequest[];
+  blockers: string[];
+  nextActions: string[];
+  disclaimer: string;
+}
+
 export type SubmissionComplianceStatus = "passed" | "warning" | "blocked";
 
 export interface SubmissionComplianceCheck {

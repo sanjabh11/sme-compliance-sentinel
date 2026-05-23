@@ -40,6 +40,7 @@ import type {
   FrameworkEvidenceAudience,
   FrameworkName,
   HostedEvidenceCapturePacket,
+  JudgeAccessPack,
   MarketPositioningCommandCenter,
   PersistenceVerificationResult,
   PilotConsentPacket,
@@ -118,6 +119,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
   const [submissionCompliance, setSubmissionCompliance] = useState<SubmissionComplianceCenter | null>(null);
   const [demoVideoPack, setDemoVideoPack] = useState<DemoVideoCompliancePack | null>(null);
   const [devpostPack, setDevpostPack] = useState<DevpostSubmissionPack | null>(null);
+  const [judgeAccessPack, setJudgeAccessPack] = useState<JudgeAccessPack | null>(null);
   const [thirdPartyManifest, setThirdPartyManifest] = useState<ThirdPartyManifest | null>(null);
   const [frameworkSelection, setFrameworkSelection] = useState<FrameworkName>("SOC2");
   const [frameworkAudience, setFrameworkAudience] = useState<FrameworkEvidenceAudience>("judge");
@@ -970,6 +972,28 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
     } catch (error) {
       setActionState("error");
       setLastMessage(error instanceof Error ? error.message : "Unable to generate third-party manifest.");
+    }
+  }
+
+  async function checkJudgeAccessPack() {
+    setActionState("running");
+    setLastMessage("Building private judge access and testing packet...");
+
+    try {
+      const response = await fetch("/api/xprize/judge-access-pack");
+      const payload = (await response.json()) as JudgeAccessPack;
+      setJudgeAccessPack(payload);
+      setActionState(payload.overallStatus === "blocked" ? "error" : "idle");
+      setLastMessage(
+        payload.overallStatus === "ready"
+          ? "Judge access packet is ready on current confirmations."
+          : payload.overallStatus === "needs-review"
+            ? "Judge access packet needs final private review."
+            : `Judge access packet is blocked by ${payload.blockers.length} item(s).`
+      );
+    } catch (error) {
+      setActionState("error");
+      setLastMessage(error instanceof Error ? error.message : "Unable to build judge access packet.");
     }
   }
 
@@ -2369,6 +2393,10 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
             <FileSearch size={16} aria-hidden="true" />
             License manifest
           </button>
+          <button type="button" className="secondary" onClick={checkJudgeAccessPack} disabled={actionState === "running"}>
+            <ShieldCheck size={16} aria-hidden="true" />
+            Judge access pack
+          </button>
           <button type="button" className="secondary" onClick={generateSubmissionBinder} disabled={actionState === "running"}>
             <Download size={16} aria-hidden="true" />
             Generate submission binder
@@ -2609,6 +2637,43 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               <article>
                 <strong>Disclosure</strong>
                 <p>{thirdPartyManifest.disclosureText[0]}</p>
+              </article>
+            </div>
+          ) : null}
+          {judgeAccessPack ? (
+            <div className="verification-list">
+              <span data-status={judgeAccessPack.overallStatus}>{judgeAccessPack.overallStatus.replaceAll("-", " ")}</span>
+              <article>
+                <strong>Access targets</strong>
+                <p>
+                  Product {judgeAccessPack.productUrl} · repo {judgeAccessPack.repositoryUrl} · demo{" "}
+                  {judgeAccessPack.demoVideoUrl}
+                </p>
+              </article>
+              <article>
+                <strong>Access checks</strong>
+                <p>
+                  {judgeAccessPack.accessChecks.filter((check) => check.status === "ready").length} ready ·{" "}
+                  {judgeAccessPack.accessChecks.filter((check) => check.status === "private-on-request").length} private ·{" "}
+                  {judgeAccessPack.accessChecks.filter((check) => check.status === "missing").length} missing
+                </p>
+              </article>
+              {judgeAccessPack.accessChecks
+                .filter((check) => check.status !== "ready")
+                .slice(0, 4)
+                .map((check) => (
+                  <article key={check.id}>
+                    <strong>{check.label}</strong>
+                    <p>{check.fix}</p>
+                  </article>
+                ))}
+              <article>
+                <strong>Walkthrough</strong>
+                <p>{judgeAccessPack.walkthrough.map((stepItem) => stepItem.label).join(" · ")}</p>
+              </article>
+              <article>
+                <strong>Credential rule</strong>
+                <p>{judgeAccessPack.privateCredentialRules[0]}</p>
               </article>
             </div>
           ) : null}
