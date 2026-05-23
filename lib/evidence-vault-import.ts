@@ -354,6 +354,13 @@ function mapVerifyProductionRow(id: string) {
       requiredFor: "AI-Native Operations",
       nextAction: "Attach Drive/Gmail reconciliation output from hosted production."
     },
+    "workspace-watch-renewal": {
+      artifactId: "vault_workspace_oauth_log",
+      kind: "workspace-oauth-log",
+      label: "Workspace watch renewal row",
+      requiredFor: "AI-Native Operations",
+      nextAction: "Attach hosted Drive/Gmail watch renewal output before channel expiration."
+    },
     "cost-controls-write-through": {
       artifactId: "vault_cloud_billing_proof",
       kind: "cloud-billing-proof",

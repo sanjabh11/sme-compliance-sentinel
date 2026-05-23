@@ -31,6 +31,11 @@ interface HostedProofBundleModule {
     };
     summary: {
       artifactCount: number;
+      releaseEvidenceStatus?: string;
+    };
+    releaseEvidence?: {
+      overallStatus: string;
+      summary: Record<string, number>;
     };
     artifacts: Array<{
       id: string;
@@ -95,24 +100,49 @@ describe("hosted proof bundle collector", () => {
       });
       const manifestJson = await readFile(join(manifest.outputDirectory, "manifest.json"), "utf8");
       const judgeAccessJson = await readFile(join(manifest.outputDirectory, "judge-access-pack.json"), "utf8");
+      const releaseEvidenceJson = await readFile(join(manifest.outputDirectory, "release-evidence-manifest.json"), "utf8");
       const verifyJson = await readFile(join(manifest.outputDirectory, "verify-production.json"), "utf8");
       const readme = await readFile(join(manifest.outputDirectory, "README.md"), "utf8");
+      const releaseEvidence = JSON.parse(releaseEvidenceJson) as {
+        overallStatus: string;
+        slots: Array<{ id: string; status: string; evidence: Array<{ id: string; status: string }> }>;
+      };
       const postCalls = fetchImpl.mock.calls.filter(([, init]) => init?.method === "POST");
       const getCalls = fetchImpl.mock.calls.filter(([, init]) => (init?.method ?? "GET") === "GET");
 
       expect(manifest.releaseId).toBe("release-test-unsafe");
-      expect(manifest.summary.artifactCount).toBeGreaterThanOrEqual(8);
+      expect(manifest.summary.artifactCount).toBeGreaterThanOrEqual(11);
       expect(manifest.artifacts.map((artifact) => artifact.id)).toEqual(
-        expect.arrayContaining(["verify-production", "judge-access-pack", "deployment-packet", "hosted-evidence", "manifest"])
+        expect.arrayContaining([
+          "verify-production",
+          "judge-access-pack",
+          "deployment-packet",
+          "hosted-evidence",
+          "source-release",
+          "license-manifest",
+          "workspace-sync-status",
+          "release-evidence-manifest",
+          "manifest"
+        ])
       );
+      expect(manifest.releaseEvidence?.overallStatus).toBe("needs-proof");
+      expect(releaseEvidence.overallStatus).toBe("needs-proof");
+      expect(releaseEvidence.slots.map((slot) => slot.id)).toEqual(
+        expect.arrayContaining(["cloud-run-deployment", "workspace-sync", "live-gemini", "judge-access", "business-viability"])
+      );
+      expect(releaseEvidence.slots.find((slot) => slot.id === "workspace-sync")?.evidence.map((item) => item.id)).toContain(
+        "workspace-watch-renewal"
+      );
+      expect(releaseEvidence.slots.find((slot) => slot.id === "cloud-run-deployment")?.status).not.toBe("verified");
       expect(postCalls.length).toBeGreaterThan(0);
       expect(postCalls.every(([, init]) => headerValue(init, "x-sentinel-admin-token") === "private-admin-token")).toBe(true);
       expect(getCalls.every(([, init]) => !headerValue(init, "x-sentinel-admin-token"))).toBe(true);
-      expect(`${manifestJson}${judgeAccessJson}${verifyJson}${readme}`).not.toContain("private-admin-token");
+      expect(`${manifestJson}${judgeAccessJson}${releaseEvidenceJson}${verifyJson}${readme}`).not.toContain("private-admin-token");
       expect(judgeAccessJson).not.toContain("leaked-secret");
       expect(judgeAccessJson).toContain("[REDACTED]");
       expect(manifestJson).toContain("Admin tokens are read only from the configured environment variable");
       expect(readme).toContain("# Hosted Proof Bundle");
+      expect(readme).toContain("Release Evidence Manifest");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -150,6 +180,41 @@ function payloadForRequest(url: string, method: string) {
       accessChecks: [{ status: "missing" }],
       walkthrough: [{ id: "open-dashboard" }],
       credentialSecret: "leaked-secret"
+    };
+  }
+
+  if (url.includes("/api/xprize/source-release")) {
+    return {
+      overallStatus: "published",
+      releasableFileCount: 42,
+      secretFindings: []
+    };
+  }
+
+  if (url.includes("/api/xprize/license-manifest")) {
+    return {
+      summary: {
+        status: "warning",
+        restrictedLicenseReviewCount: 0,
+        obligationReviewCount: 1,
+        licenseNeedsReviewCount: 1
+      },
+      blockers: []
+    };
+  }
+
+  if (url.includes("/api/workspace/sync/status")) {
+    return {
+      overallStatus: "passed",
+      syncState: {
+        mode: "oauth",
+        driveCursor: "redacted",
+        gmailCursor: "redacted"
+      },
+      renewalPlan: {
+        status: "due",
+        nextAction: "renew watches"
+      }
     };
   }
 

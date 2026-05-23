@@ -26,6 +26,16 @@ const bundleEndpoints = [
     privateHandling: "Non-secret judge access plan; credentials belong only in private Devpost fields or approved private channels."
   },
   {
+    id: "source-release",
+    path: "/api/xprize/source-release",
+    privateHandling: "Repository release guard; review before sharing source status or provenance notes externally."
+  },
+  {
+    id: "license-manifest",
+    path: "/api/xprize/license-manifest",
+    privateHandling: "Third-party dependency and API-use review packet; keep final human legal/IP review notes private."
+  },
+  {
     id: "submission-binder",
     path: "/api/xprize/submission-binder",
     privateHandling: "Private judge-readiness manifest; review for customer/security leakage before sharing."
@@ -44,6 +54,11 @@ const bundleEndpoints = [
     id: "evidence-intake",
     path: "/api/evidence/vault?view=intake",
     privateHandling: "Private proof intake queue; do not publish raw artifact sources."
+  },
+  {
+    id: "workspace-sync-status",
+    path: "/api/workspace/sync/status",
+    privateHandling: "Workspace cursor, channel, and renewal state; redact tenant ids, mailbox details, channel tokens, and customer names."
   },
   {
     id: "claim-guard",
@@ -179,6 +194,23 @@ export async function collectHostedProofBundle(options) {
     );
   }
 
+  const releaseEvidenceManifest = buildReleaseEvidenceManifest({
+    baseUrl,
+    releaseId,
+    verifyReport,
+    artifacts
+  });
+  artifacts.push(
+    await writeJsonArtifact(outputDirectory, {
+      id: "release-evidence-manifest",
+      fileName: "release-evidence-manifest.json",
+      source: "collect-hosted-proof-bundle:release-evidence",
+      payload: releaseEvidenceManifest,
+      privateHandling:
+        "Release-level evidence map; safe for judge workflow only after checking missing-proof statuses and redaction."
+    })
+  );
+
   const manifest = buildManifest({
     baseUrl,
     releaseId,
@@ -188,7 +220,8 @@ export async function collectHostedProofBundle(options) {
     adminTokenEnv: options.adminTokenEnv ?? defaultAdminTokenEnv,
     adminTokenConfigured: Boolean(options.adminToken),
     verifyReport,
-    artifacts
+    artifacts,
+    releaseEvidenceManifest
   });
   const manifestArtifact = await writeJsonArtifact(outputDirectory, {
     id: "manifest",
@@ -277,7 +310,14 @@ function buildManifest(input) {
     summary: {
       artifactCount: input.artifacts.length,
       failedTransport: failedArtifacts.length + (input.verifyReport?.summary?.failedTransport ?? 0),
-      blockedOrNeedsReview: blockedArtifacts.length + (input.verifyReport?.summary?.blockedOrNeedsReview ?? 0)
+      blockedOrNeedsReview: blockedArtifacts.length + (input.verifyReport?.summary?.blockedOrNeedsReview ?? 0),
+      releaseEvidenceStatus: input.releaseEvidenceManifest.overallStatus,
+      releaseEvidenceSlots: input.releaseEvidenceManifest.summary
+    },
+    releaseEvidence: {
+      artifact: "release-evidence-manifest.json",
+      overallStatus: input.releaseEvidenceManifest.overallStatus,
+      summary: input.releaseEvidenceManifest.summary
     },
     artifacts: input.artifacts.map((artifact) => ({
       id: artifact.id,
@@ -296,6 +336,7 @@ function buildManifest(input) {
     nextActions: [
       "Review every JSON artifact for redaction before sharing with judges or importing into the Evidence Vault.",
       "Import only redacted verify-production JSON through /api/evidence/vault/import after production proof is complete.",
+      "Use release-evidence-manifest.json as the release-level proof index; do not treat missing or mock-only slots as complete.",
       "Attach Cloud Run revision, Gemini usage, GCP persistence, Workspace sync, revenue, cost, CAC, user, demo-video, and judge-access proof privately.",
       "Rerun this collector after every hosted deployment or evidence-status change."
     ],
@@ -303,11 +344,255 @@ function buildManifest(input) {
       "This bundle is local operator evidence and should not be committed.",
       "Generated artifacts may contain route names, internal ids, status details, and customer-proof metadata; inspect before sharing.",
       "The collector redacts common secret-shaped keys defensively, but human review is still required before judge distribution.",
+      "Release evidence statuses describe proof readiness only; they do not certify compliance, audit readiness, revenue validity, or judging outcome.",
       "Admin tokens are read only from the configured environment variable and are never written to bundle output."
     ],
     disclaimer:
       "This bundle collects hosted evidence surfaces. It does not create Cloud Run, Gemini, Workspace, revenue, user, cost, CAC, demo-video, or judge-access proof by itself."
   };
+}
+
+function buildReleaseEvidenceManifest(input) {
+  const rowsById = new Map(
+    (Array.isArray(input.verifyReport?.results) ? input.verifyReport.results : [])
+      .filter((row) => row && typeof row === "object")
+      .map((row) => [String(row.id ?? ""), row])
+  );
+  const artifactsById = new Map(input.artifacts.map((artifact) => [artifact.id, artifact]));
+  const slots = releaseEvidenceSlotDefinitions().map((slot) => {
+    const evidence = slot.sources.map((source) => evidenceForSource(source, rowsById, artifactsById));
+    const status = releaseSlotStatus(evidence);
+
+    return {
+      id: slot.id,
+      label: slot.label,
+      ruleBucket: slot.ruleBucket,
+      status,
+      evidence,
+      missingProof: missingProofForSlot(status, evidence),
+      nextAction: status === "verified" ? "Keep the redacted artifact and checksum available for private judge follow-up." : slot.nextAction,
+      privateHandling: slot.privateHandling
+    };
+  });
+  const summary = slots.reduce(
+    (accumulator, slot) => ({
+      ...accumulator,
+      [slot.status]: (accumulator[slot.status] ?? 0) + 1
+    }),
+    {
+      verified: 0,
+      "needs-review": 0,
+      missing: 0,
+      "mock-only": 0,
+      "transport-error": 0
+    }
+  );
+
+  return {
+    generatedAt: new Date().toISOString(),
+    releaseId: input.releaseId,
+    baseUrl: input.baseUrl,
+    overallStatus:
+      summary["transport-error"] > 0
+        ? "blocked"
+        : summary.missing + summary["mock-only"] + summary["needs-review"] > 0
+          ? "needs-proof"
+          : "ready-for-private-review",
+    summary,
+    slots,
+    nextActions: [
+      "Clear missing and mock-only slots with hosted Cloud Run, live Gemini, durable GCP, Workspace, financial, user, cost/CAC, demo, judge-access, repository, and license/IP proof.",
+      "Keep customer names, security findings, OAuth artifacts, invoices, payment records, CAC receipts, raw logs, and credentials in the private evidence store.",
+      "Rerun collect:hosted-proof after each deployment or proof import and keep the release evidence manifest with the private judge packet."
+    ],
+    disclaimer:
+      "This manifest groups proof status for one release. It is not a guarantee of winning, certification, legal advice, audit assurance, or compliance status."
+  };
+}
+
+function releaseEvidenceSlotDefinitions() {
+  return [
+    {
+      id: "cloud-run-deployment",
+      label: "Hosted Cloud Run product proof",
+      ruleBucket: "Working product URL and Google Cloud usage",
+      sources: [rowSource("cloudrun-deployment-evidence"), rowSource("deployment-evidence-packet"), artifactSource("deployment-packet")],
+      nextAction: "Attach Cloud Run dry-run/deploy output, revision URL, hosted screenshot, and successful deployment-packet status.",
+      privateHandling: "Redact project ids only if required by customer policy; never include service-account keys or admin tokens."
+    },
+    {
+      id: "production-readiness",
+      label: "Hosted production readiness report",
+      ruleBucket: "Product-running evidence and follow-up readiness",
+      sources: [artifactSource("verify-production"), rowSource("hosted-evidence-capture"), artifactSource("hosted-evidence")],
+      nextAction: "Rerun verify:production against the hosted URL and import only the redacted JSON after blocked rows are cleared.",
+      privateHandling: "Keep raw logs and screenshots private; share redacted status summaries only."
+    },
+    {
+      id: "live-gemini",
+      label: "Live Gemini API proof",
+      ruleBucket: "Gemini API usage",
+      sources: [rowSource("gemini-proof-status"), rowSource("gemini-smoke-write-through")],
+      nextAction: "Run the hosted Gemini smoke and write-through proof until provider=gemini-api is recorded with cost/token metadata.",
+      privateHandling: "Do not include prompts, source documents, customer text, or API keys in judge-facing artifacts."
+    },
+    {
+      id: "gcp-persistence",
+      label: "Durable GCP persistence proof",
+      ruleBucket: "Google Cloud product usage",
+      sources: [rowSource("persistence-write-through")],
+      nextAction: "Attach Firestore, BigQuery, and Secret Manager write-through output from the hosted app.",
+      privateHandling: "Keep raw database row data private; expose only redacted operation status and checksums."
+    },
+    {
+      id: "workspace-sync",
+      label: "Google Workspace OAuth and watch lifecycle proof",
+      ruleBucket: "AI-native operations and real-user workflow",
+      sources: [
+        rowSource("workspace-bootstrap"),
+        rowSource("workspace-reconcile"),
+        rowSource("workspace-watch-renewal"),
+        artifactSource("workspace-sync-status")
+      ],
+      nextAction: "Attach consented OAuth install, Drive/Gmail cursor bootstrap, reconciliation, and watch-renewal proof from hosted production.",
+      privateHandling: "Redact OAuth token metadata, channel tokens, file names, mailbox details, customer names, and security findings."
+    },
+    {
+      id: "cloud-cost-controls",
+      label: "Cloud Billing and Gemini cost-control proof",
+      ruleBucket: "Costs and CAC support",
+      sources: [rowSource("cost-controls-write-through")],
+      nextAction: "Attach budget, alert, quota, key-restriction, Gemini token/cost, operating cost, and CAC receipt proof.",
+      privateHandling: "Keep billing account identifiers, receipts, and invoices private unless explicitly consented for judge review."
+    },
+    {
+      id: "business-viability",
+      label: "Revenue, cost, CAC, active-user, and consent proof",
+      ruleBucket: "Revenue, costs, CAC, and real-user evidence",
+      sources: [artifactSource("hosted-evidence"), artifactSource("evidence-intake")],
+      nextAction: "Register paid pilot invoices, payment records, active-user logs, cost/CAC receipts, consent records, and approved testimonials.",
+      privateHandling: "Never publish customer names, invoices, payment records, or testimonials without explicit consent."
+    },
+    {
+      id: "judge-access",
+      label: "Judge access and free judging-period proof",
+      ruleBucket: "Testing instructions and product access",
+      sources: [rowSource("judge-access-pack"), artifactSource("judge-access-pack")],
+      nextAction: "Configure the hosted judge walkthrough, private credentials, free judging-period access, and signed-out smoke screenshots.",
+      privateHandling: "Credentials belong only in private Devpost fields or approved private channels, never in generated repository artifacts."
+    },
+    {
+      id: "demo-video",
+      label: "Public demo video proof",
+      ruleBucket: "Public demo video under three minutes",
+      sources: [rowSource("demo-video-pack"), artifactSource("demo-video-pack")],
+      nextAction: "Record the final public video with English/subtitles, under-three-minute runtime, asset clearance, and redacted customer data.",
+      privateHandling: "Keep raw recording assets and clearance notes private; publish only approved demo media."
+    },
+    {
+      id: "repository-source",
+      label: "Repository source and provenance proof",
+      ruleBucket: "Repository access and source sharing",
+      sources: [rowSource("source-release"), artifactSource("source-release")],
+      nextAction: "Keep the pushed repository URL, source-release output, and provenance report ready for Devpost and private judge follow-up.",
+      privateHandling: "Do not include private evidence bundles, generated artifacts, credentials, or customer data in the repository."
+    },
+    {
+      id: "license-ip",
+      label: "Third-party license, API, asset, and IP review proof",
+      ruleBucket: "IP ownership, third-party API authorization, and asset clearance",
+      sources: [rowSource("license-manifest"), artifactSource("license-manifest")],
+      nextAction: "Complete human dependency/API/asset/IP review and keep approval notes private before setting clearance flags.",
+      privateHandling: "Human review notes and API terms analysis stay private; public copy should state only reviewed, accurate disclosures."
+    },
+    {
+      id: "devpost-submission",
+      label: "Devpost submission packet and claim-safety proof",
+      ruleBucket: "Submission logistics and public-safe claims",
+      sources: [artifactSource("devpost-pack"), artifactSource("submission-binder"), artifactSource("claim-guard")],
+      nextAction: "Resolve blocked submission fields, run Claim Guard on final copy, and keep the private response queue ready for evidence requests.",
+      privateHandling: "Separate public Devpost copy from private evidence; avoid customer/security data and overclaiming."
+    }
+  ];
+}
+
+function rowSource(id) {
+  return { kind: "verify-row", id };
+}
+
+function artifactSource(id) {
+  return { kind: "artifact", id };
+}
+
+function evidenceForSource(source, rowsById, artifactsById) {
+  if (source.kind === "verify-row") {
+    const row = rowsById.get(source.id);
+    return {
+      id: source.id,
+      source: "verify-production",
+      type: "verify-row",
+      status: row ? String(row.status ?? "unknown") : "missing-source",
+      detail: row?.detail ? String(row.detail).slice(0, 300) : "Verification row was not present in this release report."
+    };
+  }
+
+  const artifact = artifactsById.get(source.id);
+  return {
+    id: source.id,
+    source: artifact?.source ?? "bundle-artifact",
+    type: "artifact",
+    status: artifact ? String(artifact.status ?? "unknown") : "missing-source",
+    fileName: artifact?.fileName,
+    detail: artifact ? "Redacted artifact captured in this bundle." : "Artifact was not captured in this release bundle."
+  };
+}
+
+function releaseSlotStatus(evidence) {
+  const statuses = evidence.map((item) => normalizeStatus(item.status));
+
+  if (statuses.includes("transport-error")) {
+    return "transport-error";
+  }
+
+  if (statuses.includes("missing-source") || statuses.includes("missing") || statuses.includes("external-required")) {
+    return "missing";
+  }
+
+  if (statuses.some((status) => mockStatuses().includes(status))) {
+    return "mock-only";
+  }
+
+  if (statuses.some((status) => reviewStatuses().includes(status))) {
+    return "needs-review";
+  }
+
+  return statuses.every((status) => verifiedStatuses().includes(status)) ? "verified" : "needs-review";
+}
+
+function missingProofForSlot(status, evidence) {
+  if (status === "verified") {
+    return [];
+  }
+
+  return evidence
+    .filter((item) => !verifiedStatuses().includes(normalizeStatus(item.status)))
+    .map((item) => `${item.id}: ${item.status}`);
+}
+
+function normalizeStatus(status) {
+  return String(status ?? "unknown").toLowerCase();
+}
+
+function verifiedStatuses() {
+  return ["passed", "ready", "verified", "captured", "published"];
+}
+
+function reviewStatuses() {
+  return ["blocked", "failed", "needs-hosted-proof", "needs-review", "ready-for-review", "ready-to-record", "ready-to-commit", "warning", "unknown"];
+}
+
+function mockStatuses() {
+  return ["mock", "mock-only", "simulated", "template-needs-values", "ready-to-capture", "ready-to-dry-run", "local-mock"];
 }
 
 async function writeMarkdownSummary(outputDirectory, manifest) {
@@ -324,6 +609,12 @@ async function writeMarkdownSummary(outputDirectory, manifest) {
     `- Artifacts: ${manifest.summary.artifactCount}`,
     `- Failed transport: ${manifest.summary.failedTransport}`,
     `- Blocked or needs review: ${manifest.summary.blockedOrNeedsReview}`,
+    `- Release evidence status: ${manifest.releaseEvidence.overallStatus}`,
+    "",
+    "## Release Evidence Manifest",
+    "",
+    `- Artifact: ${manifest.releaseEvidence.artifact}`,
+    ...Object.entries(manifest.releaseEvidence.summary).map(([status, count]) => `- ${status}: ${count}`),
     "",
     "## Artifacts",
     "",

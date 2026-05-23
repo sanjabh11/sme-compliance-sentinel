@@ -127,6 +127,40 @@ describe("Evidence Vault hosted proof import", () => {
     expect(snapshot.auditEvents.some((event) => event.type === "evidence_vault_artifact_registered")).toBe(true);
   });
 
+  it("maps Workspace watch renewal verification into the Workspace OAuth evidence slot", () => {
+    const result = buildEvidenceVaultImport({
+      source: "verify-production",
+      redacted: true,
+      payload: {
+        ...hostedVerifyProductionReport,
+        summary: {
+          total: 1,
+          passedTransport: 1,
+          failedTransport: 0,
+          blockedOrNeedsReview: 0
+        },
+        results: [
+          {
+            id: "workspace-watch-renewal",
+            status: "passed",
+            detail: "Drive and Gmail channels renewed before expiration."
+          }
+        ]
+      }
+    });
+
+    expect(result.candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          artifactId: "vault_workspace_oauth_log",
+          kind: "workspace-oauth-log",
+          label: "Workspace watch renewal row",
+          status: "verified"
+        })
+      ])
+    );
+  });
+
   it("keeps import packet language inside the claim guard boundary", () => {
     const result = buildEvidenceVaultImport({
       source: "verify-production",
