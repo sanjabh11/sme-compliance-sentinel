@@ -126,7 +126,7 @@ function buildChecks(
           : sentinelConfig.thirdPartyReviewApproved && thirdPartyManifest.summary.status === "passed"
             ? "passed"
             : "warning",
-      evidence: `${thirdPartyManifest.summary.totalPackages} package(s), ${thirdPartyManifest.summary.unknownLicenseCount} unknown license(s), ${thirdPartyManifest.summary.restrictedLicenseReviewCount} restricted-review package(s), ${thirdPartyManifest.summary.integrationsNeedingReview} integration(s) still need review.`,
+      evidence: `${thirdPartyManifest.summary.totalPackages} package(s), ${thirdPartyManifest.summary.unknownLicenseCount} unknown license(s), ${thirdPartyManifest.summary.restrictedLicenseReviewCount} restricted-review package(s), ${thirdPartyManifest.summary.obligationReviewCount} obligation-review package(s), ${thirdPartyManifest.summary.licenseNeedsReviewCount} license-review package(s), ${thirdPartyManifest.summary.integrationsNeedingReview} integration(s) still need review.`,
       fix:
         thirdPartyManifest.blockers[0] ??
         "Review /api/xprize/license-manifest, cite Google API terms, and set XPRIZE_THIRD_PARTY_REVIEW_APPROVED=true only after human approval.",

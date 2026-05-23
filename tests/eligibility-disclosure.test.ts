@@ -28,6 +28,8 @@ const cleanThirdPartyManifest: ThirdPartyManifest = {
     directRuntimeDependencies: 6,
     directDevDependencies: 5,
     unknownLicenseCount: 0,
+    licenseNeedsReviewCount: 0,
+    obligationReviewCount: 0,
     restrictedLicenseReviewCount: 0,
     integrationsNeedingReview: 0
   },
@@ -92,6 +94,7 @@ describe("eligibility disclosure packet", () => {
         summary: {
           ...cleanThirdPartyManifest.summary,
           status: "blocked",
+          obligationReviewCount: 0,
           restrictedLicenseReviewCount: 1
         },
         blockers: ["1 package has restricted-license review status."]

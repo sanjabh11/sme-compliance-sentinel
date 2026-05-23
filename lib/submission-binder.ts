@@ -128,7 +128,7 @@ function buildSupplementalArtifacts(snapshot: BinderSnapshot): SubmissionEvidenc
       criterion: "Submission Logistics",
       status: thirdPartyManifest.summary.status === "passed" ? "ready" : thirdPartyManifest.summary.status === "warning" ? "mock-only" : "missing",
       source: "/api/xprize/license-manifest",
-      evidence: `${thirdPartyManifest.summary.totalPackages} package(s), ${thirdPartyManifest.summary.unknownLicenseCount} unknown license(s), ${thirdPartyManifest.summary.restrictedLicenseReviewCount} restricted-review package(s), ${thirdPartyManifest.summary.integrationsNeedingReview} integration(s) needing review.`,
+      evidence: `${thirdPartyManifest.summary.totalPackages} package(s), ${thirdPartyManifest.summary.unknownLicenseCount} unknown license(s), ${thirdPartyManifest.summary.restrictedLicenseReviewCount} restricted-review package(s), ${thirdPartyManifest.summary.obligationReviewCount} obligation-review package(s), ${thirdPartyManifest.summary.licenseNeedsReviewCount} license-review package(s), ${thirdPartyManifest.summary.integrationsNeedingReview} integration(s) needing review.`,
       fix: thirdPartyManifest.nextActions[0] ?? "Review and approve third-party dependency and API-use disclosure before final submission.",
       redacted: false,
       ownerRole: "legal",

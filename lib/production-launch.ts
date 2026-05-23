@@ -228,7 +228,7 @@ function buildWorkstreams(snapshot: ProductionLaunchSnapshot): ProductionLaunchW
             ? "blocked"
             : "needs-review",
       ownerRole: "legal",
-      currentEvidence: `${manifest.summary.totalPackages} package(s), ${manifest.summary.restrictedLicenseReviewCount} restricted-review package(s), ${manifest.summary.integrationsNeedingReview} integration(s) need review.`,
+      currentEvidence: `${manifest.summary.totalPackages} package(s), ${manifest.summary.restrictedLicenseReviewCount} restricted-review package(s), ${manifest.summary.obligationReviewCount} obligation-review package(s), ${manifest.summary.licenseNeedsReviewCount} license-review package(s), ${manifest.summary.integrationsNeedingReview} integration(s) need review.`,
       requiredProof: [
         "Dependency license manifest reviewed by a human owner.",
         "Google API terms and OAuth consent reviewed for intended use.",

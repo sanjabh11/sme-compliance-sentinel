@@ -97,7 +97,7 @@ function buildDisclosureSections(
     {
       id: "third-party-authorization",
       title: "Third-Party SDK/API Authorization",
-      summary: `${thirdPartyManifest.summary.totalPackages} packages, ${thirdPartyManifest.summary.unknownLicenseCount} unknown license(s), ${thirdPartyManifest.summary.integrationsNeedingReview} Google integration(s) still need review.`,
+      summary: `${thirdPartyManifest.summary.totalPackages} packages, ${thirdPartyManifest.summary.unknownLicenseCount} unknown license(s), ${thirdPartyManifest.summary.obligationReviewCount} obligation-review package(s), ${thirdPartyManifest.summary.integrationsNeedingReview} Google integration(s) still need review.`,
       disclosureText: [
         ...thirdPartyManifest.disclosureText,
         ...thirdPartyManifest.integrations.map(
@@ -199,7 +199,7 @@ function buildChecks(
       "third-party-api-license-review",
       "Third-party API and license review is cleared",
       thirdPartyBlocked ? "blocked" : thirdPartyCleared ? "passed" : "needs-review",
-      `${thirdPartyManifest.summary.totalPackages} package(s), ${thirdPartyManifest.summary.unknownLicenseCount} unknown license(s), ${thirdPartyManifest.summary.restrictedLicenseReviewCount} restricted-review package(s), ${thirdPartyManifest.summary.integrationsNeedingReview} integration(s) needing review.`,
+      `${thirdPartyManifest.summary.totalPackages} package(s), ${thirdPartyManifest.summary.unknownLicenseCount} unknown license(s), ${thirdPartyManifest.summary.restrictedLicenseReviewCount} restricted-review package(s), ${thirdPartyManifest.summary.obligationReviewCount} obligation-review package(s), ${thirdPartyManifest.summary.licenseNeedsReviewCount} license-review package(s), ${thirdPartyManifest.summary.integrationsNeedingReview} integration(s) needing review.`,
       thirdPartyManifest.blockers[0] ??
         "Review dependency licenses, Google API terms, OAuth consent, and Cloud IAM before setting XPRIZE_THIRD_PARTY_REVIEW_APPROVED=true.",
       "legal"

@@ -26,7 +26,8 @@ const permissiveLicensePatterns = [
   /\bCC0-1\.0\b/u
 ];
 
-const restrictedLicensePatterns = [/\bAGPL\b/iu, /\bGPL\b/iu, /\bLGPL\b/iu, /\bSSPL\b/iu, /\bUNLICENSED\b/iu];
+const restrictedLicensePatterns = [/\bAGPL\b/iu, /\bGPL\b/iu, /\bSSPL\b/iu, /\bUNLICENSED\b/iu];
+const obligationLicensePatterns = [/\bLGPL\b/iu];
 
 export function buildThirdPartyManifest(generatedAt = new Date().toISOString()): ThirdPartyManifest {
   const rootPackage = packageLock.packages[""] as {
@@ -41,10 +42,16 @@ export function buildThirdPartyManifest(generatedAt = new Date().toISOString()):
     .sort((a, b) => Number(b.direct) - Number(a.direct) || a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
   const integrations = buildIntegrationReview();
   const unknownLicenseCount = packages.filter((item) => item.license === "UNKNOWN").length;
+  const licenseNeedsReviewCount = packages.filter((item) => item.reviewStatus === "needs-review").length;
+  const obligationReviewCount = packages.filter((item) => item.reviewStatus === "obligation-review").length;
   const restrictedLicenseReviewCount = packages.filter((item) => item.reviewStatus === "restricted-review").length;
   const integrationsNeedingReview = integrations.filter((item) => item.status !== "configured").length;
   const status: ThirdPartyManifestStatus =
-    restrictedLicenseReviewCount > 0 ? "blocked" : unknownLicenseCount > 0 || integrationsNeedingReview > 0 ? "warning" : "passed";
+    restrictedLicenseReviewCount > 0 || unknownLicenseCount > 0
+      ? "blocked"
+      : licenseNeedsReviewCount > 0 || obligationReviewCount > 0 || integrationsNeedingReview > 0
+        ? "warning"
+        : "passed";
 
   return {
     generatedAt,
@@ -57,6 +64,8 @@ export function buildThirdPartyManifest(generatedAt = new Date().toISOString()):
       directRuntimeDependencies: directRuntime.size,
       directDevDependencies: directDev.size,
       unknownLicenseCount,
+      licenseNeedsReviewCount,
+      obligationReviewCount,
       restrictedLicenseReviewCount,
       integrationsNeedingReview
     },
@@ -68,8 +77,14 @@ export function buildThirdPartyManifest(generatedAt = new Date().toISOString()):
       "No customer private evidence, judge credentials, API keys, raw invoices, or Workspace content belongs in the repository.",
       "This manifest is generated from package.json and package-lock.json; final submission still needs human license and API-terms review."
     ],
-    blockers: buildBlockers({ restrictedLicenseReviewCount, unknownLicenseCount, integrationsNeedingReview }),
-    nextActions: buildNextActions({ restrictedLicenseReviewCount, unknownLicenseCount, integrationsNeedingReview }),
+    blockers: buildBlockers({ restrictedLicenseReviewCount, unknownLicenseCount }),
+    nextActions: buildNextActions({
+      restrictedLicenseReviewCount,
+      unknownLicenseCount,
+      licenseNeedsReviewCount,
+      obligationReviewCount,
+      integrationsNeedingReview
+    }),
     disclaimer:
       "This manifest supports submission review. It is not legal advice and does not by itself prove authorization to use every third-party service."
   };
@@ -85,7 +100,7 @@ function toReviewItem(
   const license = normalizeLicense(pkg.license);
   const direct = directRuntime.has(name) || directDev.has(name);
   const scope: ThirdPartyPackageReviewItem["scope"] = pkg.optional ? "optional" : pkg.dev && !directRuntime.has(name) ? "development" : "runtime";
-  const reviewStatus = reviewStatusForLicense(license);
+  const reviewStatus = reviewStatusForPackage({ license, scope });
 
   return {
     name,
@@ -167,16 +182,26 @@ function normalizeLicense(license: unknown): string {
   return "UNKNOWN";
 }
 
-function reviewStatusForLicense(license: string): ThirdPartyPackageReviewItem["reviewStatus"] {
+function reviewStatusForPackage(input: {
+  license: string;
+  scope: ThirdPartyPackageReviewItem["scope"];
+}): ThirdPartyPackageReviewItem["reviewStatus"] {
+  const { license } = input;
+
   if (license === "UNKNOWN") {
     return "needs-review";
   }
 
   const hasPermissiveOption = permissiveLicensePatterns.some((pattern) => pattern.test(license));
   const hasRestrictedOption = restrictedLicensePatterns.some((pattern) => pattern.test(license));
+  const hasObligationOption = obligationLicensePatterns.some((pattern) => pattern.test(license));
 
-  if (hasRestrictedOption && !hasPermissiveOption) {
+  if (hasRestrictedOption) {
     return "restricted-review";
+  }
+
+  if (hasObligationOption) {
+    return "obligation-review";
   }
 
   if (hasPermissiveOption) {
@@ -192,11 +217,17 @@ function notesForPackage(input: {
   reviewStatus: ThirdPartyPackageReviewItem["reviewStatus"];
 }) {
   if (input.reviewStatus === "restricted-review") {
-    return "Requires review before submission or replacement with a permissive alternative.";
+    return "Potentially incompatible or unavailable license marker; replace, remove, or obtain explicit legal clearance before submission.";
+  }
+
+  if (input.reviewStatus === "obligation-review") {
+    return input.scope === "optional"
+      ? "Optional transitive package with LGPL-style obligations; review notices and distribution obligations before final submission."
+      : "Dependency carries LGPL-style obligations; review notices, linking, and distribution duties before final submission.";
   }
 
   if (input.reviewStatus === "needs-review") {
-    return "License expression is missing or not in the local permissive allowlist.";
+    return "License expression is present but not in the local allowlist; human review should record the use basis.";
   }
 
   if (input.direct) {
@@ -209,7 +240,6 @@ function notesForPackage(input: {
 function buildBlockers(input: {
   restrictedLicenseReviewCount: number;
   unknownLicenseCount: number;
-  integrationsNeedingReview: number;
 }) {
   return [
     ...(input.restrictedLicenseReviewCount > 0
@@ -222,11 +252,17 @@ function buildBlockers(input: {
 function buildNextActions(input: {
   restrictedLicenseReviewCount: number;
   unknownLicenseCount: number;
+  licenseNeedsReviewCount: number;
+  obligationReviewCount: number;
   integrationsNeedingReview: number;
 }) {
   return [
     ...(input.restrictedLicenseReviewCount > 0 ? ["Replace or clear restricted-license packages before final submission."] : []),
     ...(input.unknownLicenseCount > 0 ? ["Manually inspect unknown-license packages and record the license basis."] : []),
+    ...(input.licenseNeedsReviewCount > 0 ? ["Record the license basis for packages that are outside the local allowlist."] : []),
+    ...(input.obligationReviewCount > 0
+      ? ["Review LGPL-style package obligations, notices, and distribution handling before final submission."]
+      : []),
     ...(input.integrationsNeedingReview > 0 ? ["Confirm Google API terms, OAuth consent, and Cloud IAM before production launch."] : []),
     "Paste the disclosure text into the final Devpost description and keep secrets/private customer evidence out of the repository.",
     "Set XPRIZE_THIRD_PARTY_REVIEW_APPROVED=true only after a human owner approves this manifest."

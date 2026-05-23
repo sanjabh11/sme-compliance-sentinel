@@ -912,7 +912,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
       setLastMessage(
         payload.summary.status === "passed"
           ? "Third-party manifest is ready for submission disclosure."
-          : `Third-party manifest needs review: ${payload.summary.restrictedLicenseReviewCount} restricted-review package(s), ${payload.summary.unknownLicenseCount} unknown license(s), ${payload.summary.integrationsNeedingReview} integration(s).`
+          : `Third-party manifest needs review: ${payload.summary.restrictedLicenseReviewCount} restricted-review package(s), ${payload.summary.obligationReviewCount} obligation-review package(s), ${payload.summary.licenseNeedsReviewCount} license-review package(s), ${payload.summary.integrationsNeedingReview} integration(s).`
       );
     } catch (error) {
       setActionState("error");
@@ -2256,6 +2256,8 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
                 <p>
                   {submissionCompliance.thirdPartyManifestSummary.totalPackages} packages ·{" "}
                   {submissionCompliance.thirdPartyManifestSummary.unknownLicenseCount} unknown license(s) ·{" "}
+                  {submissionCompliance.thirdPartyManifestSummary.obligationReviewCount} obligation-review package(s) ·{" "}
+                  {submissionCompliance.thirdPartyManifestSummary.licenseNeedsReviewCount} license-review package(s) ·{" "}
                   {submissionCompliance.thirdPartyManifestSummary.integrationsNeedingReview} integration(s) need review
                 </p>
               </article>
@@ -2312,6 +2314,8 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
                 <strong>Review queue</strong>
                 <p>
                   {thirdPartyManifest.summary.unknownLicenseCount} unknown license(s) ·{" "}
+                  {thirdPartyManifest.summary.obligationReviewCount} obligation-review package(s) ·{" "}
+                  {thirdPartyManifest.summary.licenseNeedsReviewCount} license-review package(s) ·{" "}
                   {thirdPartyManifest.summary.restrictedLicenseReviewCount} restricted-review package(s) ·{" "}
                   {thirdPartyManifest.summary.integrationsNeedingReview} integration(s)
                 </p>

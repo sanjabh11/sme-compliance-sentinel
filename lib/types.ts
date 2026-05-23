@@ -1142,7 +1142,7 @@ export interface ThirdPartyPackageReviewItem {
   scope: "runtime" | "development" | "optional";
   direct: boolean;
   source: string;
-  reviewStatus: "cleared-for-review" | "needs-review" | "restricted-review";
+  reviewStatus: "cleared-for-review" | "needs-review" | "obligation-review" | "restricted-review";
   notes: string;
 }
 
@@ -1162,6 +1162,8 @@ export interface ThirdPartyManifestSummary {
   directRuntimeDependencies: number;
   directDevDependencies: number;
   unknownLicenseCount: number;
+  licenseNeedsReviewCount: number;
+  obligationReviewCount: number;
   restrictedLicenseReviewCount: number;
   integrationsNeedingReview: number;
 }

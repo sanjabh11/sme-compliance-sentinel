@@ -15,12 +15,19 @@ describe("third-party license manifest", () => {
     expect(manifest.integrations.map((item) => item.name)).toEqual(
       expect.arrayContaining(["Gemini API", "Google Cloud", "Google Workspace APIs"])
     );
-    expect(manifest.summary.status).toBe("blocked");
-    expect(manifest.summary.restrictedLicenseReviewCount).toBeGreaterThan(0);
-    expect(manifest.packages.filter((item) => item.reviewStatus === "restricted-review").map((item) => item.name)).toEqual(
+    expect(manifest.summary.status).toBe("warning");
+    expect(manifest.summary.restrictedLicenseReviewCount).toBe(0);
+    expect(manifest.summary.obligationReviewCount).toBeGreaterThan(0);
+    expect(manifest.summary.licenseNeedsReviewCount).toBeGreaterThan(0);
+    expect(manifest.blockers).toEqual([]);
+    expect(manifest.packages.filter((item) => item.reviewStatus === "obligation-review").map((item) => item.name)).toEqual(
       expect.arrayContaining(["@img/sharp-libvips-darwin-arm64"])
     );
+    expect(
+      manifest.packages.find((item) => item.name === "@img/sharp-libvips-darwin-arm64")?.notes
+    ).toContain("LGPL-style obligations");
     expect(manifest.disclosureText.join(" ")).toContain("package.json");
+    expect(manifest.nextActions.join(" ")).toContain("LGPL-style package obligations");
     expect(manifest.nextActions.join(" ")).toContain("XPRIZE_THIRD_PARTY_REVIEW_APPROVED");
   });
 

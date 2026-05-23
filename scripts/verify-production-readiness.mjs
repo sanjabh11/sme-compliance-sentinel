@@ -90,7 +90,7 @@ const readOnlyChecks = [
     path: "/api/xprize/license-manifest",
     summarize: (payload) => ({
       status: payload?.summary?.status ?? "unknown",
-      detail: `${payload?.summary?.restrictedLicenseReviewCount ?? "unknown"} restricted-review package(s).`
+      detail: `${payload?.summary?.restrictedLicenseReviewCount ?? "unknown"} restricted-review, ${payload?.summary?.obligationReviewCount ?? "unknown"} obligation-review, ${payload?.summary?.licenseNeedsReviewCount ?? "unknown"} license-review package(s).`
     })
   },
   {

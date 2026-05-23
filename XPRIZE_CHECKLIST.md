@@ -29,6 +29,7 @@
 - [x] Local MVP exposes an XPRIZE Submission Gate that blocks local/mock evidence from being misreported as production readiness.
 - [x] Local MVP exposes a Submission Compliance Gate for repository access, judge access, new-project disclosure, third-party/IP review, demo-video asset clearance, redaction, and evidence-response readiness.
 - [x] Local MVP exposes a dependency/license and third-party API manifest generated from `package.json` and `package-lock.json`.
+- [x] Local dependency/license manifest separates restricted-license blockers from obligation-review packages, so optional LGPL-style transitive packages remain human-review items without being misreported as automatic replacement blockers.
 - [x] Local MVP exposes a private XPRIZE Submission Binder with artifact statuses, owner roles, testing instructions, demo timeline, and judge evidence request queue.
 - [x] Local MVP exposes a Devpost Submission Pack with claim-safe copy, under-three-minute demo script, screenshot checklist, testing instructions draft, and private evidence response plan.
 - [x] Local MVP exposes a Demo Video Compliance Pack for runtime, public platform, English/subtitle, live-Gemini, asset-clearance, and redaction gates.
