@@ -7,6 +7,7 @@ const manifest = readFileSync(join(process.cwd(), "cloudrun.service.yaml"), "utf
 describe("Cloud Run deployment manifest", () => {
   it("keeps production mode, XPRIZE, Google Cloud, Workspace, and Gemini env placeholders in one deployable manifest", () => {
     expect(manifest).toContain("run.googleapis.com/execution-environment: gen2");
+    expect(manifest).toContain("run.googleapis.com/secrets:");
     expect(manifest).toContain("serviceAccountName: sentinel-runtime@PROJECT_ID.iam.gserviceaccount.com");
     expect(manifest).toContain("containerConcurrency: 80");
     expect(manifest).toContain("timeoutSeconds: 60");
@@ -86,6 +87,15 @@ describe("Cloud Run deployment manifest", () => {
     expectSecretEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-oauth-client-secret", "1");
     expectSecretEnv("SENTINEL_EVIDENCE_SIGNING_SECRET", "sentinel-evidence-signing-secret", "1");
     expectSecretEnv("WORKSPACE_DRIVE_CHANNEL_TOKEN", "workspace-drive-channel-token", "1");
+    [
+      "sentinel-admin-action-token",
+      "gemini-api-key",
+      "google-oauth-client-secret",
+      "sentinel-evidence-signing-secret",
+      "workspace-drive-channel-token"
+    ].forEach((secretName) => {
+      expect(manifest).toContain(`${secretName}:projects/PROJECT_NUMBER/secrets/${secretName}`);
+    });
     expect(manifest).not.toContain("key: latest");
     [
       "GOOGLE_CLOUD_ACCESS_TOKEN",

@@ -73,6 +73,14 @@ const requiredSecretEnv = [
   "WORKSPACE_DRIVE_CHANNEL_TOKEN"
 ];
 
+const secretLookupNameByEnvName = {
+  SENTINEL_ADMIN_ACTION_TOKEN: "sentinel-admin-action-token",
+  GEMINI_API_KEY: "gemini-api-key",
+  GOOGLE_OAUTH_CLIENT_SECRET: "google-oauth-client-secret",
+  SENTINEL_EVIDENCE_SIGNING_SECRET: "sentinel-evidence-signing-secret",
+  WORKSPACE_DRIVE_CHANNEL_TOKEN: "workspace-drive-channel-token"
+};
+
 const prohibitedCredentialEnv = [
   {
     name: "GOOGLE_CLOUD_ACCESS_TOKEN",
@@ -147,11 +155,15 @@ try {
 function buildReport(manifest) {
   const envEntries = parseEnvEntries(manifest);
   const envByName = new Map(envEntries.map((entry) => [entry.name, entry]));
+  const secretAnnotations = parseSecretAnnotations(manifest);
   const image = extractScalar(manifest, "image") || "missing";
   const runtimeServiceAccount = extractScalar(manifest, "serviceAccountName") || "missing";
   const checks = [
     ...requiredNonSecretEnv.map((name) => checkNonSecret(name, envByName.get(name))),
-    ...requiredSecretEnv.map((name) => checkSecret(name, envByName.get(name))),
+    ...requiredSecretEnv.flatMap((name) => [
+      checkSecret(name, envByName.get(name)),
+      checkSecretAnnotation(name, envByName.get(name), secretAnnotations)
+    ]),
     ...prohibitedCredentialEnv.flatMap((item) => checkProhibitedCredentialEnv(item, envByName.get(item.name)))
   ];
   const replacements = [
@@ -187,7 +199,10 @@ function buildReport(manifest) {
     nextActions:
       status === "ready-to-dry-run"
         ? ["Run Cloud Run dry-run, deploy after review, then run hosted production verification."]
-        : ["Replace template placeholders, keep secrets in Secret Manager, then rerun this verifier."]
+        : [
+            "Render production placeholders into an ignored manifest, keep secrets in Secret Manager, then rerun this verifier.",
+            "Confirm every secretKeyRef name is mapped in run.googleapis.com/secrets before Cloud Run dry-run."
+          ]
   };
 }
 
@@ -213,6 +228,23 @@ function parseEnvEntries(manifest) {
   return entries;
 }
 
+function parseSecretAnnotations(manifest) {
+  const match = manifest.match(/run\.googleapis\.com\/secrets:\s*(?:"([^"]*)"|'([^']*)'|([^\n]*))/u);
+  const rawAnnotation = match?.[1] ?? match?.[2] ?? match?.[3] ?? "";
+  const annotations = new Map();
+
+  for (const item of rawAnnotation.split(",")) {
+    const [lookupName, ...targetParts] = item.trim().split(":");
+    const target = targetParts.join(":").trim();
+
+    if (lookupName && target) {
+      annotations.set(lookupName.trim(), target);
+    }
+  }
+
+  return annotations;
+}
+
 function checkNonSecret(name, entry) {
   if (!entry) {
     return check(name, "blocked", "missing", "Required env var is absent.", "Add this env var.");
@@ -233,6 +265,50 @@ function checkNonSecret(name, entry) {
     return check(name, "manual-review", entry.value, "Human attestation is not confirmed.", "Set true only after private proof exists.");
   }
   return check(name, "passed", entry.value, "Value is present.", "No action.");
+}
+
+function checkSecretAnnotation(envName, entry, annotations) {
+  const lookupName = entry?.secretName || secretLookupNameByEnvName[envName];
+  const annotationTarget = annotations.get(lookupName);
+  const checkName = `${envName}_SECRET_ANNOTATION`;
+
+  if (!annotationTarget) {
+    return check(
+      checkName,
+      "blocked",
+      "missing",
+      "Cloud Run YAML secret lookup is missing from run.googleapis.com/secrets.",
+      `Add ${lookupName}:projects/PROJECT_NUMBER/secrets/${lookupName} to the Cloud Run secrets annotation.`
+    );
+  }
+
+  if (hasPlaceholder(annotationTarget)) {
+    return check(
+      checkName,
+      "needs-value",
+      annotationTarget,
+      "Cloud Run YAML secret lookup still contains a project placeholder.",
+      "Render GOOGLE_CLOUD_PROJECT_NUMBER into run.googleapis.com/secrets before Cloud Run dry-run."
+    );
+  }
+
+  if (!annotationTarget.endsWith(`/secrets/${lookupName}`)) {
+    return check(
+      checkName,
+      "blocked",
+      annotationTarget,
+      "Cloud Run YAML secret lookup points at a different Secret Manager resource.",
+      `Point ${lookupName} at projects/PROJECT_NUMBER/secrets/${lookupName}.`
+    );
+  }
+
+  return check(
+    checkName,
+    "passed",
+    annotationTarget,
+    "Cloud Run YAML secret lookup maps to a Secret Manager resource.",
+    "No action."
+  );
 }
 
 function checkSecret(name, entry) {

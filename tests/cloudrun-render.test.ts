@@ -89,10 +89,13 @@ describe("Cloud Run manifest renderer", () => {
     });
     expect(renderedManifest).toContain("us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:release-20260523-001");
     expect(renderedManifest).toContain("sentinel-runtime@sentinel-prod.iam.gserviceaccount.com");
+    expect(renderedManifest).toContain("sentinel-admin-action-token:projects/123456789012/secrets/sentinel-admin-action-token");
     expect(renderedManifest).toContain('value: "https://sme-workspace-sentinel-abc-uc.a.run.app"');
     expect(renderedManifest).toContain('key: "2"');
     expect(renderedManifest).toContain("secretKeyRef:");
     expect(renderedManifest).not.toContain("PROJECT_ID");
+    expect(renderedManifest).not.toContain('value: "PROJECT_NUMBER"');
+    expect(renderedManifest).not.toContain("projects/PROJECT_NUMBER/secrets/");
     expect(renderedManifest).not.toContain("YOUR-SERVICE-URL");
     expect(renderedManifest).not.toContain('value: "RELEASE_ID"');
     expect(`${renderedManifest}${verifierJson}${dryRunCommand}${summaryJson}`).not.toContain("private-admin-token");

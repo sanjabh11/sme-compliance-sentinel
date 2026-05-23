@@ -11,6 +11,7 @@ spec:
         autoscaling.knative.dev/maxScale: "5"
         run.googleapis.com/execution-environment: gen2
         run.googleapis.com/startup-cpu-boost: "true"
+        run.googleapis.com/secrets: "sentinel-admin-action-token:projects/PROJECT_NUMBER/secrets/sentinel-admin-action-token,gemini-api-key:projects/PROJECT_NUMBER/secrets/gemini-api-key,google-oauth-client-secret:projects/PROJECT_NUMBER/secrets/google-oauth-client-secret,sentinel-evidence-signing-secret:projects/PROJECT_NUMBER/secrets/sentinel-evidence-signing-secret,workspace-drive-channel-token:projects/PROJECT_NUMBER/secrets/workspace-drive-channel-token"
     spec:
       serviceAccountName: sentinel-runtime@PROJECT_ID.iam.gserviceaccount.com
       containerConcurrency: 80

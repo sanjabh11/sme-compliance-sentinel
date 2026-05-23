@@ -32,10 +32,15 @@ describe("Cloud Run deployment evidence verifier", () => {
       ])
     );
     expect(evidence.envChecks.find((check) => check.name === "GEMINI_API_KEY")?.currentValue).toBe("gemini-api-key:version-set");
+    expect(evidence.envChecks.find((check) => check.name === "GEMINI_API_KEY_SECRET_ANNOTATION")).toMatchObject({
+      status: "needs-value",
+      currentValue: "projects/PROJECT_NUMBER/secrets/gemini-api-key"
+    });
     expect(evidence.envChecks.find((check) => check.name === "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED")?.status).toBe(
       "manual-review"
     );
     expect(evidence.blockers).toEqual([]);
+    expect(evidence.dryRunCommand).toContain("artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml");
     expect(evidence.nextActions[0]).toContain("Replace all template placeholders");
   });
 
@@ -51,8 +56,27 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(evidence.manualReviewFlags).toEqual(
       expect.arrayContaining(["XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED", "XPRIZE_THIRD_PARTY_REVIEW_APPROVED"])
     );
+    expect(evidence.envChecks.find((check) => check.name === "GEMINI_API_KEY_SECRET_ANNOTATION")).toMatchObject({
+      status: "passed",
+      currentValue: "projects/123456789012/secrets/gemini-api-key"
+    });
     expect(evidence.dryRunCommand).toContain("--dry-run");
-    expect(evidence.deployCommand).toContain("gcloud run services replace cloudrun.service.yaml");
+    expect(evidence.deployCommand).toContain(
+      "gcloud run services replace artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml"
+    );
+  });
+
+  it("blocks rendered manifests when Cloud Run secret lookup annotations are missing", () => {
+    const evidence = buildCloudRunDeploymentEvidence(
+      renderProductionCandidateManifest().replace(/\n\s+run\.googleapis\.com\/secrets: "[^"]+"/u, "")
+    );
+
+    expect(evidence.overallStatus).toBe("blocked");
+    expect(evidence.envChecks.find((check) => check.name === "GEMINI_API_KEY_SECRET_ANNOTATION")).toMatchObject({
+      status: "blocked",
+      currentValue: "missing"
+    });
+    expect(evidence.blockers.join(" ")).toContain("Cloud Run secrets annotation");
   });
 
   it("blocks raw credential and judge-access env vars even when the rest of the manifest is rendered", () => {
@@ -136,6 +160,7 @@ function renderProductionCandidateManifest() {
       'name: GOOGLE_CLOUD_PROJECT_NUMBER\n              value: "PROJECT_NUMBER"',
       'name: GOOGLE_CLOUD_PROJECT_NUMBER\n              value: "123456789012"'
     )
+    .replaceAll("projects/PROJECT_NUMBER/secrets/", "projects/123456789012/secrets/")
     .replace(
       'name: GOOGLE_CLOUD_BILLING_ACCOUNT_ID\n              value: "BILLING_ACCOUNT_ID"',
       'name: GOOGLE_CLOUD_BILLING_ACCOUNT_ID\n              value: "000000-111111-222222"'

@@ -345,6 +345,13 @@ function renderManifest(template, values) {
     );
   }
 
+  if (values.GOOGLE_CLOUD_PROJECT_NUMBER) {
+    rendered = rendered.replace(
+      /projects\/PROJECT_NUMBER\/secrets\//gu,
+      `projects/${values.GOOGLE_CLOUD_PROJECT_NUMBER}/secrets/`
+    );
+  }
+
   for (const key of renderValueKeys) {
     if (values[key] !== undefined) {
       rendered = replaceEnvValue(rendered, key, values[key]);
@@ -425,7 +432,26 @@ function assertNoUnsafeRenderedSecrets(renderedManifest) {
     }
   }
 
-  assertSafeValue("rendered manifest", renderedManifest);
+  for (const envName of Object.values(secretVersionEnvNames)) {
+    const pattern = new RegExp(`- name: ${escapeRegExp(envName)}\\n([\\s\\S]*?)(?=\\n\\s+- name: [A-Z0-9_]+\\n|$)`, "u");
+    const block = renderedManifest.match(pattern)?.[1] ?? "";
+
+    if (/(?:^|\n)\s+value:\s*"/u.test(block)) {
+      throw new Error(`Rendered manifest includes raw value for secret env ${envName}.`);
+    }
+  }
+
+  const unsafeCredentialPatterns = [
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----/u,
+    /\bAIza[0-9A-Za-z_-]{20,}/u,
+    /\bya29\.[0-9A-Za-z._-]+/u,
+    /GOCSPX-[0-9A-Za-z_-]{20,}/u,
+    /Bearer\s+(?!\[REDACTED\])[\w.~+/=-]+/iu
+  ];
+
+  if (unsafeCredentialPatterns.some((pattern) => pattern.test(renderedManifest))) {
+    throw new Error("Rendered manifest appears to contain a raw credential.");
+  }
 }
 
 function isRawSecretArg(arg) {

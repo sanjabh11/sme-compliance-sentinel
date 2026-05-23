@@ -7,6 +7,7 @@ import type {
 } from "@/lib/types";
 
 const defaultManifestPath = "cloudrun.service.yaml";
+const defaultRenderedManifestPath = "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml";
 const serviceName = "sme-workspace-sentinel";
 const recommendedRegion = "us-central1";
 
@@ -76,7 +77,15 @@ const requiredSecretEnv = [
   "GOOGLE_OAUTH_CLIENT_SECRET",
   "SENTINEL_EVIDENCE_SIGNING_SECRET",
   "WORKSPACE_DRIVE_CHANNEL_TOKEN"
-];
+] as const;
+
+const secretLookupNameByEnvName: Record<(typeof requiredSecretEnv)[number], string> = {
+  SENTINEL_ADMIN_ACTION_TOKEN: "sentinel-admin-action-token",
+  GEMINI_API_KEY: "gemini-api-key",
+  GOOGLE_OAUTH_CLIENT_SECRET: "google-oauth-client-secret",
+  SENTINEL_EVIDENCE_SIGNING_SECRET: "sentinel-evidence-signing-secret",
+  WORKSPACE_DRIVE_CHANNEL_TOKEN: "workspace-drive-channel-token"
+} as const;
 
 const prohibitedCredentialEnv = [
   {
@@ -161,11 +170,15 @@ export function buildCloudRunDeploymentEvidence(
   const manifestPath = options.manifestPath ?? defaultManifestPath;
   const envEntries = parseEnvEntries(manifest);
   const envByName = new Map(envEntries.map((entry) => [entry.name, entry]));
+  const secretAnnotations = parseSecretAnnotations(manifest);
   const image = extractScalar(manifest, "image") || "missing";
   const runtimeServiceAccount = extractScalar(manifest, "serviceAccountName") || "missing";
   const envChecks = [
     ...requiredNonSecretEnv.map((name) => checkNonSecretEnv(name, envByName.get(name))),
-    ...requiredSecretEnv.map((name) => checkSecretEnv(name, envByName.get(name))),
+    ...requiredSecretEnv.flatMap((name) => [
+      checkSecretEnv(name, envByName.get(name)),
+      checkSecretAnnotation(name, envByName.get(name), secretAnnotations)
+    ]),
     ...prohibitedCredentialEnv.flatMap((item) => checkProhibitedCredentialEnv(item, envByName.get(item.name)))
   ];
   const replacementFindings = buildReplacementFindings({ image, runtimeServiceAccount, envChecks });
@@ -189,6 +202,7 @@ export function buildCloudRunDeploymentEvidence(
   const projectId = envByName.get("GOOGLE_CLOUD_PROJECT")?.value || "PROJECT_ID";
   const deploymentRegion = envByName.get("SENTINEL_CLOUD_RUN_REGION")?.value || recommendedRegion;
   const configuredServiceName = envByName.get("SENTINEL_CLOUD_RUN_SERVICE_NAME")?.value || serviceName;
+  const commandManifestPath = manifestPath === defaultManifestPath ? defaultRenderedManifestPath : manifestPath;
 
   return {
     generatedAt: options.generatedAt ?? new Date().toISOString(),
@@ -201,8 +215,8 @@ export function buildCloudRunDeploymentEvidence(
     replacementFindings,
     manualReviewFlags: envChecks.filter((check) => check.status === "manual-review").map((check) => check.name),
     secretRefs,
-    dryRunCommand: `gcloud run services replace ${manifestPath} --region ${deploymentRegion} --project ${projectId} --dry-run`,
-    deployCommand: `gcloud run services replace ${manifestPath} --region ${deploymentRegion} --project ${projectId}`,
+    dryRunCommand: `gcloud run services replace ${commandManifestPath} --region ${deploymentRegion} --project ${projectId} --dry-run`,
+    deployCommand: `gcloud run services replace ${commandManifestPath} --region ${deploymentRegion} --project ${projectId}`,
     postDeployVerification: [
       "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --strict",
       "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --strict --include-write-checks",
@@ -215,6 +229,7 @@ export function buildCloudRunDeploymentEvidence(
     nextActions: buildNextActions({ blockers, replacementFindings, envChecks }),
     privateHandling: [
       "Do not commit rendered manifests that contain secret values, judge credentials, customer evidence, raw findings, invoices, or OAuth tokens.",
+      "Cloud Run YAML secret env vars must have matching run.googleapis.com/secrets lookups for each Secret Manager resource.",
       "Secret env vars must use Secret Manager references pinned to explicit versions, not raw values or `latest`.",
       "False XPRIZE attestation flags are safe for deployment dry-runs; set them true only after private evidence and human review exist.",
       "A ready-to-dry-run manifest is not hosted proof. Hosted proof requires Cloud Run URL, production smoke reports, and private Google Cloud/Gemini evidence."
@@ -250,6 +265,23 @@ function parseEnvEntries(manifest: string): ParsedEnvEntry[] {
   }
 
   return entries;
+}
+
+function parseSecretAnnotations(manifest: string) {
+  const match = manifest.match(/run\.googleapis\.com\/secrets:\s*(?:"([^"]*)"|'([^']*)'|([^\n]*))/u);
+  const rawAnnotation = match?.[1] ?? match?.[2] ?? match?.[3] ?? "";
+  const annotations = new Map<string, string>();
+
+  for (const item of rawAnnotation.split(",")) {
+    const [lookupName, ...targetParts] = item.trim().split(":");
+    const target = targetParts.join(":").trim();
+
+    if (lookupName && target) {
+      annotations.set(lookupName.trim(), target);
+    }
+  }
+
+  return annotations;
 }
 
 function checkNonSecretEnv(name: string, entry?: ParsedEnvEntry): CloudRunDeploymentEnvCheck {
@@ -312,6 +344,62 @@ function checkNonSecretEnv(name: string, entry?: ParsedEnvEntry): CloudRunDeploy
   }
 
   return envCheck(name, categoryForEnv(name), "passed", false, value, "Value is present and has no template placeholder.", "No action.");
+}
+
+function checkSecretAnnotation(
+  envName: (typeof requiredSecretEnv)[number],
+  entry: ParsedEnvEntry | undefined,
+  annotations: Map<string, string>
+): CloudRunDeploymentEnvCheck {
+  const lookupName = entry?.secretName || secretLookupNameByEnvName[envName];
+  const annotationTarget = annotations.get(lookupName);
+  const checkName = `${envName}_SECRET_ANNOTATION`;
+
+  if (!annotationTarget) {
+    return envCheck(
+      checkName,
+      "secret",
+      "blocked",
+      false,
+      "missing",
+      "Cloud Run YAML secret lookup is missing from run.googleapis.com/secrets.",
+      `Add ${lookupName}:projects/PROJECT_NUMBER/secrets/${lookupName} to the Cloud Run secrets annotation.`
+    );
+  }
+
+  if (hasPlaceholder(annotationTarget)) {
+    return envCheck(
+      checkName,
+      "secret",
+      "needs-value",
+      false,
+      annotationTarget,
+      "Cloud Run YAML secret lookup still contains a project placeholder.",
+      "Render GOOGLE_CLOUD_PROJECT_NUMBER into run.googleapis.com/secrets before Cloud Run dry-run."
+    );
+  }
+
+  if (!annotationTarget.endsWith(`/secrets/${lookupName}`)) {
+    return envCheck(
+      checkName,
+      "secret",
+      "blocked",
+      false,
+      annotationTarget,
+      "Cloud Run YAML secret lookup points at a different Secret Manager resource.",
+      `Point ${lookupName} at projects/PROJECT_NUMBER/secrets/${lookupName}.`
+    );
+  }
+
+  return envCheck(
+    checkName,
+    "secret",
+    "passed",
+    false,
+    annotationTarget,
+    "Cloud Run YAML secret lookup maps to a Secret Manager resource.",
+    "No action."
+  );
 }
 
 function checkSecretEnv(name: string, entry?: ParsedEnvEntry): CloudRunDeploymentEnvCheck {
@@ -449,7 +537,7 @@ function buildNextActions(input: {
     return [
       "Replace all template placeholders with production values, leaving human attestation flags false until evidence exists.",
       "Create the referenced Secret Manager secrets and keep values out of source.",
-      "Run npm run verify:cloudrun-deployment, then gcloud run services replace cloudrun.service.yaml --dry-run.",
+      "Run npm run render:cloudrun-manifest, verify the ignored rendered manifest, then execute the generated Cloud Run dry-run command.",
       "After deployment, run npm run verify:production against the hosted Cloud Run URL."
     ];
   }
