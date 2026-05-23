@@ -998,6 +998,16 @@ dd {
   color: var(--medium);
 }
 
+.verification-list > span[data-status="ready-to-dry-run"] {
+  background: #e7f3ea;
+  color: var(--low);
+}
+
+.verification-list > span[data-status="template-needs-values"] {
+  background: #fff5dd;
+  color: var(--medium);
+}
+
 .verification-list > span[data-status="needs-proof"] {
   background: #fff5dd;
   color: var(--medium);

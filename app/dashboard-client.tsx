@@ -23,6 +23,7 @@ import type {
   ClaimGuardResult,
   CloudCostControlCenter,
   CloudCostControlVerificationResult,
+  CloudRunDeploymentEvidence,
   DashboardSnapshot,
   DealImpactReport,
   DemoVideoCompliancePack,
@@ -128,6 +129,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
   const [prospectPipeline, setProspectPipeline] = useState<PilotProspectPipeline | null>(null);
   const [productionLaunch, setProductionLaunch] = useState<ProductionLaunchCommandCenter | null>(null);
   const [productionProvisioning, setProductionProvisioning] = useState<ProductionProvisioningPack | null>(null);
+  const [cloudRunDeploymentEvidence, setCloudRunDeploymentEvidence] = useState<CloudRunDeploymentEvidence | null>(null);
   const [productionGeminiProof, setProductionGeminiProof] = useState<ProductionGeminiProofResult | null>(null);
   const [marketPositioning, setMarketPositioning] = useState<MarketPositioningCommandCenter | null>(null);
   const [pilotForm, setPilotForm] = useState({
@@ -997,6 +999,28 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
     } catch (error) {
       setActionState("error");
       setLastMessage(error instanceof Error ? error.message : "Unable to build production provisioning pack.");
+    }
+  }
+
+  async function checkCloudRunDeploymentEvidence() {
+    setActionState("running");
+    setLastMessage("Checking Cloud Run manifest deployment evidence...");
+
+    try {
+      const response = await fetch("/api/production/deployment-evidence");
+      const payload = (await response.json()) as CloudRunDeploymentEvidence;
+      setCloudRunDeploymentEvidence(payload);
+      setActionState(payload.overallStatus === "blocked" ? "error" : "idle");
+      setLastMessage(
+        payload.overallStatus === "ready-to-dry-run"
+          ? "Cloud Run manifest is ready for dry-run."
+          : payload.overallStatus === "template-needs-values"
+            ? `Cloud Run manifest still has ${payload.replacementFindings.length} replacement value(s).`
+            : `Cloud Run manifest has ${payload.blockers.length} blocker(s).`
+      );
+    } catch (error) {
+      setActionState("error");
+      setLastMessage(error instanceof Error ? error.message : "Unable to check Cloud Run deployment evidence.");
     }
   }
 
@@ -1885,6 +1909,10 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
             <Database size={16} aria-hidden="true" />
             Provisioning pack
           </button>
+          <button type="button" className="secondary" onClick={checkCloudRunDeploymentEvidence} disabled={actionState === "running"}>
+            <FileSearch size={16} aria-hidden="true" />
+            Cloud Run evidence
+          </button>
           <button type="button" className="secondary" onClick={runProductionGeminiSmoke} disabled={actionState === "running"}>
             <Sparkles size={16} aria-hidden="true" />
             Gemini proof smoke
@@ -2021,6 +2049,37 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               <article>
                 <strong>Secret handling</strong>
                 <p>{productionProvisioning.privateHandlingRules[0]}</p>
+              </article>
+            </div>
+          ) : null}
+          {cloudRunDeploymentEvidence ? (
+            <div className="verification-list">
+              <span data-status={cloudRunDeploymentEvidence.overallStatus}>
+                {cloudRunDeploymentEvidence.overallStatus.replaceAll("-", " ")}
+              </span>
+              <article>
+                <strong>Manifest target</strong>
+                <p>
+                  {cloudRunDeploymentEvidence.serviceName} · {cloudRunDeploymentEvidence.manifestPath} ·{" "}
+                  {cloudRunDeploymentEvidence.replacementFindings.length} replacement value(s)
+                </p>
+              </article>
+              <article>
+                <strong>Secret references</strong>
+                <p>
+                  {cloudRunDeploymentEvidence.secretRefs.length} Secret Manager ref(s) ·{" "}
+                  {cloudRunDeploymentEvidence.manualReviewFlags.length} manual attestation flag(s)
+                </p>
+              </article>
+              {cloudRunDeploymentEvidence.replacementFindings.slice(0, 4).map((finding) => (
+                <article key={`${finding.target}-${finding.value}`}>
+                  <strong>{finding.target}</strong>
+                  <p>{finding.fix}</p>
+                </article>
+              ))}
+              <article>
+                <strong>Dry-run</strong>
+                <p>{cloudRunDeploymentEvidence.dryRunCommand}</p>
               </article>
             </div>
           ) : null}

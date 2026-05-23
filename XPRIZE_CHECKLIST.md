@@ -50,6 +50,7 @@
 - [x] Local repo includes `cloudrun.service.yaml` with production-mode placeholders for Cloud Run, Firestore, BigQuery, Pub/Sub, OAuth, Workspace webhook authentication, Sensitive Data Protection, Gemini guardrails, XPRIZE attestations, judge/demo flags, and Cloud Billing controls.
 - [x] Local repo tests verify that Cloud Run credential values use Secret Manager references and that `GOOGLE_CLOUD_ACCESS_TOKEN` is not committed into the Cloud Run manifest.
 - [x] Local MVP exposes `/api/production/provisioning` with non-secret Google Cloud setup commands, API enablement, service-account/IAM sequence, Secret Manager secret names, Cloud Run dry-run/deploy commands, verification sequence, and private-handling rules.
+- [x] Local MVP exposes `/api/production/deployment-evidence` and `npm run verify:cloudrun-deployment` to validate Cloud Run manifest placeholders, pinned Secret Manager references, manual attestation flags, dry-run commands, and post-deploy verification steps before applying the manifest.
 - [x] Local MVP exposes `/api/production/gemini-smoke` to run a synthetic non-customer Gemini proof flow and block readiness unless `provider=gemini-api` is recorded.
 - [x] Local MVP exposes a Market Positioning Command Center comparing Sentinel against Vanta, Drata, and Secureframe with USP wedge, differentiators, parity gaps, buyer narrative, and proof actions.
 - [ ] Working product URL available to judges.
@@ -153,6 +154,7 @@
 - [ ] Restrict the production Gemini API key to the required Google API target and server-only client boundary.
 - [ ] Capture private proof of Gemini quota/usage controls before public launch.
 - [ ] Run `/api/production/provisioning`, replace placeholders in `cloudrun.service.yaml`, execute the dry-run command, then execute the deployment command in the real Google Cloud project.
+- [ ] Run `npm run verify:cloudrun-deployment -- --strict` after rendering production values into `cloudrun.service.yaml`; preserve the dry-run output as private deployment evidence.
 - [ ] Run `POST /api/production/gemini-smoke` from the hosted Cloud Run URL after configuring the Gemini API key, then persist the resulting `provider=gemini-api` agent-run row to BigQuery.
 - [x] Local MVP separates mock sync reconciliation from live Google API reconciliation.
 - [x] Local MVP falls back to deterministic staged findings when Gemini is blocked by model or budget policy.

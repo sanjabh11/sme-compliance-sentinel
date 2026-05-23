@@ -1554,6 +1554,49 @@ export interface ProductionProvisioningPack {
   disclaimer: string;
 }
 
+export type CloudRunDeploymentEvidenceStatus = "ready-to-dry-run" | "template-needs-values" | "blocked";
+
+export interface CloudRunDeploymentEnvCheck {
+  name: string;
+  category: "runtime" | "xprize" | "google-cloud" | "workspace" | "gemini" | "cost" | "secret";
+  status: "passed" | "needs-value" | "manual-review" | "blocked";
+  secret: boolean;
+  currentValue: string;
+  evidence: string;
+  fix: string;
+}
+
+export interface CloudRunDeploymentReplacementFinding {
+  target: string;
+  value: string;
+  reason: string;
+  fix: string;
+}
+
+export interface CloudRunDeploymentEvidence {
+  generatedAt: string;
+  overallStatus: CloudRunDeploymentEvidenceStatus;
+  manifestPath: string;
+  serviceName: string;
+  image: string;
+  runtimeServiceAccount: string;
+  envChecks: CloudRunDeploymentEnvCheck[];
+  replacementFindings: CloudRunDeploymentReplacementFinding[];
+  manualReviewFlags: string[];
+  secretRefs: Array<{
+    envName: string;
+    secretName: string;
+    version: string;
+  }>;
+  dryRunCommand: string;
+  deployCommand: string;
+  postDeployVerification: string[];
+  blockers: string[];
+  nextActions: string[];
+  privateHandling: string[];
+  disclaimer: string;
+}
+
 export type ProductionGeminiProofStatus = "passed" | "blocked" | "mock-only";
 
 export interface ProductionGeminiProofResult {

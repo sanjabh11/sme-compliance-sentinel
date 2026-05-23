@@ -22,6 +22,15 @@ const readOnlyChecks = [
     })
   },
   {
+    id: "cloudrun-deployment-evidence",
+    method: "GET",
+    path: "/api/production/deployment-evidence",
+    summarize: (payload) => ({
+      status: payload?.overallStatus ?? "unknown",
+      detail: `${payload?.replacementFindings?.length ?? "unknown"} replacement finding(s); ${payload?.blockers?.length ?? "unknown"} blocker(s).`
+    })
+  },
+  {
     id: "gemini-proof-status",
     method: "GET",
     path: "/api/production/gemini-smoke",
@@ -295,6 +304,7 @@ function isBlockedStatus(status) {
     "blocked",
     "missing",
     "external-required",
+    "template-needs-values",
     "needs-review",
     "ready-for-review",
     "ready-to-record",

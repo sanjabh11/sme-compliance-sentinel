@@ -94,20 +94,21 @@ npm run build
 23. Run **Check cost controls** to show the Cloud Billing budget/API-key restriction plan and the production blockers that still need GCP proof.
 24. Run **Launch proof plan** to unify deployment, live Gemini, Workspace sync, paid pilot evidence, judge access, license/IP review, env gaps, verification commands, and proof artifacts.
 25. Run **Provisioning pack** to generate the non-secret Cloud Run/GCP setup sequence, Secret Manager checklist, dry-run command, deploy command, and hosted verification sequence.
-26. Run **Gemini proof smoke** after deploying with `GEMINI_API_KEY` to verify the hosted app records `provider=gemini-api` using a synthetic non-customer fixture.
-27. Run **Claim Guard** to verify that product and submission copy does not claim certification, legal advice, audit assurance, guaranteed compliance, or certainty of winning.
-28. Run **Check financial evidence** to confirm mock rows, missing invoices, private judge proof, and verified production proof stay separated.
-29. Run **Check Evidence Vault** to confirm invoices, user logs, cost/CAC receipts, consent records, Gemini/GCP logs, hosted URL, repository URL, and demo-video proof are tracked privately with redaction state.
-30. Run **Build intake queue** to prioritize private proof collection, redaction work, accepted proof types, rejection triggers, and Evidence Vault registration payloads for the next paid pilot.
-31. Run **Check submission gate** to see which XPRIZE requirements are proven, warning, or blocked.
-32. Run **Project provenance** to verify Git history, tracked source, first commit timing, repository URL, and pre-existing-work disclosure gaps.
-33. Run **Source release** before the first commit or source push to verify required files, ignore rules, release plan, and obvious secret patterns.
-34. Run **Check submission compliance** to surface repository, IP/license, public video, customer-redaction, and evidence-response blockers.
-35. Run **License manifest** to export dependency, license, and Google API-use disclosure details.
-36. Run **Generate submission binder** to produce the private judge-readiness manifest, testing-instruction status, under-three-minute demo timeline, and two-business-day evidence request queue.
-37. Run **Devpost pack** to generate claim-safe submission copy, demo scenes, screenshot targets, testing instructions, and the private evidence response plan.
-38. Run **Demo video pack** to verify the generated timeline, public host, English/subtitle confirmation, asset clearance, redaction, functioning-product footage, and live Gemini proof gates before recording or upload.
-39. Run **Market battlecard** to compare Sentinel against Vanta, Drata, and Secureframe while keeping the one-day Workspace risk-scan wedge explicit.
+26. Run **Cloud Run evidence** or `npm run verify:cloudrun-deployment` to confirm the checked-in manifest still has only template replacement gaps, Secret Manager references, and manual attestation flags before a real dry-run.
+27. Run **Gemini proof smoke** after deploying with `GEMINI_API_KEY` to verify the hosted app records `provider=gemini-api` using a synthetic non-customer fixture.
+28. Run **Claim Guard** to verify that product and submission copy does not claim certification, legal advice, audit assurance, guaranteed compliance, or certainty of winning.
+29. Run **Check financial evidence** to confirm mock rows, missing invoices, private judge proof, and verified production proof stay separated.
+30. Run **Check Evidence Vault** to confirm invoices, user logs, cost/CAC receipts, consent records, Gemini/GCP logs, hosted URL, repository URL, and demo-video proof are tracked privately with redaction state.
+31. Run **Build intake queue** to prioritize private proof collection, redaction work, accepted proof types, rejection triggers, and Evidence Vault registration payloads for the next paid pilot.
+32. Run **Check submission gate** to see which XPRIZE requirements are proven, warning, or blocked.
+33. Run **Project provenance** to verify Git history, tracked source, first commit timing, repository URL, and pre-existing-work disclosure gaps.
+34. Run **Source release** before the first commit or source push to verify required files, ignore rules, release plan, and obvious secret patterns.
+35. Run **Check submission compliance** to surface repository, IP/license, public video, customer-redaction, and evidence-response blockers.
+36. Run **License manifest** to export dependency, license, and Google API-use disclosure details.
+37. Run **Generate submission binder** to produce the private judge-readiness manifest, testing-instruction status, under-three-minute demo timeline, and two-business-day evidence request queue.
+38. Run **Devpost pack** to generate claim-safe submission copy, demo scenes, screenshot targets, testing instructions, and the private evidence response plan.
+39. Run **Demo video pack** to verify the generated timeline, public host, English/subtitle confirmation, asset clearance, redaction, functioning-product footage, and live Gemini proof gates before recording or upload.
+40. Run **Market battlecard** to compare Sentinel against Vanta, Drata, and Secureframe while keeping the one-day Workspace risk-scan wedge explicit.
 
 The **Low-risk skip** button verifies that metadata-only events do not call Gemini.
 
@@ -185,6 +186,8 @@ Do not set `GOOGLE_CLOUD_ACCESS_TOKEN` in Cloud Run. The deployed service should
 Cloud Run secret env vars are pinned to Secret Manager version `1` in the template. After rotating any secret, update the referenced version in `cloudrun.service.yaml` and deploy a new revision instead of relying on `latest`.
 
 `GET /api/production/provisioning` returns the non-secret provisioning pack for operators: required Google APIs, service accounts, IAM roles, Secret Manager names, Artifact Registry build command, Pub/Sub setup, Cloud Run dry-run/deploy commands, and post-deploy verification sequence. The pack intentionally marks human attestations as manual review and never includes API key values, OAuth client secrets, evidence-signing secrets, Drive channel tokens, judge credentials, invoices, or customer findings.
+
+`GET /api/production/deployment-evidence` and `npm run verify:cloudrun-deployment` validate the Cloud Run manifest before an operator applies it. The verifier reports whether the manifest is still `template-needs-values`, `ready-to-dry-run`, or `blocked`; lists placeholder replacements, manual XPRIZE attestation flags, pinned Secret Manager references, dry-run/deploy commands, and post-deploy verification commands; and blocks raw secret values or `latest` secret references. A `ready-to-dry-run` result is only local deployment-template evidence, not hosted Cloud Run proof.
 
 The current runtime still uses in-memory state for the local MVP demo. The app now exposes the production persistence contract through the Readiness Command Center and `/api/production/persistence`: tenant state and one-time OAuth launch states belong under `tenants/{tenantId}` in Firestore, audit evidence belongs in BigQuery with a `tenant_id` column plus `sequence`, `previous_hash`, `event_hash`, and `audit_chain_version` fields, agent-run evidence belongs in a separate BigQuery table with `provider`, `model`, fallback, token-estimate, and cost fields, and Workspace OAuth refresh tokens belong in Secret Manager. The persistence endpoint returns both BigQuery table schema plans, sample `insertAll` payloads, the Secret Manager token path, and a safe `versions/latest:access` request plan so operators can provision and verify every target before onboarding pilots. `POST /api/production/persistence` attempts write-through verification only when `SENTINEL_STORAGE_MODE=gcp-rest` is configured; in local memory mode it returns a blocked result instead of a false pass. The Secret Manager check reads only the response status and never returns token values; if no token secret exists yet, the verifier is blocked until a consent-gated OAuth callback stores a real refresh-token payload. Agent-run rows store redacted summaries only, not raw prompts, raw document content, or customer secrets; production XPRIZE evidence still requires a persisted run with `provider=gemini-api`. Before onboarding real customers, deploy on Cloud Run with the required service-account IAM roles and verify write-through persistence.
 
