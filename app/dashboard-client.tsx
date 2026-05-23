@@ -27,6 +27,7 @@ import type {
   DealImpactReport,
   DemoVideoCompliancePack,
   DevpostSubmissionPack,
+  EligibilityDisclosurePacket,
   EvidenceExport,
   EvidenceIntakeQueue,
   EvidenceVault,
@@ -107,6 +108,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
   const [claimGuardCheck, setClaimGuardCheck] = useState<ClaimGuardResult | null>(null);
   const [submissionGate, setSubmissionGate] = useState<XPrizeSubmissionGate | null>(null);
   const [projectProvenance, setProjectProvenance] = useState<ProjectProvenanceReport | null>(null);
+  const [eligibilityDisclosure, setEligibilityDisclosure] = useState<EligibilityDisclosurePacket | null>(null);
   const [sourceReleaseGuard, setSourceReleaseGuard] = useState<SourceReleaseGuard | null>(null);
   const [submissionBinder, setSubmissionBinder] = useState<XPrizeSubmissionBinder | null>(null);
   const [submissionCompliance, setSubmissionCompliance] = useState<SubmissionComplianceCenter | null>(null);
@@ -811,6 +813,26 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
     } catch (error) {
       setActionState("error");
       setLastMessage(error instanceof Error ? error.message : "Unable to check project provenance.");
+    }
+  }
+
+  async function checkEligibilityDisclosure() {
+    setActionState("running");
+    setLastMessage("Generating eligibility and disclosure review packet...");
+
+    try {
+      const response = await fetch("/api/xprize/eligibility-disclosure");
+      const payload = (await response.json()) as EligibilityDisclosurePacket;
+      setEligibilityDisclosure(payload);
+      setActionState(payload.overallStatus === "blocked" ? "error" : "idle");
+      setLastMessage(
+        payload.overallStatus === "ready-for-review"
+          ? "Eligibility disclosure packet is ready for human review."
+          : `Eligibility disclosure packet is blocked by ${payload.blockers.length} item(s).`
+      );
+    } catch (error) {
+      setActionState("error");
+      setLastMessage(error instanceof Error ? error.message : "Unable to generate eligibility disclosure packet.");
     }
   }
 
@@ -2041,6 +2063,10 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
             <FileSearch size={16} aria-hidden="true" />
             Project provenance
           </button>
+          <button type="button" className="secondary" onClick={checkEligibilityDisclosure} disabled={actionState === "running"}>
+            <ShieldCheck size={16} aria-hidden="true" />
+            Disclosure review
+          </button>
           <button type="button" className="secondary" onClick={checkSourceRelease} disabled={actionState === "running"}>
             <FileSearch size={16} aria-hidden="true" />
             Source release
@@ -2135,6 +2161,41 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               <article>
                 <strong>Disclosure draft</strong>
                 <p>{projectProvenance.draftDevpostDisclosure[0]}</p>
+              </article>
+            </div>
+          ) : null}
+          {eligibilityDisclosure ? (
+            <div className="verification-list">
+              <span data-status={eligibilityDisclosure.overallStatus}>
+                {eligibilityDisclosure.overallStatus.replaceAll("-", " ")}
+              </span>
+              <article>
+                <strong>Review packet</strong>
+                <p>
+                  {eligibilityDisclosure.provenanceSummary.commitCount} commit(s) ·{" "}
+                  {eligibilityDisclosure.provenanceSummary.trackedFileCount} tracked file(s) · repository{" "}
+                  {eligibilityDisclosure.repositoryUrl || "missing"}
+                </p>
+              </article>
+              <article>
+                <strong>Reviewer attestations</strong>
+                <p>
+                  {eligibilityDisclosure.reviewerAttestations.filter((item) => item.currentValue).length}/
+                  {eligibilityDisclosure.reviewerAttestations.length} flag(s) currently confirmed.
+                </p>
+              </article>
+              {eligibilityDisclosure.checks
+                .filter((check) => check.status !== "passed")
+                .slice(0, 4)
+                .map((check) => (
+                  <article key={check.id}>
+                    <strong>{check.label}</strong>
+                    <p>{check.fix}</p>
+                  </article>
+                ))}
+              <article>
+                <strong>Private handling</strong>
+                <p>{eligibilityDisclosure.privateHandling[0]}</p>
               </article>
             </div>
           ) : null}

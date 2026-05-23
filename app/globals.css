@@ -983,6 +983,11 @@ dd {
   color: var(--medium);
 }
 
+.verification-list > span[data-status="ready-for-review"] {
+  background: #fff5dd;
+  color: var(--medium);
+}
+
 .verification-list > span[data-status="ready-to-record"] {
   background: #fff5dd;
   color: var(--medium);

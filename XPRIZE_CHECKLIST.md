@@ -5,6 +5,7 @@
 - [ ] Project created after the hackathon start date.
 - [x] Local submission gates block eligibility until project-created-after-start provenance and pre-existing work disclosure are verified.
 - [x] Local MVP exposes `/api/xprize/provenance` and `npm run verify:provenance` to inspect Git commits, first-commit timing, tracked/untracked source state, repository URL, and framework/dependency disclosure before setting the project-created-after-start attestation.
+- [x] Local MVP exposes `/api/xprize/eligibility-disclosure` as a private reviewer packet for repository provenance, pre-existing-work disclosure, third-party/API authorization, entrant attestation flags, judge-access handling, and private-evidence boundaries without auto-clearing human attestations.
 - [x] Local MVP exposes `/api/xprize/source-release` and `npm run verify:source-release` to check required source surfaces, `.gitignore`, release file plan, and obvious secret patterns before source is committed or pushed.
 - [x] Source repository committed and pushed to `https://github.com/sanjabh11/sme-compliance-sentinel`; local provenance shows first commit after the hackathon start, tracked source, no untracked paths, and pushed HEAD.
 - [ ] Human-review the source/repository disclosure, confirm rule eligibility, and set `XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED=true` only after the review is complete.

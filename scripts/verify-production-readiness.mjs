@@ -49,6 +49,15 @@ const readOnlyChecks = [
     })
   },
   {
+    id: "eligibility-disclosure",
+    method: "GET",
+    path: "/api/xprize/eligibility-disclosure",
+    summarize: (payload) => ({
+      status: payload?.overallStatus ?? "unknown",
+      detail: `${payload?.blockers?.length ?? "unknown"} blocker(s); ${payload?.reviewerAttestations?.length ?? "unknown"} attestation flag(s).`
+    })
+  },
+  {
     id: "devpost-pack",
     method: "GET",
     path: "/api/xprize/devpost-pack",
@@ -282,7 +291,17 @@ function parseJson(text) {
 }
 
 function isBlockedStatus(status) {
-  return ["blocked", "missing", "external-required", "needs-review", "ready-to-record", "ready-to-commit", "mock-only", "transport-error"].includes(String(status));
+  return [
+    "blocked",
+    "missing",
+    "external-required",
+    "needs-review",
+    "ready-for-review",
+    "ready-to-record",
+    "ready-to-commit",
+    "mock-only",
+    "transport-error"
+  ].includes(String(status));
 }
 
 function buildNextActions(failed, blocked) {

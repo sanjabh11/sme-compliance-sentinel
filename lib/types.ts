@@ -1396,6 +1396,61 @@ export interface ProjectProvenanceReport {
   disclaimer: string;
 }
 
+export type EligibilityDisclosureStatus = "ready-for-review" | "blocked";
+
+export interface EligibilityDisclosureCheck {
+  id: string;
+  label: string;
+  status: "passed" | "needs-review" | "blocked";
+  evidence: string;
+  fix: string;
+  ownerRole: SubmissionEvidenceArtifact["ownerRole"];
+  requiredBeforeAttestation: boolean;
+}
+
+export interface EligibilityDisclosureSection {
+  id: string;
+  title: string;
+  summary: string;
+  disclosureText: string[];
+  publicSafe: boolean;
+  privateHandling: string;
+  ownerRole: SubmissionEvidenceArtifact["ownerRole"];
+}
+
+export interface EligibilityReviewerAttestation {
+  id: string;
+  label: string;
+  envFlag: string;
+  currentValue: boolean;
+  ownerRole: SubmissionEvidenceArtifact["ownerRole"];
+  instruction: string;
+}
+
+export interface EligibilityDisclosurePacket {
+  generatedAt: string;
+  overallStatus: EligibilityDisclosureStatus;
+  repositoryUrl: string;
+  repositoryUrlSource: ProjectProvenanceReport["repositoryUrlSource"];
+  provenanceSummary: {
+    hackathonStartAt: string;
+    firstCommitAt?: string;
+    headCommit?: string;
+    remoteHeadCommit?: string;
+    commitCount: number;
+    trackedFileCount: number;
+    untrackedPathCount: number;
+  };
+  disclosureSections: EligibilityDisclosureSection[];
+  checks: EligibilityDisclosureCheck[];
+  blockers: string[];
+  nextActions: string[];
+  reviewerAttestations: EligibilityReviewerAttestation[];
+  privateHandling: string[];
+  sourceUrls: string[];
+  disclaimer: string;
+}
+
 export type ProductionLaunchStatus = "ready" | "needs-review" | "external-required" | "blocked";
 
 export interface ProductionLaunchEnvItem {
