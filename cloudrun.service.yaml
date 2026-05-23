@@ -1,0 +1,152 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: sme-workspace-sentinel
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "5"
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      serviceAccountName: sentinel-runtime@PROJECT_ID.iam.gserviceaccount.com
+      containerConcurrency: 80
+      timeoutSeconds: 60
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT_ID/sentinel/web:latest
+          ports:
+            - containerPort: 3000
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          env:
+            - name: NEXT_PUBLIC_APP_NAME
+              value: "SME Workspace Sentinel"
+            - name: SENTINEL_TENANT_ID
+              value: "tenant_production_pilot"
+            - name: SENTINEL_MOCK_MODE
+              value: "false"
+            - name: SENTINEL_STORAGE_MODE
+              value: "gcp-rest"
+            - name: SENTINEL_EVIDENCE_MODE
+              value: "production"
+            - name: SENTINEL_CLOUD_COST_CONTROLS_MODE
+              value: "production"
+            - name: NEXT_PUBLIC_PRODUCT_URL
+              value: "https://YOUR-SERVICE-URL"
+            - name: XPRIZE_REPOSITORY_URL
+              value: "https://github.com/YOUR_ORG/sme-workspace-sentinel"
+            - name: XPRIZE_DEMO_VIDEO_URL
+              value: "https://youtu.be/YOUR_VIDEO"
+            - name: XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED
+              value: "false"
+            - name: XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED
+              value: "false"
+            - name: XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED
+              value: "false"
+            - name: XPRIZE_DEMO_VIDEO_CUSTOMER_DATA_REDACTED_CONFIRMED
+              value: "false"
+            - name: XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED
+              value: "false"
+            - name: XPRIZE_JUDGE_ACCESS_CONFIGURED
+              value: "false"
+            - name: XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED
+              value: "false"
+            - name: XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED
+              value: "false"
+            - name: XPRIZE_ENTRANT_TYPE
+              value: ""
+            - name: XPRIZE_GENERAL_ELIGIBILITY_CONFIRMED
+              value: "false"
+            - name: XPRIZE_REPRESENTATIVE_AUTHORIZED
+              value: "false"
+            - name: XPRIZE_ORGANIZATION_UNDER_25_CONFIRMED
+              value: "false"
+            - name: XPRIZE_CORPORATE_ID_CONFIGURED
+              value: "false"
+            - name: XPRIZE_NO_PROMOTION_ENTITY_CONFLICT_CONFIRMED
+              value: "false"
+            - name: XPRIZE_THIRD_PARTY_REVIEW_APPROVED
+              value: "false"
+            - name: XPRIZE_TESTING_INSTRUCTIONS
+              value: "Provide hosted URL and private judge credentials in Devpost testing instructions; do not commit credentials."
+            - name: GOOGLE_CLOUD_PROJECT
+              value: "PROJECT_ID"
+            - name: GOOGLE_CLOUD_PROJECT_NUMBER
+              value: "PROJECT_NUMBER"
+            - name: GOOGLE_CLOUD_BILLING_ACCOUNT_ID
+              value: "BILLING_ACCOUNT_ID"
+            - name: SENTINEL_GCP_BUDGET_ID
+              value: "billingAccounts/BILLING_ACCOUNT_ID/budgets/BUDGET_ID"
+            - name: SENTINEL_BUDGET_PUBSUB_TOPIC
+              value: "projects/PROJECT_ID/topics/sentinel-budget-alerts"
+            - name: FIRESTORE_DATABASE
+              value: "(default)"
+            - name: BIGQUERY_DATASET
+              value: "sentinel_evidence"
+            - name: BIGQUERY_AUDIT_TABLE
+              value: "audit_events"
+            - name: BIGQUERY_AGENT_RUNS_TABLE
+              value: "agent_runs"
+            - name: WORKSPACE_SECRET_PREFIX
+              value: "sentinel-workspace-oauth"
+            - name: WORKSPACE_GMAIL_TOPIC
+              value: "projects/PROJECT_ID/topics/workspace-gmail-updates"
+            - name: WORKSPACE_GMAIL_SUBSCRIPTION
+              value: "projects/PROJECT_ID/subscriptions/workspace-gmail-push"
+            - name: SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE
+              value: "oidc"
+            - name: WORKSPACE_PUBSUB_PUSH_AUDIENCE
+              value: "https://YOUR-SERVICE-URL/api/webhooks/pubsub/gmail"
+            - name: WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL
+              value: "workspace-push@PROJECT_ID.iam.gserviceaccount.com"
+            - name: GOOGLE_OAUTH_CLIENT_ID
+              value: "YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com"
+            - name: GOOGLE_OAUTH_REDIRECT_URI
+              value: "https://YOUR-SERVICE-URL/api/oauth/google/callback"
+            - name: GEMINI_MODEL
+              value: "gemini-3.5-flash"
+            - name: SENTINEL_GEMINI_MODEL_ALLOWLIST
+              value: "gemini-3.5-flash,gemini-2.5-flash,gemini-2.5-pro"
+            - name: SENTINEL_GEMINI_MONTHLY_BUDGET_USD
+              value: "50"
+            - name: SENTINEL_GEMINI_MAX_CONTENT_BYTES_PER_EVENT
+              value: "2800"
+            - name: SENTINEL_GEMINI_API_KEY_ID
+              value: "projects/PROJECT_NUMBER/locations/global/keys/GEMINI_API_KEY_ID"
+            - name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS
+              value: ""
+            - name: SENTINEL_GEMINI_DAILY_REQUEST_QUOTA
+              value: "1000"
+            - name: SENTINEL_GEMINI_DAILY_TOKEN_QUOTA
+              value: "1000000"
+            - name: GEMINI_INPUT_PER_1K_USD
+              value: "0.000075"
+            - name: GEMINI_OUTPUT_PER_1K_USD
+              value: "0.0003"
+            - name: SENSITIVE_DATA_PROTECTION_ENABLED
+              value: "true"
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gemini-api-key
+                  key: "1"
+            - name: GOOGLE_OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: google-oauth-client-secret
+                  key: "1"
+            - name: SENTINEL_EVIDENCE_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sentinel-evidence-signing-secret
+                  key: "1"
+            - name: WORKSPACE_DRIVE_CHANNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: workspace-drive-channel-token
+                  key: "1"

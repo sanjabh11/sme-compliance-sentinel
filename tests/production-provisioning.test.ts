@@ -1,0 +1,70 @@
+import { describe, expect, it } from "vitest";
+import { scanClaimText } from "@/lib/claim-guard";
+import { buildProductionProvisioningPack } from "@/lib/production-provisioning";
+
+describe("production provisioning pack", () => {
+  it("turns Cloud Run deployment into a non-secret operator runbook", () => {
+    const pack = buildProductionProvisioningPack();
+
+    expect(pack.status).toBe("needs-values");
+    expect(pack.manifestPath).toBe("cloudrun.service.yaml");
+    expect(pack.serviceName).toBe("sme-workspace-sentinel");
+    expect(pack.requiredApis).toEqual(
+      expect.arrayContaining([
+        "run.googleapis.com",
+        "secretmanager.googleapis.com",
+        "firestore.googleapis.com",
+        "bigquery.googleapis.com",
+        "pubsub.googleapis.com",
+        "dlp.googleapis.com",
+        "generativelanguage.googleapis.com"
+      ])
+    );
+    expect(pack.secretNames).toEqual(
+      expect.arrayContaining([
+        "gemini-api-key",
+        "google-oauth-client-secret",
+        "sentinel-evidence-signing-secret",
+        "workspace-drive-channel-token"
+      ])
+    );
+    expect(pack.commands.map((command) => command.id)).toEqual(
+      expect.arrayContaining([
+        "enable-apis",
+        "create-runtime-service-account",
+        "grant-pubsub-token-creator",
+        "dry-run-cloudrun",
+        "deploy-cloudrun",
+        "describe-cloudrun"
+      ])
+    );
+    expect(pack.dryRunCommand).toContain("--dry-run");
+    expect(pack.deployCommand).toContain("gcloud run services replace cloudrun.service.yaml");
+    expect(pack.verificationSequence.map((command) => command.id)).toEqual(
+      expect.arrayContaining(["local-quality-gates", "manifest-regression", "hosted-smoke", "write-through-smoke"])
+    );
+  });
+
+  it("keeps secrets and XPRIZE attestations inside explicit safety boundaries", () => {
+    const pack = buildProductionProvisioningPack();
+    const allCommands = pack.commands.map((command) => command.command).join("\n");
+
+    expect(allCommands).not.toContain("GEMINI_API_KEY=");
+    expect(allCommands).not.toContain("GOOGLE_OAUTH_CLIENT_SECRET=");
+    expect(allCommands).not.toContain("WORKSPACE_DRIVE_CHANNEL_TOKEN=");
+    expect(allCommands).not.toContain("SENTINEL_EVIDENCE_SIGNING_SECRET=");
+    expect(allCommands).not.toContain("GOOGLE_CLOUD_ACCESS_TOKEN");
+    expect(pack.commands.filter((command) => command.requiresSecretInput).every((command) => command.command.includes("--data-file="))).toBe(
+      true
+    );
+    expect(pack.checklist.find((item) => item.id === "human-attestations")?.status).toBe("manual-review");
+    expect(pack.privateHandlingRules.join(" ")).toContain("Secret Manager");
+
+    const violations = scanClaimText({
+      artifact: "production-provisioning",
+      text: JSON.stringify(pack, null, 2)
+    });
+
+    expect(violations).toEqual([]);
+  });
+});

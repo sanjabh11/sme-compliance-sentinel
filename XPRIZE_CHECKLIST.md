@@ -1,0 +1,190 @@
+# Build with Gemini XPRIZE Compliance Checklist
+
+## Required
+
+- [ ] Project created after the hackathon start date.
+- [x] Local submission gates block eligibility until project-created-after-start provenance and pre-existing work disclosure are verified.
+- [x] Local MVP exposes `/api/xprize/provenance` and `npm run verify:provenance` to inspect Git commits, first-commit timing, tracked/untracked source state, repository URL, and framework/dependency disclosure before setting the project-created-after-start attestation.
+- [x] Local MVP exposes `/api/xprize/source-release` and `npm run verify:source-release` to check required source surfaces, `.gitignore`, release file plan, and obvious secret patterns before source is committed or pushed.
+- [ ] Commit the source repository, verify the first commit is after the official hackathon start, push/share the repository, and clear every `/api/xprize/provenance` blocker before setting `XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED=true`.
+- [x] Local submission gates block entrant identity until individual/team/organization status is confirmed and organization corporate ID proof is configured when applicable.
+- [x] Local submission gates block general eligibility, representative authority, small-organization employee-count, promotion-entity conflict, and free judging-period access attestations until human review confirms them.
+- [ ] Category selected: Small Business Services.
+- [ ] App uses at least one Google Cloud product in production.
+- [ ] Deployed LLM functionality includes at least one Gemini API call.
+- [ ] Gemini model string is verified against current Gemini API model docs before submission.
+- [x] Production persistence target is specified for Firestore, BigQuery, and Secret Manager.
+- [x] BigQuery audit persistence contract includes audit-chain sequence and SHA-256 hash fields.
+- [x] Production persistence endpoint exposes the partitioned BigQuery audit table schema plan.
+- [x] Production persistence endpoint exposes a separate BigQuery agent-run schema with provider, model, fallback, token-estimate, and cost fields.
+- [x] BigQuery agent-run evidence stores redacted summaries only and excludes raw prompts, raw document content, and secrets.
+- [x] Production Launch Command Center tracks BigQuery agent-run proof separately from audit-row proof.
+- [x] Production persistence contract includes one-time OAuth launch states in tenant-scoped Firestore before Google redirect.
+- [x] Local MVP exposes a write-through verifier that blocks honestly until GCP mode is configured.
+- [x] Production persistence verifier checks Secret Manager token-secret access without returning token values.
+- [x] Local MVP exposes Workspace sync cursor/channel state and a reconciliation endpoint.
+- [x] Local MVP exposes a Claim Guard endpoint and dashboard control for overclaim checks.
+- [x] Local MVP exposes an XPRIZE Submission Gate that blocks local/mock evidence from being misreported as production readiness.
+- [x] Local MVP exposes a Submission Compliance Gate for repository access, judge access, new-project disclosure, third-party/IP review, demo-video asset clearance, redaction, and evidence-response readiness.
+- [x] Local MVP exposes a dependency/license and third-party API manifest generated from `package.json` and `package-lock.json`.
+- [x] Local MVP exposes a private XPRIZE Submission Binder with artifact statuses, owner roles, testing instructions, demo timeline, and judge evidence request queue.
+- [x] Local MVP exposes a Devpost Submission Pack with claim-safe copy, under-three-minute demo script, screenshot checklist, testing instructions draft, and private evidence response plan.
+- [x] Local MVP exposes a Demo Video Compliance Pack for runtime, public platform, English/subtitle, live-Gemini, asset-clearance, and redaction gates.
+- [x] Local MVP enforces Gemini model allowlist, monthly budget, and per-event content byte guardrails before Tier 2 calls.
+- [x] Local MVP keeps local regex findings labeled as deterministic and uses `tier1_sdp` only when Google Sensitive Data Protection is actually attempted.
+- [x] Local MVP exposes Cloud Billing budget, Pub/Sub alert, Gemini API-key restriction, and quota-runbook evidence plans.
+- [x] Local MVP assigns approver roles, SLA due dates, and escalation targets to staged remediation recommendations.
+- [x] Local MVP exposes Approval Operations with approver directory, RBAC decisions, local queued notices, and production delivery gaps.
+- [x] Local MVP supports tenant-specific remediation playbook creation/editing with owner roles, SLAs, escalation targets, active/paused state, and safe-auto enforcement.
+- [x] Local MVP captures risk/deal/evidence maturity score history and trend deltas after major workflow milestones.
+- [x] Local MVP calibrates ROI from pilot MRR, questionnaire packs, Trust Packets, remediation count, and score-history movement, with explicit proof gaps.
+- [x] Local MVP exports a redacted Deal Impact Report with score movement, ROI, buyer proof points, and production gaps.
+- [x] Local MVP exposes a one-day paid pilot launch plan with offer, owners, timeline, objections, blockers, and next actions.
+- [x] Local MVP exposes a Paid Pilot Conversion Kit with target prospect selection, close assets, consent/invoice/OAuth/scan/remediation/evidence workflow, and blocked revenue-proof status until private artifacts exist.
+- [x] Local MVP exposes a Pilot Consent & Scope Packet with allowed Workspace sources, excluded data, requested/deferred OAuth scopes, AI data rules, HITL remediation rules, signature fields, and required private artifacts.
+- [x] Local MVP exposes a Production Launch Command Center for Cloud Run/GCP persistence, live Gemini, Workspace OAuth/sync, paid pilot evidence, judge access, license/IP review, env readiness, verification commands, and proof artifacts.
+- [x] Local repo includes `npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL` for hosted readiness smoke reports, with optional write-through checks after production credentials are ready.
+- [x] Local repo includes `cloudrun.service.yaml` with production-mode placeholders for Cloud Run, Firestore, BigQuery, Pub/Sub, OAuth, Workspace webhook authentication, Sensitive Data Protection, Gemini guardrails, XPRIZE attestations, judge/demo flags, and Cloud Billing controls.
+- [x] Local repo tests verify that Cloud Run credential values use Secret Manager references and that `GOOGLE_CLOUD_ACCESS_TOKEN` is not committed into the Cloud Run manifest.
+- [x] Local MVP exposes `/api/production/provisioning` with non-secret Google Cloud setup commands, API enablement, service-account/IAM sequence, Secret Manager secret names, Cloud Run dry-run/deploy commands, verification sequence, and private-handling rules.
+- [x] Local MVP exposes `/api/production/gemini-smoke` to run a synthetic non-customer Gemini proof flow and block readiness unless `provider=gemini-api` is recorded.
+- [x] Local MVP exposes a Market Positioning Command Center comparing Sentinel against Vanta, Drata, and Secureframe with USP wedge, differentiators, parity gaps, buyer narrative, and proof actions.
+- [ ] Working product URL available to judges.
+- [x] Local readiness gates keep product access blocked until URL, judge testing access, and free judging-period access are all confirmed.
+- [ ] Repository includes necessary source code.
+- [x] Local XPRIZE Submission Gate treats missing repository URL as a blocker, not a warning.
+- [ ] Demo video is public and under 3 minutes.
+- [ ] Demo video is in English or includes English subtitles.
+- [ ] Demo video uses only owned or permitted assets, no copyrighted music, and no customer-identifying security data.
+- [x] Local submission gates block demo-video readiness until URL, under-three-minute duration, public visibility, English/subtitle confirmation, asset clearance, and customer-data redaction are all confirmed.
+- [ ] Pre-existing frameworks, templates, boilerplate, open-source dependencies, and third-party API/SDK authorization are disclosed in the final submission.
+- [ ] Human owner reviews `/api/xprize/license-manifest` and sets `XPRIZE_THIRD_PARTY_REVIEW_APPROVED=true` only after dependency and API-use clearance.
+- [x] Local proof gates keep license/IP clearance blocked while the generated manifest still has restricted-license review items.
+- [ ] Judge testing instructions and private access are configured outside the repository.
+- [ ] Revenue evidence is captured by month: May, June, July, August 2026.
+- [ ] Total costs are captured separately from marketing/CAC spend.
+- [ ] Real user evidence is captured with user awareness.
+- [ ] Testimonials are shared only when consent is explicit.
+
+## Safety Boundaries
+
+- [ ] Do not claim SOC2 certification, legal advice, audit assurance, or compliance guarantee.
+- [ ] Use “SOC2 readiness evidence” and “risk detection.”
+- [ ] Do not expose customer security findings publicly.
+- [ ] Keep OAuth scopes minimal and documented.
+- [x] Local MVP exposes a Google OAuth launch plan with minimal pilot scopes and a deferred restricted scope.
+- [x] Local MVP blocks Google OAuth redirect until a redacted verified `pilot-consent` artifact exists.
+- [x] Local MVP records a one-time OAuth launch state and revalidates signed pilot consent before callback token exchange.
+- [x] Production OAuth state validation uses Firestore in `gcp-rest` mode instead of Cloud Run process memory.
+- [x] Local MVP records OAuth install proof separately from Drive/Gmail cursor initialization.
+- [x] Submission gates do not count Workspace sync as live proof until Drive and Gmail cursors are initialized.
+- [x] Non-demo Workspace webhook routes reject unauthenticated pushes instead of falling back to demo events.
+- [x] Authenticated production Workspace pushes are recorded as reconciliation hints and cannot directly create findings.
+- [x] Replayed Workspace push notifications are deduplicated before updating sync timestamps or audit evidence, with Firestore create-only reservations in `gcp-rest` mode.
+- [ ] Production Pub/Sub push subscriptions use OIDC authentication with a dedicated service account and configured audience.
+- [ ] Production Drive watch channels use a private `X-Goog-Channel-Token` and rotate it on renewal.
+- [x] Local MVP has an OAuth callback path that blocks honestly without credentials and stores refresh tokens only in Secret Manager in GCP mode.
+- [x] Local MVP treats Drive/Gmail push notifications as hints and tracks reconciliation cursors.
+- [x] Claim Guard scans app/docs/submission copy for certification, legal, audit, guarantee, and absolute-win overclaims.
+- [x] Submission Gate separates mock/local proof from production evidence mode.
+- [x] Submission Binder labels each artifact as missing, mock-only, ready, private-on-request, or verified.
+- [x] Require human approval before non-trivial remediation.
+- [x] Log every AI recommendation, approval, and remediation action.
+- [x] Block unsafe automatic playbooks unless every staged action is no-action or tenant safe-auto allowlisted.
+- [x] Redact judge exports by default.
+
+## Evidence Room Fields
+
+- [x] Local MVP captures MRR.
+- [x] Local MVP captures pilot count.
+- [x] Local MVP captures revenue by month.
+- [x] Local MVP captures total costs.
+- [x] Local MVP captures customer acquisition spend.
+- [x] Local MVP captures active users.
+- [x] Local MVP captures pilot arms-length and related-party flags.
+- [x] Local MVP maps the one-day pilot workflow from consent to OAuth, scan, remediation, trust proof, commercial proof, and submission assets.
+- [x] Local MVP captures pilot proof and consent status.
+- [x] Local MVP separates pilot data-access consent from testimonial consent.
+- [x] Local MVP exposes a financial evidence ledger that labels revenue, invoices, costs, CAC, users, testimonials, and related-party review as mock-only, missing, private-on-request, or verified.
+- [x] Local MVP exposes a private Evidence Vault for invoices, user logs, cost/CAC proof, consent records, Gemini/GCP/Workspace logs, hosted URL, repository URL, demo video, reviewed trust policies, redaction state, owner routing, and checksums.
+- [x] Local MVP exposes an Evidence Intake Queue that prioritizes paid-pilot proof artifacts, accepted proof types, redaction checks, rejection triggers, and safe registration payloads.
+- [x] Local MVP keeps seeded financial proof blocked from production submission evidence.
+- [x] Local MVP exports redacted JSON, Markdown, and CSV evidence packets with consent and related-party summaries.
+- [x] Local MVP exports a print-ready evidence packet with SHA-256 digest and optional HMAC signature when production signing secret is configured.
+- [x] Local MVP hash-chains new audit events and reports audit-chain verification status in evidence exports.
+- [x] Local MVP labels and logs legacy audit-chain backfills instead of treating old unsealed rows as original tamper-proof evidence.
+- [x] Local MVP creates time-limited redacted Trust Packets for prospect-safe sales proof.
+- [x] Local MVP logs Trust Packet creation and access events.
+- [x] Local MVP summarizes Trust Packet engagement analytics and follow-up queue without treating local analytics as production traction.
+- [x] Local MVP gates requestable Trust Center documents behind NDA-aware access requests and approval logs.
+- [x] Local MVP excludes private customer finding documents from prospect packets.
+- [x] Local MVP parses pasted questionnaires into customer-specific response packs.
+- [x] Local MVP imports text, CSV, TSV, copied spreadsheet text, and PDF-extracted questionnaire text.
+- [x] Local MVP tracks questionnaire answer approval state and exports response packs.
+- [x] Local MVP stores approved questionnaire answers in a reusable answer library with owner, source, usage count, and 90-day review cadence.
+- [x] Local MVP tracks customer-segment questionnaire history and supports bulk answer-library verification.
+- [x] Local MVP exports framework-specific readiness evidence packs for SOC2, ISO 27001, GDPR, HIPAA, and PCI.
+- [x] Local MVP supports judge, prospect-safe, and auditor-review templates for framework evidence packs.
+- [x] Local MVP blocks HIPAA positioning until BAA, PHI scope, and healthcare-specific controls are added.
+- [x] Local MVP captures files inspected.
+- [x] Local MVP captures bytes extracted.
+- [x] Local MVP captures bytes scanned by DLP.
+- [x] Local MVP captures bytes routed to Gemini.
+- [x] Local MVP captures findings by severity/status.
+- [x] Local MVP captures remediations approved.
+- [x] Local MVP captures public exposures closed.
+- [x] Local MVP captures false-positive rate.
+- [x] Local MVP captures agent-run timeline.
+- [x] Local MVP captures approval queue status, SLA due dates, and escalation targets.
+- [x] Local MVP shows whether open approvals are assigned to the expected role owner before remediation can proceed.
+- [x] Local MVP captures score-history snapshots for scans, approvals, remediations, pilots, questionnaires, trust packets, sync, playbooks, and manual checkpoints.
+- [x] Local MVP summarizes score history and ROI into a customer-facing deal-impact report without claiming guaranteed outcomes.
+- [x] Local MVP shows ROI calibration source, evidence factors, and remaining proof gaps instead of static savings claims.
+- [x] Local MVP exposes a paid-pilot prospect pipeline with high-fit targets, stage tracking, outreach proof attachments, estimated MRR, claim boundaries, and conversion blockers.
+- [x] Local MVP filters testimonials by consent.
+- [x] Local MVP documents tenant-scoped production persistence paths and audit-row shape.
+- [x] Local MVP documents durable BigQuery agent-run evidence rows for live Gemini proof.
+- [x] Local MVP verifies that memory mode cannot be misreported as production persistence.
+- [x] Local MVP verifies that local AI spend estimates cannot be misreported as live Cloud Billing budget proof.
+- [ ] Create and verify a real Cloud Billing budget with alert thresholds and Pub/Sub notifications.
+- [ ] Restrict the production Gemini API key to the required Google API target and server-only client boundary.
+- [ ] Capture private proof of Gemini quota/usage controls before public launch.
+- [ ] Run `/api/production/provisioning`, replace placeholders in `cloudrun.service.yaml`, execute the dry-run command, then execute the deployment command in the real Google Cloud project.
+- [ ] Run `POST /api/production/gemini-smoke` from the hosted Cloud Run URL after configuring the Gemini API key, then persist the resulting `provider=gemini-api` agent-run row to BigQuery.
+- [x] Local MVP separates mock sync reconciliation from live Google API reconciliation.
+- [x] Local MVP falls back to deterministic staged findings when Gemini is blocked by model or budget policy.
+- [x] Local MVP labels mock Gemini fallbacks with explicit reason metadata so they cannot be mistaken for live API proof.
+- [ ] Replace mock pilot records with real paid customer evidence before submission.
+- [ ] Move at least one real arms-length prospect to pilot-started or won and register its private invoice/payment and active-user proof.
+- [ ] Run `/api/pilots/conversion-kit` for the highest-fit prospect and replace every blocked close-kit artifact with real consent, invoice/payment, OAuth, scan, Gemini/GCP, and customer-reference proof.
+- [ ] Run `/api/pilots/consent-packet`, collect a signed packet, and register it as a redacted `pilot-consent` artifact before requesting live Workspace OAuth.
+- [ ] Run `/api/evidence/vault?view=intake` and clear every priority-zero intake blocker with redacted, checksummed, private proof artifacts.
+- [ ] Attach private invoices/payment exports for every counted pilot before submission.
+- [ ] Attach active-user logs, cost records, CAC receipts, and testimonial consent records before submission.
+- [ ] Register every final private proof artifact in the Evidence Vault with redaction complete and SHA-256 checksum.
+- [ ] Host Trust Packet links behind deployed product access controls before sharing with real prospects.
+- [ ] Persist Trust Packet analytics to Firestore/BigQuery and verify real prospect access before using it as traction evidence.
+- [ ] Replace seeded Trust Center document summaries with real reviewed policies/reports before pilot sharing.
+- [ ] Connect Approval Operations notices to verified production email, Google Chat, or ticketing delivery and persist delivery attempts.
+- [ ] Add binary XLSX/DOCX/PDF extraction for uploaded files after choosing a production file-parser dependency.
+- [ ] Replace framework evidence packs with production tenant history after live pilots.
+- [ ] Configure production evidence signing secret and regenerate the final sealed packet from the hosted product immediately before submission.
+- [ ] Store production evidence in Firestore/BigQuery, not memory.
+- [ ] Store real Drive startPageToken/pageToken and Gmail historyId per tenant after OAuth install.
+- [ ] Renew Drive channels and Gmail watches before expiration in production.
+- [ ] Run Claim Guard before final Devpost copy, demo video script, judge export, and hosted release.
+- [ ] Run the XPRIZE Submission Gate before final Devpost submission and clear every blocker with real evidence.
+- [ ] Run `/api/production/launch-readiness` from the hosted app and clear each workstream with production proof before final submission.
+- [ ] Run `npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --strict --include-write-checks` after Cloud Run/GCP credentials are configured and attach the JSON output to the private judge packet.
+- [ ] Run `/api/market/positioning` before final pitch copy and verify the story remains a focused Workspace risk-scan wedge, not a broad GRC replacement claim.
+- [ ] Run `/api/pilots/conversion-kit` before each outreach sprint and before final submission so paid-pilot revenue, active-user proof, and customer-consent gaps are visible.
+- [ ] Generate and human-review `/api/xprize/devpost-pack` before pasting final Devpost text, recording the demo video, or uploading screenshots.
+- [ ] Generate and human-review `/api/xprize/demo-video-pack` before recording, uploading, or pasting the final public demo video URL.
+- [ ] Generate the private XPRIZE Submission Binder before final Devpost submission and attach every required artifact or private-response owner.
+
+## Optional
+
+- [ ] Antigravity used as developer tooling, if helpful.
+- [ ] Workspace Marketplace listing after OAuth verification.
+- [ ] Google Vault support for enterprise-tier customers only.
+- [ ] BigQuery/Looker Studio dashboard for live judging evidence.

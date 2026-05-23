@@ -1,0 +1,35 @@
+{
+  "name": "sme-workspace-sentinel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI DLP and SOC2 readiness evidence dashboard for seed-stage teams using Google Workspace.",
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "verify:source-release": "node scripts/verify-source-release.mjs",
+    "verify:provenance": "node scripts/verify-project-provenance.mjs",
+    "verify:production": "node scripts/verify-production-readiness.mjs"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "lucide-react": "^0.468.0",
+    "next": "16.2.6",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.16.0",
+    "@next/eslint-plugin-next": "16.2.6",
+    "@types/node": "^22.10.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "eslint": "^9.16.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.17.0",
+    "vitest": "^2.1.8"
+  }
+}

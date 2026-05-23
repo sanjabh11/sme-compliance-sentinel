@@ -1,0 +1,320 @@
+# SME Workspace Sentinel
+
+AI DLP and SOC2 readiness evidence for seed-stage teams using Google Workspace. This project is designed for the Build with Gemini XPRIZE under **Small Business Services**.
+
+The product intentionally says **SOC2 readiness evidence**, not “SOC2 compliant” or “SOC2 certified.” SOC2 reports and attestations require qualified auditors; Sentinel only helps customers find Workspace risks, stage remediation, and export evidence.
+
+## What It Implements
+
+- Human-in-the-loop recommendation workflow for security remediation, with approver role assignment, SLA due dates, escalation targets, RBAC checks, and local notification queue.
+- One-day paid pilot launch plan that turns the USP into a buyer offer, consent/OAuth/GCP checklist, scan/remediation/trust-proof timeline, objections, blockers, and next actions.
+- Paid pilot prospect pipeline with high-fit targets, stage tracking, expected MRR, outreach sequences, conversion blockers, and claim-safe proof attachments.
+- Paid Pilot Conversion Kit that selects the next high-fit prospect, generates claim-safe close assets, maps the consent/invoice/OAuth/scan/remediation/evidence steps, and blocks revenue claims until private proof exists.
+- Pilot Consent & Scope Packet that spells out allowed Workspace sources, excluded data, requested/deferred OAuth scopes, AI data rules, HITL remediation rules, signature fields, and required private artifacts before live Workspace access.
+- Hybrid scanner:
+  - Tier 0 metadata filter skips low-risk changes.
+  - Tier 1 deterministic/Sensitive Data Protection-style scanning detects PII and secrets.
+  - Tier 2 Gemini semantic audit runs only when risk justifies cost and data exposure.
+- Private Evidence Room with MRR, pilots, revenue/cost fields, risk counters, agent runs, testimonials, consent/related-party summaries, financial evidence ledger, redacted JSON/Markdown/CSV judge exports, and print-ready integrity-sealed HTML packet.
+- Private Evidence Vault that tracks required invoices, payment exports, user logs, cost/CAC receipts, consent proof, Gemini/GCP/Workspace logs, product URL, repository URL, and demo-video artifacts by owner, redaction state, checksum, and proof status.
+- Evidence Intake Queue that prioritizes the private proof artifacts needed for the next paid pilot, gives accepted-proof examples, redaction checks, rejection triggers, and registration payloads for the Evidence Vault.
+- Strategy Room with top feature bets, marketability/win/sellability scoring, proof-status labels, gap analysis, loophole register, and realistic win-confidence scoring.
+- Trust Center Lite profile for redacted prospect-safe trust proof.
+- Time-limited redacted Trust Packets with prospect alias, allowed sections, expiry, access logging, engagement analytics, and follow-up queue.
+- Trust Center document vault with public/requestable/private visibility, NDA-aware access requests, approval/denial audit logs, and approved document summaries in packets.
+- Security Questionnaire Assistant that drafts review answers, imports text/CSV/TSV/spreadsheet-text/PDF-text questionnaires, tracks answer approval state, stores approved answers in a reusable answer library, enforces review cadence, tracks customer-segment history, supports bulk library verification, and exports customer-specific response packs.
+- Readiness Command Center with OAuth readiness, sync reliability, pilot CRM, risk/deal scoring, AI budgets, Cloud Billing cost controls, compliance copy guardrails, framework coverage, evidence-calibrated ROI, playbooks, and judge narrative.
+- Risk/deal/evidence maturity score history with deltas, trend narrative, milestone checklist, and a manual capture endpoint.
+- Redacted Deal Impact Report that combines risk-score movement, ROI, Trust Packet engagement, questionnaire progress, remediation proof, and production gaps.
+- Tenant-editable remediation playbooks with staged actions, owner roles, SLA targets, escalation routes, pause state, and safe-auto enforcement.
+- Approval Operations surface with role directory, RBAC decisions, queued in-app approval notices, and production delivery gaps for email/Google Chat/ticketing.
+- Cloud Cost Controls plan for Cloud Billing budgets, Pub/Sub spend alerts, Gemini API key restrictions, quota runbooks, and private judge evidence.
+- Production Launch Command Center that unifies Cloud Run/GCP persistence, live Gemini, Workspace OAuth/sync, paid pilot proof, judge access, license/IP review, environment readiness, verification commands, and private proof artifacts.
+- Production Provisioning Pack that generates non-secret Google Cloud setup commands, API enablement, service-account/IAM steps, Secret Manager names, Cloud Run dry-run/deploy commands, verification sequence, and private-handling rules.
+- Production Gemini Proof Smoke that runs a synthetic, non-customer high-risk fixture through the deployed Gemini audit path and blocks readiness unless `provider=gemini-api` is recorded.
+- Market Positioning Command Center with competitor battlecards for Vanta, Drata, and Secureframe, narrow USP scoring, differentiators, parity gaps, buyer narrative, and proof actions.
+- Framework Evidence Packs for SOC2, ISO 27001, GDPR, HIPAA, and PCI with control-level status, production-proof gaps, owner roles, redacted markdown export, and judge/prospect/auditor audience templates.
+- Private pilot evidence workflow for recording arms-length status, related-party risk, MRR, active users, proof status, consent state, missing/private/verified financial proof, and required private artifact slots.
+- Production persistence contract and verifier for tenant-scoped Firestore documents, one-time OAuth launch states, append-only BigQuery audit rows, and Secret Manager OAuth-token storage.
+- Workspace sync reliability control plane with OAuth install proof, authenticated webhook intake that treats production pushes as reconciliation hints, Drive start/page token plans, Drive changes watch renewal state, Gmail watch historyId state, and gates that do not claim live sync until both Drive and Gmail cursors are initialized.
+- Claim Guard scanner that checks product, docs, and submission copy for overclaims such as certification, guaranteed compliance, audit assurance, or absolute win claims.
+- Submission Compliance Gate plus dependency/license manifest for new-project disclosure, repository access, judge access, third-party license/API review, demo-video asset clearance, customer redaction, and two-business-day evidence response readiness.
+- Project Provenance Report that checks Git history, first-commit timing, tracked/untracked source state, repository URL, human attestation, and pre-existing framework/dependency disclosure.
+- Source Release Guard that checks required source surfaces, `.gitignore` coverage, release file plan, and obvious secret patterns before the first commit or judge-facing source push.
+- XPRIZE Submission Gate that blocks readiness until current evidence satisfies production Google Cloud, Gemini, real revenue/user proof, consent, product URL, repository URL, and demo-video requirements.
+- Private XPRIZE Submission Binder that maps every gate item to an artifact owner, status, testing instruction, demo-timeline step, private evidence queue, and final pre-submit checklist.
+- Devpost Submission Pack that generates claim-safe public copy, Google stack wording, under-three-minute demo script, screenshot checklist, testing instructions draft, and private judge evidence response plan.
+- Demo Video Compliance Pack that turns the script into runtime, public-platform, English/subtitle, live-Gemini, asset-clearance, and customer-redaction gates before recording or upload.
+- Mock Drive/Gmail event flow for local demos before OAuth credentials are ready.
+- Production adapters for Gemini API and Google Sensitive Data Protection through environment variables.
+
+## Local Setup
+
+```bash
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:3000`.
+
+## Verification
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+## Demo Flow
+
+1. Run **Build launch plan** to see the one-day paid pilot offer, required proof, owners, day-one workflow, and blockers.
+2. Run **Check prospect pipeline** to see high-fit prospects, expected pipeline MRR, outreach proof attachments, and conversion blockers.
+3. Run **Build conversion kit** to select the best prospect, generate the founder email/proposal/consent/invoice proof checklist, and expose the exact private artifacts still missing before revenue can count.
+4. Run **Build consent packet** to confirm allowed sources, excluded data, requested/deferred scopes, AI data rules, remediation approvals, and signature fields before OAuth access.
+5. Click **High-risk Drive event**.
+6. The app ingests a mock Workspace event.
+7. Tier 1 detection finds PII/secrets.
+8. Gemini semantic audit creates a staged recommendation with approver role, SLA, and escalation metadata.
+9. Click **Approve**.
+10. Click **Remediate**.
+11. Generate the redacted judge export in the Evidence Room, then generate Markdown, CSV, and sealed print-ready packets for customer/judge review.
+12. Record a private pilot evidence item and confirm MRR/readiness metrics refresh without exposing customer names in the judge packet.
+13. Request NDA-gated Trust Center documents, approve the request, and create a Trust Packet that includes only public and approved requestable document summaries.
+14. Create a redacted Trust Packet and verify it has an expiry, limited sections, no customer security findings, and Trust Analytics follow-up guidance.
+15. Build a questionnaire response pack from pasted text or CSV/TSV/spreadsheet/PDF-extracted text, approve an answer, and export the pack.
+16. Build the same questionnaire again to show an approved-answer library hit, then verify one reusable answer or bulk-verify the selected segment before its review date.
+17. Export a framework evidence pack for SOC2, ISO 27001, GDPR, HIPAA, or PCI; switch between judge, prospect, and auditor templates; and confirm blocked/partial controls are not hidden where the audience needs them.
+18. Create or edit a remediation playbook and confirm mutating actions remain staged unless tenant safe-auto policy explicitly permits them.
+19. Inject a high-risk event and confirm Approval Operations shows the RBAC decision, queued local notice, and production delivery gaps.
+20. Capture a score snapshot after scan/remediation/pilot changes and confirm the trend panel shows risk, deal-impact, evidence, and MRR deltas, then confirm the ROI card updates from pilot MRR, remediation, questionnaire, trust packet, and score-history evidence.
+21. Generate a Deal Impact Report and confirm it summarizes buyer proof points, score movement, ROI, and remaining production gaps without claiming a guaranteed outcome.
+22. Run **Reconcile sync cursors** to show the Drive/Gmail cursor path. In mock mode this advances simulated cursors without calling Google APIs; in live mode it blocks until OAuth connection state, Drive startPageToken, and Gmail historyId exist.
+23. Run **Check cost controls** to show the Cloud Billing budget/API-key restriction plan and the production blockers that still need GCP proof.
+24. Run **Launch proof plan** to unify deployment, live Gemini, Workspace sync, paid pilot evidence, judge access, license/IP review, env gaps, verification commands, and proof artifacts.
+25. Run **Provisioning pack** to generate the non-secret Cloud Run/GCP setup sequence, Secret Manager checklist, dry-run command, deploy command, and hosted verification sequence.
+26. Run **Gemini proof smoke** after deploying with `GEMINI_API_KEY` to verify the hosted app records `provider=gemini-api` using a synthetic non-customer fixture.
+27. Run **Claim Guard** to verify that product and submission copy does not claim certification, legal advice, audit assurance, guaranteed compliance, or certainty of winning.
+28. Run **Check financial evidence** to confirm mock rows, missing invoices, private judge proof, and verified production proof stay separated.
+29. Run **Check Evidence Vault** to confirm invoices, user logs, cost/CAC receipts, consent records, Gemini/GCP logs, hosted URL, repository URL, and demo-video proof are tracked privately with redaction state.
+30. Run **Build intake queue** to prioritize private proof collection, redaction work, accepted proof types, rejection triggers, and Evidence Vault registration payloads for the next paid pilot.
+31. Run **Check submission gate** to see which XPRIZE requirements are proven, warning, or blocked.
+32. Run **Project provenance** to verify Git history, tracked source, first commit timing, repository URL, and pre-existing-work disclosure gaps.
+33. Run **Source release** before the first commit or source push to verify required files, ignore rules, release plan, and obvious secret patterns.
+34. Run **Check submission compliance** to surface repository, IP/license, public video, customer-redaction, and evidence-response blockers.
+35. Run **License manifest** to export dependency, license, and Google API-use disclosure details.
+36. Run **Generate submission binder** to produce the private judge-readiness manifest, testing-instruction status, under-three-minute demo timeline, and two-business-day evidence request queue.
+37. Run **Devpost pack** to generate claim-safe submission copy, demo scenes, screenshot targets, testing instructions, and the private evidence response plan.
+38. Run **Demo video pack** to verify the generated timeline, public host, English/subtitle confirmation, asset clearance, redaction, functioning-product footage, and live Gemini proof gates before recording or upload.
+39. Run **Market battlecard** to compare Sentinel against Vanta, Drata, and Secureframe while keeping the one-day Workspace risk-scan wedge explicit.
+
+The **Low-risk skip** button verifies that metadata-only events do not call Gemini.
+
+## Required Environment Variables
+
+- `GEMINI_API_KEY`: required in production for the deployed LLM workflow.
+- `GEMINI_MODEL`: defaults to `gemini-3.5-flash`, currently listed as stable in the Gemini API model docs. Override it only after confirming access to another model string.
+- `SENTINEL_GEMINI_MODEL_ALLOWLIST`: comma-separated model allowlist enforced before any Gemini call.
+- `SENTINEL_GEMINI_MONTHLY_BUDGET_USD`: tenant budget guardrail; scans fall back to deterministic findings instead of calling Gemini if projected spend exceeds this amount.
+- `SENTINEL_GEMINI_MAX_CONTENT_BYTES_PER_EVENT`: maximum content bytes sampled into one Gemini risk prompt.
+- `GOOGLE_CLOUD_PROJECT`: Google Cloud project for production deployment.
+- `GOOGLE_CLOUD_PROJECT_NUMBER`: numeric project id required for API Keys API verification.
+- `GOOGLE_CLOUD_BILLING_ACCOUNT_ID`: billing account id used for Cloud Billing budget setup and private cost evidence.
+- `SENTINEL_GCP_BUDGET_ID`: configured Cloud Billing budget id after the production budget is created.
+- `SENTINEL_BUDGET_PUBSUB_TOPIC`: Pub/Sub topic for programmatic budget alerts.
+- `SENTINEL_CLOUD_COST_CONTROLS_MODE`: keep `plan` locally; set `production` only when budget, key, and quota evidence should be verified against GCP.
+- `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`: required before `/api/oauth/google/start?dryRun=false` can redirect pilot users through Google Workspace OAuth.
+- `WORKSPACE_GMAIL_TOPIC`: fully qualified Pub/Sub topic name for Gmail watch notifications, for example `projects/PROJECT_ID/topics/workspace-gmail-updates`.
+- `WORKSPACE_GMAIL_SUBSCRIPTION`: exact Pub/Sub push subscription name expected by the Gmail webhook, for example `projects/PROJECT_ID/subscriptions/workspace-gmail-push`.
+- `SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE`: keep `demo` locally; set `oidc` in production so non-demo Workspace webhook pushes require authentication.
+- `WORKSPACE_PUBSUB_PUSH_AUDIENCE`: expected audience claim for authenticated Pub/Sub push OIDC tokens.
+- `WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL`: service account email expected in authenticated Pub/Sub push OIDC tokens.
+- `WORKSPACE_DRIVE_CHANNEL_TOKEN`: opaque token used to validate direct Google Drive push channel headers. Do not commit the production value.
+- `SENTINEL_STORAGE_MODE`: use `memory` locally; use `gcp-rest` only after Google Cloud project, Firestore, BigQuery, Secret Manager, and IAM are configured.
+- `SENTINEL_EVIDENCE_SIGNING_SECRET`: optional production HMAC secret for sealed evidence packets. Leave empty locally; do not commit the secret value.
+- `FIRESTORE_DATABASE`: Firestore database id, usually `(default)`.
+- `BIGQUERY_DATASET` / `BIGQUERY_AUDIT_TABLE` / `BIGQUERY_AGENT_RUNS_TABLE`: append-only audit and agent-run evidence targets.
+- `WORKSPACE_SECRET_PREFIX`: Secret Manager prefix for per-tenant Workspace OAuth refresh tokens.
+- `SENSITIVE_DATA_PROTECTION_ENABLED`: set to `true` when enabling the Google Sensitive Data Protection REST adapter.
+- `SENTINEL_EVIDENCE_MODE`: keep `mock` locally; set `production` only after mock pilot records have been replaced with real customer, revenue, cost, and consent evidence.
+- `NEXT_PUBLIC_PRODUCT_URL`: hosted product URL for judge access. A URL alone is not marked ready until `XPRIZE_JUDGE_ACCESS_CONFIGURED` and `XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED` are also true.
+- `XPRIZE_REPOSITORY_URL`: public or judge-shared source repository URL.
+- `XPRIZE_DEMO_VIDEO_URL`: public under-three-minute demo video URL.
+- `XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED`: set to `true` only after the final public video duration is verified under three minutes.
+- `XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED`: set to `true` only after the final video is public on an accepted video platform.
+- `XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED`: set to `true` only after confirming screenshots, marks, music, and other video assets are owned or permitted.
+- `XPRIZE_DEMO_VIDEO_CUSTOMER_DATA_REDACTED_CONFIRMED`: set to `true` only after confirming the public video contains no customer-identifying security data.
+- `XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED`: set to `true` only after confirming the final public video is in English or includes English subtitles.
+- `XPRIZE_JUDGE_ACCESS_CONFIGURED`: set to `true` only after hosted judge test access is ready and documented outside the repository.
+- `XPRIZE_THIRD_PARTY_REVIEW_APPROVED`: set to `true` only after dependency licenses, Google API terms, and third-party usage are reviewed for final submission.
+- `XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED`: set to `true` only after repository history confirms the project was created after the hackathon start date and pre-existing work is disclosed.
+- `XPRIZE_ENTRANT_TYPE`: set to `individual`, `team`, or `organization` only after confirming the final Devpost entrant type.
+- `XPRIZE_GENERAL_ELIGIBILITY_CONFIRMED`: set to `true` only after human review confirms entrant eligibility, authority/age, jurisdiction, and rule compliance.
+- `XPRIZE_REPRESENTATIVE_AUTHORIZED`: set to `true` only after confirming the representative can submit for a team or organization.
+- `XPRIZE_ORGANIZATION_UNDER_25_CONFIRMED`: set to `true` only if entering as an organization and the small-organization employee-count condition is privately verified.
+- `XPRIZE_CORPORATE_ID_CONFIGURED`: set to `true` only if entering as an organization and the required corporate ID proof is ready in the private submission packet.
+- `XPRIZE_NO_PROMOTION_ENTITY_CONFLICT_CONFIRMED`: set to `true` only after confirming no disallowed promotion-entity employee/contractor/immediate-family conflict applies.
+- `XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED`: set to `true` only after confirming the hosted product will remain free and accessible for judges through the judging period.
+- `XPRIZE_TESTING_INSTRUCTIONS`: non-secret testing instruction summary; keep real credentials in Devpost private fields.
+- `SENTINEL_GEMINI_API_KEY_ID`: API Keys API resource id for the server-side Gemini key; do not put the secret key here.
+- `SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS`: comma-separated static egress IP allowlist for server key restrictions.
+- `SENTINEL_GEMINI_DAILY_REQUEST_QUOTA` / `SENTINEL_GEMINI_DAILY_TOKEN_QUOTA`: documented quota targets for the production runbook.
+
+## Google Cloud Production Path
+
+The intended production deployment uses:
+
+- Cloud Run for the Next.js app and webhook receiver.
+- Pub/Sub for Workspace event notifications.
+- Firestore or a durable database for tenants, findings, approvals, and audit state.
+- BigQuery for append-only evidence analytics.
+- Secret Manager for per-tenant OAuth tokens.
+- Sensitive Data Protection for PII/secrets detection.
+- Gemini API for semantic risk classification and evidence summaries.
+
+The checked-in `cloudrun.service.yaml` is a deployment template, not a proof artifact by itself. Before applying it, replace `PROJECT_ID`, `PROJECT_NUMBER`, service URLs, billing ids, OAuth ids, Pub/Sub resources, and XPRIZE placeholders with the final production values. Keep human-attestation flags such as demo-video clearance, judge access, eligibility, and third-party review set to `false` until the private proof exists. The manifest references these Secret Manager secrets by name and never stores their values in source:
+
+- `gemini-api-key`
+- `google-oauth-client-secret`
+- `sentinel-evidence-signing-secret`
+- `workspace-drive-channel-token`
+
+Do not set `GOOGLE_CLOUD_ACCESS_TOKEN` in Cloud Run. The deployed service should use its configured service account and metadata-server credentials for Google Cloud REST calls.
+
+Cloud Run secret env vars are pinned to Secret Manager version `1` in the template. After rotating any secret, update the referenced version in `cloudrun.service.yaml` and deploy a new revision instead of relying on `latest`.
+
+`GET /api/production/provisioning` returns the non-secret provisioning pack for operators: required Google APIs, service accounts, IAM roles, Secret Manager names, Artifact Registry build command, Pub/Sub setup, Cloud Run dry-run/deploy commands, and post-deploy verification sequence. The pack intentionally marks human attestations as manual review and never includes API key values, OAuth client secrets, evidence-signing secrets, Drive channel tokens, judge credentials, invoices, or customer findings.
+
+The current runtime still uses in-memory state for the local MVP demo. The app now exposes the production persistence contract through the Readiness Command Center and `/api/production/persistence`: tenant state and one-time OAuth launch states belong under `tenants/{tenantId}` in Firestore, audit evidence belongs in BigQuery with a `tenant_id` column plus `sequence`, `previous_hash`, `event_hash`, and `audit_chain_version` fields, agent-run evidence belongs in a separate BigQuery table with `provider`, `model`, fallback, token-estimate, and cost fields, and Workspace OAuth refresh tokens belong in Secret Manager. The persistence endpoint returns both BigQuery table schema plans, sample `insertAll` payloads, the Secret Manager token path, and a safe `versions/latest:access` request plan so operators can provision and verify every target before onboarding pilots. `POST /api/production/persistence` attempts write-through verification only when `SENTINEL_STORAGE_MODE=gcp-rest` is configured; in local memory mode it returns a blocked result instead of a false pass. The Secret Manager check reads only the response status and never returns token values; if no token secret exists yet, the verifier is blocked until a consent-gated OAuth callback stores a real refresh-token payload. Agent-run rows store redacted summaries only, not raw prompts, raw document content, or customer secrets; production XPRIZE evidence still requires a persisted run with `provider=gemini-api`. Before onboarding real customers, deploy on Cloud Run with the required service-account IAM roles and verify write-through persistence.
+
+## AI Cost And Model Guardrails
+
+Before Tier 2 runs, Sentinel enforces the configured Gemini model allowlist, monthly budget, and per-event content byte cap. If the gate blocks a call, deterministic DLP still creates a staged recommendation for human review, but `bytesRoutedToGemini` remains zero and the audit log records a deterministic provider. Local regex findings stay labeled as `tier1_deterministic`; `tier1_sdp` appears only when the Google Sensitive Data Protection adapter is enabled, configured, and actually attempted. If Gemini is unavailable or no API key is configured, mock-mode runs are explicitly labeled with a fallback reason such as `api-key-missing` or `api-call-failed`; production evidence requires `provider=gemini-api`. This keeps SME pilot costs bounded, avoids silently dropping high-risk findings, and prevents mock Gemini or local detector evidence from being mistaken for live Google API proof.
+
+`GET /api/production/gemini-smoke` reports whether current evidence includes a live `provider=gemini-api` run. `POST /api/production/gemini-smoke` runs a synthetic, non-customer fixture through the same hybrid scanner and Gemini classifier path. If `GEMINI_API_KEY` is absent or the Gemini call fails, the result is `mock-only` and must not be counted as deployed Gemini proof. A passing result still needs durable BigQuery agent-run persistence before final submission.
+
+`GET /api/production/cost-controls` returns the production Cloud Cost Controls plan: Cloud Billing budget request body, alert thresholds, Pub/Sub spend-response topic, Gemini API key restriction patch, quota runbook, and missing evidence checklist. `POST /api/production/cost-controls` verifies the configured Cloud Billing budget and API key resources only when `SENTINEL_CLOUD_COST_CONTROLS_MODE=production` and the required GCP identifiers are configured. Local plan mode returns a blocked result instead of treating internal cost estimates as production GCP proof.
+
+`GET /api/production/launch-readiness` returns the operator checklist for moving from local demo to judge-ready production. It consolidates Cloud Run/GCP persistence, live Gemini proof, Workspace OAuth/sync, paid pilot evidence, judge access/media, license/IP review, final gates, environment variables, verification commands, proof artifacts, blockers, and private-handling rules. It stays blocked in local/mock mode and is intended to guide the final production run, not to substitute for real Cloud Run, Gemini, Workspace, revenue, user, or customer-consent evidence.
+
+After deployment, run `npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL` to generate a JSON readiness smoke report across the hosted readiness, launch, submission, compliance, Devpost, license, and Claim Guard endpoints. The command is read-only by default. Add `--include-write-checks` only after production service-account credentials and private evidence handling are configured; that mode also calls the persistence, cost-control, and Workspace reconciliation verifier endpoints. Add `--strict` when you want the command to exit non-zero for any blocked or needs-review status.
+
+`GET /api/market/positioning` returns the competitor-aware market battlecard. It compares Sentinel against Vanta, Drata, and Secureframe using public positioning, then turns the comparison into a narrow USP, wedge score, differentiators, parity gaps, buyer narrative, market risks, source URLs, and proof actions. It is a positioning aid, not market validation or revenue proof.
+
+## OAuth Scope Discipline
+
+Use the narrowest scopes that support the selected pilot flow. Avoid a public Workspace Marketplace dependency for the first pilot because sensitive/restricted scopes can require OAuth verification and potentially security assessment. Start with a small allowlisted pilot group, consented data access, and explicit customer approval.
+
+`GET /api/oauth/google/start` returns the pilot OAuth launch plan, missing env values, and signed-consent gate. `GET /api/oauth/google/start?dryRun=false` redirects to Google only when the OAuth client id, client secret, redirect URI, and redacted verified `pilot-consent` artifact are all present. The live redirect records a one-time, short-lived OAuth `state` tied to the signed consent artifact. In `gcp-rest` mode that state is written to tenant-scoped Firestore before redirect so Cloud Run restarts or multi-instance callback routing do not bypass the gate. The pilot consent URL requests Drive metadata and Gmail metadata only; the restricted Drive mutation scope is deferred until a tenant explicitly enables human-approved remediation.
+
+`GET /api/oauth/google/callback` handles the Google authorization-code return path. It validates the one-time launch `state` before token exchange, using Firestore with an update-time precondition in `gcp-rest` mode and the local registry in memory mode. In production mode it exchanges the code at Google’s token endpoint, stores only the refresh-token payload as a new Secret Manager version, records a redacted Workspace OAuth install, and leaves Drive/Gmail sync marked `not_configured` until cursors are initialized. Local mode blocks before token exchange if OAuth state, OAuth credentials, or GCP storage are not configured.
+
+## Workspace Sync Reliability
+
+Drive and Gmail push events are treated as hints, not complete evidence. The control plane follows the official cursor model:
+
+- Drive setup uses `changes.getStartPageToken`, then `changes.watch`, and reconciliation replays `changes.list` from the stored page token.
+- Drive channels expire, so renewal state is tracked separately from the latest page token.
+- Gmail setup uses `users.watch`, stores the returned `historyId` and expiration, and reconciliation uses `users.history.list`.
+- If Gmail returns a stale history cursor in production, the app must perform a full sync before claiming complete coverage.
+- Non-demo Gmail Pub/Sub pushes require an authenticated OIDC bearer token with the configured audience, service-account email, and subscription name.
+- Direct Drive push notifications require a matching `X-Goog-Channel-Token`; unauthenticated non-demo payloads are rejected instead of falling back to seeded demo events.
+- Authenticated production pushes update `lastNotificationAt` and audit evidence only after replay checks. Pub/Sub pushes are deduplicated by `messageId`, Drive channel pushes by channel/resource/message-number, and `gcp-rest` deployments reserve those keys in tenant-scoped Firestore with create-only writes so repeated notifications across Cloud Run instances do not inflate audit evidence. Pushes never create findings from message payloads; scanning must come from Drive/Gmail cursor reconciliation so spoofed or malformed push content cannot become judge evidence.
+
+`GET /api/workspace/sync/status` returns the current cursor/channel state and reliability summary. `POST /api/workspace/sync/reconcile` advances mock cursors locally, or blocks honestly in live mode until OAuth connection, Drive cursor, and Gmail history cursor are present. XPRIZE, Devpost, and launch-readiness gates only count Workspace sync proof when Drive has a start/page token and Gmail has a historyId with non-expired live provider status.
+
+## Claim Guard
+
+`GET /api/compliance/claims` scans the app and submission copy for unsafe claims. It blocks phrases such as certification, guaranteed compliance, legal advice, audit assurance, and absolute win certainty unless they appear in explicit negation, questionnaire prompts, or guardrail configuration. Run this before publishing the hosted app, generating the judge packet, or editing the demo script.
+
+## Trust Packets
+
+`POST /api/trust-center/packets` creates a redacted, time-limited prospect packet from the Trust Center Lite profile. The packet includes only approved claims, aggregate risk metrics, AI-operation summaries, consented testimonials, and a questionnaire preview. It excludes customer security findings, private invoices, secrets, and non-consented testimonials. `GET /api/trust-center/packets/[token]` returns an active packet, logs access, and returns `410` after expiry.
+
+`GET /api/trust-center/analytics` summarizes packet creation, active/expired packet counts, total packet access, average access per packet, top prospects, follow-up queue, and production gaps. Local analytics are sales and judge-context signals only; production traction proof still requires hosted packet links, real prospects, and durable Firestore/BigQuery access logs.
+
+`GET /api/trust-center/access-requests` returns Trust Center document visibility and access-request state. `POST /api/trust-center/access-requests` creates a request for selected public/requestable documents. NDA-gated documents require `ndaAccepted=true` before `POST /api/trust-center/access-requests/[id]/approve` will approve them. Private documents cannot be requested or added to prospect packets. Packets include public document summaries plus approved requestable document summaries only.
+
+## Questionnaire Response Packs
+
+`POST /api/questionnaire/packs` accepts pasted text, CSV, TSV, copied spreadsheet text, or PDF-extracted text and creates a customer-specific response pack. Questions are parsed, mapped to evidence categories, tagged by customer segment, drafted from approved product evidence, and left in `draft` or `needs_review` state until a human approves them. `POST /api/questionnaire/packs/[id]/answers/[answerId]/approve` records approval, and `POST /api/questionnaire/packs/[id]/export` produces a markdown response pack with import metadata, citations, and owner roles.
+
+Approved answers are added to the Answer Library with an owner, source pack, segment tags, usage count, verification timestamp, and 90-day review cadence. Future response packs reuse exact approved answers when the question matches, or cite related approved answers as context when wording is similar. `GET /api/questionnaire/library` returns the current library, segment history, and summary. `POST /api/questionnaire/library/[id]/verify` refreshes one item after human review, and `POST /api/questionnaire/library/bulk-verify` refreshes reviewed items by segment or owner role.
+
+## Framework Evidence Packs
+
+`GET /api/frameworks/evidence?framework=SOC2&audience=judge&redacted=true` exports a framework-specific readiness pack for SOC2, ISO 27001, GDPR, HIPAA, or PCI. Audience templates include `judge`, `prospect`, and `auditor`: judge packets emphasize rule evidence and blockers, prospect packets hide internal owner routing and raw findings, and auditor packets preserve owner roles, mapped evidence, and production requirements for readiness planning. HIPAA remains blocked until healthcare scope, BAA terms, and PHI-specific controls exist; this prevents the app from selling healthcare claims before the product is safe for that use case.
+
+## Remediation Playbooks
+
+`GET /api/playbooks` returns tenant-specific remediation playbooks. `POST /api/playbooks` creates or updates a playbook with trigger text, staged actions, owner role, SLA, escalation target, and active/paused state. Automatic execution is blocked unless every action is `no_action` or already appears in the tenant's explicit safe-auto allowlist; mutating actions stay human-approved by default.
+
+## Risk Score History
+
+`GET /api/risk/score-history` returns score snapshots and a trend summary for workspace risk, deal impact, evidence maturity, MRR, active findings, remediations, and AI-operation counts. `POST /api/risk/score-history` captures a manual snapshot. The app also captures snapshots after scans, approvals, remediations, pilot updates, trust packets, questionnaire packs, sync reconciliation, and playbook changes. Local score history is demo proof only; production submission evidence still needs durable Firestore/BigQuery score history from live tenants.
+
+`GET /api/deal-impact/report?redacted=true` returns a redacted deal-impact report for buyer and judge context. It combines score movement, ROI, Trust Packet engagement, questionnaire packs, remediation records, buyer proof points, recommended next actions, and production gaps. The report is sales-readiness evidence only; it does not claim guaranteed revenue, compliance, or security outcomes.
+
+## XPRIZE Submission Gate
+
+`GET /api/xprize/submission-gate` returns the current rule-evidence gate used by the dashboard. It is intentionally strict: local memory mode, mock Gemini runs, mock pilot revenue, missing product URL, missing repository URL, and missing demo video remain blocked or warning states. This prevents the app from treating a polished local demo as proven production evidence.
+
+`GET /api/xprize/provenance` returns the current project-provenance report from the local Git worktree when Git is available. It checks whether commits exist, whether the first commit is after the hackathon start reference, whether source files are tracked, whether a repository URL is configured, and whether the human attestation flag is still missing. `npm run verify:provenance` emits a terminal JSON report for the same evidence class. A branch with no commits or untracked source files remains blocked until the source is committed, pushed/shared, and human-reviewed.
+
+`GET /api/xprize/source-release` returns the source-release guard for the repository-publishing workflow. It checks required app/library/test/docs/config surfaces, `.gitignore` coverage for private and generated files, a per-file stage/review/ignore plan, and obvious secret patterns before source is committed or pushed. `npm run verify:source-release` provides a terminal guard for the same release hygiene class.
+
+## Submission Compliance Gate
+
+`GET /api/xprize/submission-compliance` returns the rule-clearance gate for Devpost logistics that can disqualify an otherwise strong product: new-project/pre-existing-work disclosure, source repository access, judge product access, demo-video length/visibility/asset clearance, third-party SDK/API authorization, open-source/license review, customer consent, public redaction, and two-business-day evidence-response readiness. It keeps these items separate from product quality so the team can fix submission risks before upload.
+
+`GET /api/xprize/license-manifest` returns the dependency and third-party API manifest generated from `package.json` and `package-lock.json`. It summarizes direct runtime dependencies, development dependencies, transitive packages, license review status, Google API integrations, disclosure text, blockers, and next actions. The manifest is submission-support evidence only; set `XPRIZE_THIRD_PARTY_REVIEW_APPROVED=true` only after a human owner reviews dependency licenses and API terms. A human approval flag does not mark license/IP proof ready while the generated manifest still has blocked restricted-license items.
+
+## Evidence Packet Formats
+
+`GET /api/evidence/export?redacted=true` returns the JSON evidence packet used by the dashboard. Add `format=markdown` or `format=csv` to produce judge/customer-readable packets with revenue by month, costs, CAC, consent summary, related-party separation, operation counters, pilot records, agent-run summaries, and audit-chain integrity status. Redacted packets remove customer names and private segments while preserving proof status and consent boundaries.
+
+`GET /api/evidence/signed-packet?redacted=true` returns a print-ready HTML packet with a SHA-256 digest over the canonical evidence export. Each new audit event is also linked into a newest-first SHA-256 hash chain, and the export reports the audit-chain head hash, sealed count, legacy-backfill count, and verification status. If a deployment already has unsealed local audit rows, the app backfills hash metadata, labels those rows with `integrityBackfilledAt`, and records an `audit_integrity_backfilled` event rather than pretending they were historically sealed. If `SENTINEL_EVIDENCE_SIGNING_SECRET` is configured, the packet adds an HMAC-SHA256 signature; otherwise it is explicitly marked `unsigned-local` and lists production signing gaps. This is tamper-evidence for packet review, not certification or audit assurance.
+
+## Financial Evidence Ledger
+
+`GET /api/financial-evidence/ledger` returns the private business-proof ledger behind the Pilot CRM. It labels each revenue month, pilot invoice, cost record, CAC record, active-user proof, testimonial consent, and related-party review as `mock-only`, `missing`, `private-on-request`, or `verified`. Local seeded records stay blocked as submission proof until `SENTINEL_EVIDENCE_MODE=production`, durable storage is configured, and invoices/payment records, active-user logs, cost/CAC receipts, and consent records are available for private judge review.
+
+## Private Evidence Vault
+
+`GET /api/evidence/vault` returns the private artifact register for submission and sales proof. It creates required artifact slots for pilot invoices, testimonial consent, active-user logs, operating costs, CAC receipts, Google Cloud billing proof, Gemini usage logs, Workspace OAuth/sync logs, hosted product URL, repository URL, demo video, and reviewed trust policies. Product and demo URLs are not treated as complete proof until judge access, free judging-period access, demo duration, public visibility, English/subtitle, asset clearance, and customer-data redaction confirmations are present. Each artifact has an owner, status, redaction flag, private-handling rule, optional SHA-256 checksum, blocker, and next action.
+
+`POST /api/evidence/vault` registers or updates a private artifact by id. The local vault improves workflow discipline, but it does not turn local files or seeded records into production proof until `SENTINEL_EVIDENCE_MODE=production`, `SENTINEL_STORAGE_MODE=gcp-rest`, and real private documents/logs are available for judge request.
+
+`GET /api/evidence/vault?view=intake` returns the Evidence Intake Queue. It sorts required artifacts by pilot-conversion priority, proof status, and redaction risk; lists accepted proof examples and rejection triggers; and provides safe registration payload templates for `POST /api/evidence/vault`. It stays blocked in mock mode and does not treat registered local artifacts as production proof.
+
+## One-Day Pilot Launch Plan
+
+`GET /api/pilots/launch-plan` returns the sales and execution plan for a paid pilot. It includes the $199 offer, target segment, launch-readiness score, day-one checklist, one-day timeline, buyer objections, blockers, and next actions. The plan is intentionally strict: mock scan proof, missing OAuth, missing production persistence, incomplete judge access, demo-video clearance gaps, and absent private artifacts remain visible until real pilot evidence exists.
+
+## Paid Pilot Prospect Pipeline
+
+`GET /api/pilots/prospects` returns the prospect-to-paid-pilot pipeline: high-fit target count, active opportunities, proposed pilots, estimated pipeline MRR, weighted pipeline MRR, outreach sequence, blockers, and claim boundaries. `POST /api/pilots/prospects` creates or updates a prospect record with segment, stage, source, fit score, estimated MRR, objection, next action, and evidence needed. Prospect entries are sales-operations planning evidence only; they are not revenue proof until an arms-length paid pilot and private artifacts exist.
+
+`GET /api/pilots/conversion-kit` returns the paid-pilot close kit for the next high-fit prospect. It includes the selected prospect, conversion score, founder email, scope-call script, fixed-scope proposal, consent boundary, invoice checklist, required evidence checklist, blockers, and next actions. It is intentionally blocked while invoice/payment proof, consent, OAuth install proof, active-user proof, Gemini/GCP logs, and customer reference artifacts are missing or mock-only.
+
+`GET /api/pilots/consent-packet` returns the Pilot Consent & Scope Packet for the next high-fit prospect. It lists allowed Workspace sources, excluded/deferred data, requested and deferred OAuth scopes, AI data-minimization rules, HITL remediation rules, required private artifacts, signature fields, blockers, and a markdown-ready export. It is a pre-OAuth handoff artifact and remains blocked as evidence until signed consent is registered as a redacted `pilot-consent` artifact.
+
+## XPRIZE Submission Binder
+
+`GET /api/xprize/submission-binder` returns the private judge-readiness binder. It wraps the Submission Gate with an artifact manifest, owner roles, redaction handling, testing-instruction status, demo timeline, private evidence request queue, claim boundaries, and final pre-submit checks. Missing or mock-only evidence stays labeled as missing or mock-only so the product does not overstate readiness before Cloud Run, Gemini API, Workspace OAuth, and real customer proof exist.
+
+## Devpost Submission Pack
+
+`GET /api/xprize/devpost-pack` returns the claim-safe submission pack for the final upload workflow. It includes public description sections, problem/solution/business model copy, Google stack wording, a public demo script capped below three minutes, screenshot checklist, testing-instruction draft, private evidence response plan, blockers, next actions, and claim boundaries. It is intentionally blocked while product URL, repository URL, public demo video, production Google Cloud/Gemini proof, and real customer evidence are missing.
+
+## Demo Video Compliance Pack
+
+`GET /api/xprize/demo-video-pack` returns the rule-specific video readiness pack. It parses the Devpost script into timed scenes, enforces a 180-second maximum, checks the public YouTube/Vimeo/Youku URL, blocks readiness until English/subtitle, duration, visibility, asset, redaction, and live-Gemini proof gates are cleared, and gives a recording checklist for the final public upload.
+
+## XPRIZE Rule Notes
+
+- Antigravity is not a mandatory app dependency.
+- A Google Cloud product is required.
+- If the app includes LLM functionality, at least one deployed LLM call must use Gemini API.
+- Submissions need a code repository, working product URL, demo video under 3 minutes, revenue evidence, cost evidence, real user evidence, and testimonials only with user awareness/consent.
