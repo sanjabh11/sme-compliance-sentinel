@@ -79,6 +79,8 @@ const requiredSecretEnv = [
   "WORKSPACE_DRIVE_CHANNEL_TOKEN"
 ] as const;
 
+const requiredSecretEnvSet = new Set<string>(requiredSecretEnv);
+
 const secretLookupNameByEnvName: Record<(typeof requiredSecretEnv)[number], string> = {
   SENTINEL_ADMIN_ACTION_TOKEN: "sentinel-admin-action-token",
   GEMINI_API_KEY: "gemini-api-key",
@@ -148,6 +150,15 @@ const placeholderPatterns = [
   /RELEASE_ID/u
 ];
 
+const unsafeRawValuePatterns = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/u,
+  /\bAIza[0-9A-Za-z_-]{20,}/u,
+  /\bya29\.[0-9A-Za-z._-]+/u,
+  /GOCSPX-[0-9A-Za-z_-]{20,}/u,
+  /Bearer\s+(?!\[REDACTED\])[\w.~+/=-]+/iu,
+  /\b(?:refresh_token|access_token|password|secret|api[_-]?key)\s*[:=]\s*[^,\s;]+/iu
+];
+
 interface ParsedEnvEntry {
   name: string;
   value?: string;
@@ -179,7 +190,9 @@ export function buildCloudRunDeploymentEvidence(
       checkSecretEnv(name, envByName.get(name)),
       checkSecretAnnotation(name, envByName.get(name), secretAnnotations)
     ]),
-    ...prohibitedCredentialEnv.flatMap((item) => checkProhibitedCredentialEnv(item, envByName.get(item.name)))
+    ...prohibitedCredentialEnv.flatMap((item) => checkProhibitedCredentialEnv(item, envByName.get(item.name))),
+    ...checkDuplicateEnvEntries(envEntries),
+    ...checkUnsafeRawEnvValues(envEntries)
   ];
   const replacementFindings = buildReplacementFindings({ image, runtimeServiceAccount, envChecks });
   const secretRefs = requiredSecretEnv
@@ -473,6 +486,44 @@ function checkProhibitedCredentialEnv(
       item.fix
     )
   ];
+}
+
+function checkDuplicateEnvEntries(envEntries: ParsedEnvEntry[]): CloudRunDeploymentEnvCheck[] {
+  const counts = new Map<string, number>();
+
+  for (const entry of envEntries) {
+    counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([name, count]) =>
+      envCheck(
+        `DUPLICATE_ENV_${name}`,
+        requiredSecretEnvSet.has(name) ? "secret" : categoryForEnv(name),
+        "blocked",
+        requiredSecretEnvSet.has(name),
+        `count:${count}`,
+        "Cloud Run manifest contains duplicate env var names, which makes deployment evidence ambiguous.",
+        `Keep exactly one ${name} env entry in cloudrun.service.yaml.`
+      )
+    );
+}
+
+function checkUnsafeRawEnvValues(envEntries: ParsedEnvEntry[]): CloudRunDeploymentEnvCheck[] {
+  return envEntries
+    .filter((entry) => entry.value && unsafeRawValuePatterns.some((pattern) => pattern.test(entry.value ?? "")))
+    .map((entry) =>
+      envCheck(
+        `UNSAFE_RAW_VALUE_${entry.name}`,
+        requiredSecretEnvSet.has(entry.name) ? "secret" : categoryForEnv(entry.name),
+        "blocked",
+        true,
+        "raw-value",
+        "Cloud Run manifest env value appears to contain a raw credential or secret-shaped token.",
+        `Move any secret material for ${entry.name} to Secret Manager or remove it from the manifest.`
+      )
+    );
 }
 
 function buildReplacementFindings(input: {

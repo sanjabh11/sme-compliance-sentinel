@@ -101,6 +101,27 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(JSON.stringify(evidence)).not.toContain("do-not-commit");
   });
 
+  it("blocks duplicate env names and raw secret-shaped values in any non-secret env field", () => {
+    const evidence = buildCloudRunDeploymentEvidence(addEnv(renderProductionCandidateManifest(), [
+      ["NEXT_PUBLIC_PRODUCT_URL", "https://duplicate.example.com"],
+      ["XPRIZE_TESTING_INSTRUCTIONS", "password=do-not-commit"]
+    ]));
+
+    expect(evidence.overallStatus).toBe("blocked");
+    expect(evidence.envChecks.find((check) => check.name === "DUPLICATE_ENV_NEXT_PUBLIC_PRODUCT_URL")).toMatchObject({
+      status: "blocked",
+      currentValue: "count:2"
+    });
+    expect(evidence.envChecks.find((check) => check.name === "UNSAFE_RAW_VALUE_XPRIZE_TESTING_INSTRUCTIONS")).toMatchObject({
+      status: "blocked",
+      secret: true,
+      currentValue: "raw-value"
+    });
+    expect(evidence.blockers.join(" ")).toContain("Keep exactly one NEXT_PUBLIC_PRODUCT_URL");
+    expect(evidence.blockers.join(" ")).toContain("Move any secret material for XPRIZE_TESTING_INSTRUCTIONS");
+    expect(JSON.stringify(evidence)).not.toContain("do-not-commit");
+  });
+
   it("emits a CLI JSON report without leaking secret values", () => {
     const output = execFileSync("node", ["scripts/verify-cloudrun-deployment.mjs"], {
       cwd: process.cwd(),
