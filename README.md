@@ -205,6 +205,8 @@ The intended production deployment uses:
 
 The checked-in `cloudrun.service.yaml` is a deployment template, not a proof artifact by itself. Before applying it, replace `PROJECT_ID`, `PROJECT_NUMBER`, `RELEASE_ID`, service URLs, private evidence bucket, billing ids, OAuth ids, Pub/Sub resources, and XPRIZE placeholders with the final production values. Keep human-attestation flags such as demo-video clearance, judge access, eligibility, and third-party review set to `false` until the private proof exists. The manifest references these Secret Manager secrets by lookup name, maps each lookup through the `run.googleapis.com/secrets` annotation, and never stores secret values in source:
 
+`docs/deployment/cloudrun-deployment-contract.json` records the non-secret Cloud Run env contract, Secret Manager lookup names, manual-review flags, and prohibited credential env names. Tests cross-check that registry against the checked-in manifest, the TypeScript verifier, the standalone CLI verifier, and the private render-values template so XPRIZE, Gemini, OAuth, Workspace, cost-control, evidence, demo, judge-access, and secret-reference flags cannot drift silently.
+
 - `sentinel-admin-action-token`
 - `gemini-api-key`
 - `google-oauth-client-secret`
