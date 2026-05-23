@@ -42,6 +42,16 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(evidence.envChecks.find((check) => check.name === "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED")?.status).toBe(
       "manual-review"
     );
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_CATEGORY")).toMatchObject({
+      status: "passed",
+      currentValue: "Small Business Services"
+    });
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED")?.status).toBe(
+      "manual-review"
+    );
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED")?.status).toBe(
+      "manual-review"
+    );
     expect(evidence.blockers).toEqual([]);
     expect(evidence.dryRunCommand).toContain("artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml");
     expect(evidence.nextActions[0]).toContain("Replace all template placeholders");
@@ -57,7 +67,12 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(evidence.replacementFindings).toEqual([]);
     expect(evidence.blockers).toEqual([]);
     expect(evidence.manualReviewFlags).toEqual(
-      expect.arrayContaining(["XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED", "XPRIZE_THIRD_PARTY_REVIEW_APPROVED"])
+      expect.arrayContaining([
+        "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED",
+        "XPRIZE_THIRD_PARTY_REVIEW_APPROVED",
+        "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
+        "XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED"
+      ])
     );
     expect(evidence.envChecks.find((check) => check.name === "GEMINI_API_KEY_SECRET_ANNOTATION")).toMatchObject({
       status: "passed",
@@ -143,6 +158,7 @@ describe("Cloud Run deployment evidence verifier", () => {
       .replace('name: SENTINEL_SOURCE_COMMIT\n              value: "0123456789abcdef0123456789abcdef01234567"', 'name: SENTINEL_SOURCE_COMMIT\n              value: "short-sha"')
       .replace('name: SENTINEL_SOURCE_COMMIT_AT\n              value: "2026-05-23T17:24:17.894Z"', 'name: SENTINEL_SOURCE_COMMIT_AT\n              value: "not-a-date"')
       .replace('name: SENTINEL_GEMINI_MODEL_ALLOWLIST\n              value: "gemini-3.5-flash,gemini-2.5-flash,gemini-2.5-pro"', 'name: SENTINEL_GEMINI_MODEL_ALLOWLIST\n              value: "gemini-2.5-flash"')
+      .replace('name: XPRIZE_CATEGORY\n              value: "Small Business Services"', 'name: XPRIZE_CATEGORY\n              value: "Professional Services Access"')
       .replace('name: sentinel-admin-action-token\n                  key: "1"', 'name: sentinel-admin-action-token\n                  key: "latest"');
     const evidence = buildCloudRunDeploymentEvidence(driftedManifest);
     const checksByName = Object.fromEntries(evidence.envChecks.map((check) => [check.name, check]));
@@ -155,6 +171,7 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(checksByName.INVALID_SENTINEL_SOURCE_COMMIT).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_SENTINEL_SOURCE_COMMIT_AT).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_GEMINI_MODEL_ALLOWLIST).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_VALUE_XPRIZE_CATEGORY).toMatchObject({ status: "blocked" });
     expect(checksByName.SENTINEL_ADMIN_ACTION_TOKEN).toMatchObject({ status: "blocked" });
     expect(JSON.stringify(evidence)).not.toContain("private-admin-token");
   });

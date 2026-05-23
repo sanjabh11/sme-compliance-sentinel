@@ -56,6 +56,7 @@ export const sentinelConfig = {
   evidenceSigningSecret: process.env.SENTINEL_EVIDENCE_SIGNING_SECRET ?? "",
   productUrl: process.env.NEXT_PUBLIC_PRODUCT_URL ?? "",
   repositoryUrl: process.env.XPRIZE_REPOSITORY_URL ?? "",
+  xprizeCategory: process.env.XPRIZE_CATEGORY ?? "Small Business Services",
   demoVideoUrl: process.env.XPRIZE_DEMO_VIDEO_URL ?? "",
   demoVideoUnderThreeMinutesConfirmed: process.env.XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED === "true",
   demoVideoPubliclyAccessibleConfirmed: process.env.XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED === "true",
@@ -71,6 +72,15 @@ export const sentinelConfig = {
   xprizeRepresentativeAuthorized: process.env.XPRIZE_REPRESENTATIVE_AUTHORIZED === "true",
   xprizeOrganizationUnder25Confirmed: process.env.XPRIZE_ORGANIZATION_UNDER_25_CONFIRMED === "true",
   xprizeNoPromotionEntityConflictConfirmed: process.env.XPRIZE_NO_PROMOTION_ENTITY_CONFLICT_CONFIRMED === "true",
+  xprizeTotalRevenueEvidenceConfigured: process.env.XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED === "true",
+  xprizeRevenueByMonthEvidenceConfigured: process.env.XPRIZE_REVENUE_BY_MONTH_EVIDENCE_CONFIGURED === "true",
+  xprizeTotalCostsEvidenceConfigured: process.env.XPRIZE_TOTAL_COSTS_EVIDENCE_CONFIGURED === "true",
+  xprizeCacSpendEvidenceConfigured: process.env.XPRIZE_CAC_SPEND_EVIDENCE_CONFIGURED === "true",
+  xprizeRealUserEvidenceConfigured: process.env.XPRIZE_REAL_USER_EVIDENCE_CONFIGURED === "true",
+  xprizeTestimonialConsentConfirmed: process.env.XPRIZE_TESTIMONIAL_CONSENT_CONFIRMED === "true",
+  xprizeRelatedPartyRevenueReviewed: process.env.XPRIZE_RELATED_PARTY_REVENUE_REVIEWED === "true",
+  xprizeProductRunningEvidenceConfigured: process.env.XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED === "true",
+  xprizeAgentExecutionLogsConfigured: process.env.XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED === "true",
   xprizeFreeJudgeAccessThroughJudgingConfirmed:
     process.env.XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED === "true",
   judgeTestingInstructions:

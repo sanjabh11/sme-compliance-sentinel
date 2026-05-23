@@ -55,6 +55,8 @@ spec:
               value: "https://YOUR-SERVICE-URL"
             - name: XPRIZE_REPOSITORY_URL
               value: "https://github.com/sanjabh11/sme-compliance-sentinel"
+            - name: XPRIZE_CATEGORY
+              value: "Small Business Services"
             - name: XPRIZE_DEMO_VIDEO_URL
               value: "https://youtu.be/YOUR_VIDEO"
             - name: XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED
@@ -89,6 +91,24 @@ spec:
               value: "false"
             - name: XPRIZE_TESTING_INSTRUCTIONS
               value: "Provide hosted URL and private judge credentials in Devpost testing instructions; do not commit credentials."
+            - name: XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED
+              value: "false"
+            - name: XPRIZE_REVENUE_BY_MONTH_EVIDENCE_CONFIGURED
+              value: "false"
+            - name: XPRIZE_TOTAL_COSTS_EVIDENCE_CONFIGURED
+              value: "false"
+            - name: XPRIZE_CAC_SPEND_EVIDENCE_CONFIGURED
+              value: "false"
+            - name: XPRIZE_REAL_USER_EVIDENCE_CONFIGURED
+              value: "false"
+            - name: XPRIZE_TESTIMONIAL_CONSENT_CONFIRMED
+              value: "false"
+            - name: XPRIZE_RELATED_PARTY_REVENUE_REVIEWED
+              value: "false"
+            - name: XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED
+              value: "false"
+            - name: XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED
+              value: "false"
             - name: GOOGLE_CLOUD_PROJECT
               value: "PROJECT_ID"
             - name: GOOGLE_CLOUD_PROJECT_NUMBER

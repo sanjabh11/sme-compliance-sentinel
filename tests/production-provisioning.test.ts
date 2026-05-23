@@ -80,6 +80,10 @@ describe("production provisioning pack", () => {
       "x-sentinel-admin-token: $SENTINEL_ADMIN_ACTION_TOKEN"
     );
     expect(pack.checklist.find((item) => item.id === "human-attestations")?.status).toBe("manual-review");
+    expect(pack.checklist.find((item) => item.id === "xprize-category")?.status).toBe("configured");
+    expect(pack.checklist.find((item) => item.id === "xprize-business-evidence-attestations")?.status).toBe(
+      "manual-review"
+    );
     expect(pack.checklist.find((item) => item.id === "admin-action-token")?.status).toBe("missing");
     expect(pack.checklist.find((item) => item.id === "source-revision-metadata")?.status).toBe("missing");
     expect(pack.privateHandlingRules.join(" ")).toContain("Secret Manager");

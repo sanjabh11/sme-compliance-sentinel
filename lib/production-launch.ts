@@ -266,6 +266,7 @@ function buildEnvMatrix(): ProductionLaunchEnvItem[] {
   return [
     envItem("NEXT_PUBLIC_PRODUCT_URL", sentinelConfig.productUrl, "Hosted judge-accessible product URL.", false, "Deploy the app and set the public product URL."),
     envItem("XPRIZE_REPOSITORY_URL", sentinelConfig.repositoryUrl, "Repository access for judging/testing.", false, "Publish or share the repository and set the URL."),
+    envItem("XPRIZE_CATEGORY", sentinelConfig.xprizeCategory, "Selected Devpost category.", false, "Keep this aligned to Small Business Services unless the final strategy is formally changed."),
     envItem("XPRIZE_DEMO_VIDEO_URL", sentinelConfig.demoVideoUrl, "Public under-three-minute demo video.", false, "Record and publish the final demo video."),
     envItem("SENTINEL_CLOUD_RUN_SERVICE_NAME", sentinelConfig.cloudRunServiceName, "Cloud Run service identity for hosted proof.", false, "Confirm the deployed service name before capturing Cloud Run evidence."),
     envItem("SENTINEL_CLOUD_RUN_REGION", sentinelConfig.cloudRunRegion, "Cloud Run region for deploy and describe commands.", false, "Confirm the deployed region matches the Cloud Run manifest and verification commands."),
@@ -368,6 +369,69 @@ function buildEnvMatrix(): ProductionLaunchEnvItem[] {
       "Required hosted product availability through judging/testing.",
       false,
       "Confirm the hosted product remains free and accessible for judges through the judging period."
+    ),
+    envItem(
+      "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
+      sentinelConfig.xprizeTotalRevenueEvidenceConfigured ? "true" : "",
+      "Total revenue evidence for private judge review.",
+      false,
+      "Attach arms-length invoices/payment records before setting this true."
+    ),
+    envItem(
+      "XPRIZE_REVENUE_BY_MONTH_EVIDENCE_CONFIGURED",
+      sentinelConfig.xprizeRevenueByMonthEvidenceConfigured ? "true" : "",
+      "May-August revenue-by-month evidence.",
+      false,
+      "Prepare monthly revenue evidence before setting this true."
+    ),
+    envItem(
+      "XPRIZE_TOTAL_COSTS_EVIDENCE_CONFIGURED",
+      sentinelConfig.xprizeTotalCostsEvidenceConfigured ? "true" : "",
+      "Total cost evidence for the hackathon period.",
+      false,
+      "Attach hosting, AI API, contractor, and other cost records before setting this true."
+    ),
+    envItem(
+      "XPRIZE_CAC_SPEND_EVIDENCE_CONFIGURED",
+      sentinelConfig.xprizeCacSpendEvidenceConfigured ? "true" : "",
+      "Marketing and customer acquisition spend evidence.",
+      false,
+      "Attach CAC spend proof, even if the amount is zero, before setting this true."
+    ),
+    envItem(
+      "XPRIZE_REAL_USER_EVIDENCE_CONFIGURED",
+      sentinelConfig.xprizeRealUserEvidenceConfigured ? "true" : "",
+      "Real-user count and high-level user breakdown.",
+      false,
+      "Attach production analytics, Workspace install logs, or pilot-user evidence before setting this true."
+    ),
+    envItem(
+      "XPRIZE_TESTIMONIAL_CONSENT_CONFIRMED",
+      sentinelConfig.xprizeTestimonialConsentConfirmed ? "true" : "",
+      "Customer feedback consent.",
+      false,
+      "Confirm users know their information or feedback is being shared before setting this true."
+    ),
+    envItem(
+      "XPRIZE_RELATED_PARTY_REVENUE_REVIEWED",
+      sentinelConfig.xprizeRelatedPartyRevenueReviewed ? "true" : "",
+      "Related-party revenue separation.",
+      false,
+      "Review customer relationships and separate related-party revenue before setting this true."
+    ),
+    envItem(
+      "XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED",
+      sentinelConfig.xprizeProductRunningEvidenceConfigured ? "true" : "",
+      "Evidence of the product running in production.",
+      false,
+      "Attach hosted screenshots, API usage records, or dashboard proof before setting this true."
+    ),
+    envItem(
+      "XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED",
+      sentinelConfig.xprizeAgentExecutionLogsConfigured ? "true" : "",
+      "AI-native operation and agent execution evidence.",
+      false,
+      "Attach redacted Gemini/agent execution logs and API usage metadata before setting this true."
     ),
     envItem("GOOGLE_CLOUD_PROJECT", sentinelConfig.googleCloudProject, "Cloud Run, Firestore, BigQuery, Secret Manager proof.", false, "Create or select the production Google Cloud project."),
     envItem("FIRESTORE_DATABASE", sentinelConfig.firestoreDatabase, "Durable tenant state.", false, "Confirm the Firestore database id used by Cloud Run."),

@@ -87,6 +87,9 @@ describe("Cloud Run manifest renderer", () => {
     expect(templateValues).toMatchObject({
       SENTINEL_SOURCE_COMMIT: "SOURCE_COMMIT",
       SENTINEL_SOURCE_COMMIT_AT: "SOURCE_COMMIT_AT",
+      XPRIZE_CATEGORY: "Small Business Services",
+      XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED: "false",
+      XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED: "false",
       SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS: "STATIC_EGRESS_IPS"
     });
     expect(Object.keys(templateValues)).not.toEqual(
@@ -198,6 +201,7 @@ function safeRenderValues() {
     NEXT_PUBLIC_PRODUCT_URL: "https://sme-workspace-sentinel-abc-uc.a.run.app",
     XPRIZE_DEMO_VIDEO_URL: "https://youtu.be/sentinel-demo",
     XPRIZE_REPOSITORY_URL: "https://github.com/sanjabh11/sme-compliance-sentinel",
+    XPRIZE_CATEGORY: "Small Business Services",
     GOOGLE_CLOUD_BILLING_ACCOUNT_ID: "000000-111111-222222",
     SENTINEL_GCP_BUDGET_SHORT_ID: "budget-123",
     GOOGLE_OAUTH_CLIENT_ID: "123456789012-abcdef.apps.googleusercontent.com",

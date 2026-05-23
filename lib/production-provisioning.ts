@@ -269,6 +269,33 @@ function buildChecklist(): ProductionProvisioningChecklistItem[] {
       "Store judge credentials only in Devpost private testing instructions."
     ),
     item(
+      "xprize-category",
+      "XPRIZE category locked",
+      sentinelConfig.xprizeCategory === "Small Business Services",
+      "founder",
+      "Small Business Services category positioning and submission consistency.",
+      "Keep XPRIZE_CATEGORY=Small Business Services unless the final strategy is formally changed.",
+      "Category is public submission metadata; do not use it to imply eligibility or judging outcome."
+    ),
+    item(
+      "xprize-business-evidence-attestations",
+      "Business, user, and running-product evidence flags reviewed",
+      sentinelConfig.xprizeTotalRevenueEvidenceConfigured &&
+        sentinelConfig.xprizeRevenueByMonthEvidenceConfigured &&
+        sentinelConfig.xprizeTotalCostsEvidenceConfigured &&
+        sentinelConfig.xprizeCacSpendEvidenceConfigured &&
+        sentinelConfig.xprizeRealUserEvidenceConfigured &&
+        sentinelConfig.xprizeTestimonialConsentConfirmed &&
+        sentinelConfig.xprizeRelatedPartyRevenueReviewed &&
+        sentinelConfig.xprizeProductRunningEvidenceConfigured &&
+        sentinelConfig.xprizeAgentExecutionLogsConfigured,
+      "founder",
+      "Private judge evidence for revenue, costs, CAC, real users, consented feedback, related-party separation, and product-running proof.",
+      "Keep the Cloud Run flags false until each evidence packet exists in the private vault and has been human-reviewed.",
+      "Do not expose invoices, customer contacts, security findings, user emails, or unconsented testimonials publicly.",
+      "manual-review"
+    ),
+    item(
       "human-attestations",
       "Human attestation flags reviewed",
       false,
