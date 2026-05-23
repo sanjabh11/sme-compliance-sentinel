@@ -322,6 +322,7 @@ export function parseArgs(argv) {
 export async function renderCloudRunManifest(options) {
   const fileValues = await loadValuesFile(options.valuesPath);
   const renderValues = buildRenderValues(fileValues);
+  assertReleaseIdConsistency(options.releaseId, renderValues.SENTINEL_RELEASE_ID);
   if (options.strict) {
     assertStrictRenderValues(renderValues);
   }
@@ -429,6 +430,7 @@ export async function auditCloudRunRenderValues(options = {}) {
     .filter(([, value]) => hasTemplatePlaceholder(String(value)))
     .map(([key]) => key)
     .sort();
+  const releaseIdConsistency = buildReleaseIdConsistency(options.releaseId, renderValues.SENTINEL_RELEASE_ID);
   const derivedValues = derivedValueKeys.map((key) => ({
     key,
     status: fileValues[key] !== undefined ? "provided" : renderValues[key] !== undefined ? "derived" : "unused"
@@ -444,13 +446,14 @@ export async function auditCloudRunRenderValues(options = {}) {
     status: isMissingStrictValue(renderValues[versionKey]) ? "needs-value" : "version-set"
   }));
   const releaseId = String(options.releaseId || renderValues.SENTINEL_RELEASE_ID || "release-candidate");
-  const status = missingStrictKeys.length ? "needs-values" : "ready-to-render";
+  const status = releaseIdConsistency.blocking ? "release-id-mismatch" : missingStrictKeys.length ? "needs-values" : "ready-to-render";
 
   return {
     generatedAt: new Date().toISOString(),
     status,
     readyForStrictRender: status === "ready-to-render",
     releaseId,
+    releaseIdConsistency,
     valuesPath: options.valuesPath,
     sourceValueKeyCount: Object.keys(fileValues).length,
     appliedValueKeyCount: Object.keys(renderValues).length,
@@ -459,14 +462,14 @@ export async function auditCloudRunRenderValues(options = {}) {
     derivedValues,
     manualReviewFlags,
     secretVersionKeys: secretVersionKeysStatus,
-    stopConditions: buildAuditStopConditions({ missingStrictKeys, placeholderKeys }),
+    stopConditions: buildAuditStopConditions({ missingStrictKeys, placeholderKeys, releaseIdConsistency }),
     redactionChecklist: [
       "Keep the filled render-values file private; it can expose project ids, URLs, budget ids, and evidence-state decisions.",
       "Never place raw API keys, OAuth secrets, refresh tokens, service-account key paths, judge credentials, invoices, or customer findings in render values.",
       "Before sharing this audit packet, review valuesPath, project ids, URLs, billing ids, and evidence-state flags for customer or operator sensitivity.",
       "Only mark manual XPRIZE/evidence flags true after the private proof exists and the responsible owner has reviewed it."
     ],
-    nextActions: buildAuditNextActions({ missingStrictKeys }),
+    nextActions: buildAuditNextActions({ missingStrictKeys, releaseIdConsistency }),
     disclaimer:
       "This audit validates the private render-values input before rendering a Cloud Run manifest. It does not deploy Cloud Run, call Gemini, prove Workspace sync, or prove XPRIZE business evidence."
   };
@@ -548,6 +551,14 @@ function assertStrictRenderValues(values) {
     throw new Error(
       `Strict Cloud Run render values missing or placeholder: ${missing.join(", ")}. Copy ${defaultValuesTemplatePath} to a private path, fill production values, and rerun with --strict.`
     );
+  }
+}
+
+function assertReleaseIdConsistency(requestedReleaseId, valueReleaseId) {
+  const consistency = buildReleaseIdConsistency(requestedReleaseId, valueReleaseId);
+
+  if (consistency.blocking) {
+    throw new Error(consistency.fix);
   }
 }
 
@@ -693,7 +704,14 @@ function assertNoUnsafeRenderedSecrets(renderedManifest) {
   }
 }
 
-function buildAuditStopConditions({ missingStrictKeys, placeholderKeys }) {
+function buildAuditStopConditions({ missingStrictKeys, placeholderKeys, releaseIdConsistency }) {
+  if (releaseIdConsistency.blocking) {
+    return [
+      "Do not render or dry-run while the CLI release id and SENTINEL_RELEASE_ID disagree.",
+      releaseIdConsistency.fix
+    ];
+  }
+
   if (missingStrictKeys.length) {
     return [
       "Do not run strict render or Cloud Run dry-run while required render values are missing or placeholder-shaped.",
@@ -714,7 +732,15 @@ function buildAuditStopConditions({ missingStrictKeys, placeholderKeys }) {
   ];
 }
 
-function buildAuditNextActions({ missingStrictKeys }) {
+function buildAuditNextActions({ missingStrictKeys, releaseIdConsistency }) {
+  if (releaseIdConsistency.blocking) {
+    return [
+      "Use the same non-placeholder release id in --release-id and SENTINEL_RELEASE_ID.",
+      "Regenerate the render-values audit before rendering the Cloud Run manifest.",
+      "Keep source commit, image tag, Cloud Run revision, hosted proof, and Evidence Vault imports bound to that release id."
+    ];
+  }
+
   if (missingStrictKeys.length) {
     return [
       "Fill the missing non-secret values in the private render-values file.",
@@ -728,6 +754,85 @@ function buildAuditNextActions({ missingStrictKeys }) {
     "Run npm run prepare:cloudrun-dry-run with the same private values file and --strict.",
     "Preserve the audit packet, render summary, verifier JSON, and preflight packet in the private evidence store."
   ];
+}
+
+function buildReleaseIdConsistency(requestedReleaseId, valueReleaseId) {
+  const requested = String(requestedReleaseId || "").trim();
+  const value = String(valueReleaseId || "").trim();
+  const requestedPlaceholder = Boolean(requested && hasTemplatePlaceholder(requested));
+  const valuePlaceholder = Boolean(value && hasTemplatePlaceholder(value));
+  const normalizedRequested = requested && !requestedPlaceholder ? sanitizePathSegment(requested) : "";
+  const normalizedValue = value && !valuePlaceholder ? sanitizePathSegment(value) : "";
+
+  if (requestedPlaceholder) {
+    return {
+      status: "requested-placeholder",
+      blocking: true,
+      requestedReleaseId: requested,
+      valueReleaseId: value || "missing",
+      normalizedRequestedReleaseId: "",
+      normalizedValueReleaseId: normalizedValue,
+      fix: "--release-id is still placeholder-shaped. Use the reviewed SENTINEL_RELEASE_ID value before rendering."
+    };
+  }
+
+  if (normalizedRequested && normalizedValue && normalizedRequested !== normalizedValue) {
+    return {
+      status: "mismatch",
+      blocking: true,
+      requestedReleaseId: requested,
+      valueReleaseId: value,
+      normalizedRequestedReleaseId: normalizedRequested,
+      normalizedValueReleaseId: normalizedValue,
+      fix: `--release-id (${normalizedRequested}) does not match SENTINEL_RELEASE_ID (${normalizedValue}). Rerun with one reviewed release id.`
+    };
+  }
+
+  if (normalizedRequested && normalizedValue) {
+    return {
+      status: "matched",
+      blocking: false,
+      requestedReleaseId: requested,
+      valueReleaseId: value,
+      normalizedRequestedReleaseId: normalizedRequested,
+      normalizedValueReleaseId: normalizedValue,
+      fix: "No action."
+    };
+  }
+
+  if (normalizedRequested) {
+    return {
+      status: "requested-only",
+      blocking: false,
+      requestedReleaseId: requested,
+      valueReleaseId: value || "missing",
+      normalizedRequestedReleaseId: normalizedRequested,
+      normalizedValueReleaseId: "",
+      fix: "Set SENTINEL_RELEASE_ID in the private values file so the rendered manifest records the same release id."
+    };
+  }
+
+  if (normalizedValue) {
+    return {
+      status: "value-only",
+      blocking: false,
+      requestedReleaseId: requested || "missing",
+      valueReleaseId: value,
+      normalizedRequestedReleaseId: "",
+      normalizedValueReleaseId: normalizedValue,
+      fix: "No action."
+    };
+  }
+
+  return {
+    status: "missing",
+    blocking: false,
+    requestedReleaseId: requested || "missing",
+    valueReleaseId: value || "missing",
+    normalizedRequestedReleaseId: "",
+    normalizedValueReleaseId: "",
+    fix: "Set SENTINEL_RELEASE_ID before strict render."
+  };
 }
 
 function isRawSecretArg(arg) {

@@ -166,6 +166,21 @@ describe("Cloud Run manifest renderer", () => {
     );
   });
 
+  it("rejects a CLI release id that disagrees with the values file", async () => {
+    const { renderCloudRunManifest } = await loadRenderer();
+    const tempDir = await makeTempDir();
+    const valuesPath = await writeValues(tempDir, safeRenderValues());
+
+    await expect(
+      renderCloudRunManifest({
+        valuesPath,
+        outDir: tempDir,
+        releaseId: "release-20260523-other",
+        strict: true
+      })
+    ).rejects.toThrow(/does not match SENTINEL_RELEASE_ID/u);
+  });
+
   it("fails strict mode when required production values are still missing", async () => {
     const { renderCloudRunManifest } = await loadRenderer();
     const tempDir = await makeTempDir();

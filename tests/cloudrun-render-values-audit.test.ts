@@ -26,7 +26,17 @@ interface CloudRunRenderValuesAuditModule {
     derivedValues: Array<{ key: string; status: string }>;
     manualReviewFlags: Array<{ key: string; status: string }>;
     secretVersionKeys: Array<{ envName: string; versionKey: string; status: string }>;
+    releaseIdConsistency: {
+      status: string;
+      blocking: boolean;
+      requestedReleaseId: string;
+      valueReleaseId: string;
+      normalizedRequestedReleaseId: string;
+      normalizedValueReleaseId: string;
+      fix: string;
+    };
     redactionChecklist: string[];
+    stopConditions: string[];
     nextActions: string[];
   }>;
 }
@@ -77,6 +87,12 @@ describe("Cloud Run render-values audit", () => {
     expect(packet.readyForStrictRender).toBe(true);
     expect(packet.missingStrictKeys).toEqual([]);
     expect(packet.placeholderKeys).toEqual([]);
+    expect(packet.releaseIdConsistency).toMatchObject({
+      status: "matched",
+      blocking: false,
+      normalizedRequestedReleaseId: "release-20260523-001",
+      normalizedValueReleaseId: "release-20260523-001"
+    });
     expect(packet.derivedValues).toEqual(
       expect.arrayContaining([
         { key: "SENTINEL_CLOUD_RUN_IMAGE", status: "derived" },
@@ -93,8 +109,40 @@ describe("Cloud Run render-values audit", () => {
     expect(packet.nextActions.join(" ")).toContain("render:cloudrun-manifest");
     expect(packetJson.status).toBe("ready-to-render");
     expect(markdown).toContain("Ready for strict render: yes");
+    expect(markdown).toContain("Status: matched");
     expect(JSON.stringify(packet)).not.toContain("AIza");
     expect(JSON.stringify(packet)).not.toContain("private-admin-token");
+  });
+
+  it("blocks mismatched CLI and values-file release ids before rendering", async () => {
+    const { writeCloudRunRenderValuesAudit } = await loadAudit();
+    const tempDir = await makeTempDir();
+    const valuesPath = await writeValues(tempDir, safeRenderValues());
+
+    const packet = await writeCloudRunRenderValuesAudit({
+      valuesPath,
+      outDir: tempDir,
+      releaseId: "release-20260523-other"
+    });
+
+    expect(packet.status).toBe("release-id-mismatch");
+    expect(packet.readyForStrictRender).toBe(false);
+    expect(packet.releaseIdConsistency).toMatchObject({
+      status: "mismatch",
+      blocking: true,
+      normalizedRequestedReleaseId: "release-20260523-other",
+      normalizedValueReleaseId: "release-20260523-001"
+    });
+    expect(packet.stopConditions.join(" ")).toContain("SENTINEL_RELEASE_ID");
+    expect(packet.nextActions.join(" ")).toContain("same non-placeholder release id");
+    await expect(
+      writeCloudRunRenderValuesAudit({
+        valuesPath,
+        outDir: tempDir,
+        releaseId: "release-20260523-other",
+        strict: true
+      })
+    ).rejects.toThrow(/release-id-mismatch/u);
   });
 
   it("reports missing placeholders before strict rendering", async () => {
