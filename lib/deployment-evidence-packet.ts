@@ -144,12 +144,25 @@ function buildRunbook(input: {
       phase: "hosted-proof",
       label: "Capture hosted product, AI, persistence, Workspace, and cost proof",
       ownerRole: "engineering",
-      commandIds: commandIds("hosted-readonly", "hosted-write-through", "hosted-evidence"),
-      requiredArtifactIds: ["verify-production-readonly-json", "verify-production-write-json", "hosted-evidence-json"],
-      proofFiles: proofFiles("verify-production-readonly-json", "verify-production-write-json", "hosted-evidence-json"),
-      stopCondition: "Stop if hosted checks are local/mock-only, if Gemini proof is not provider=gemini-api, or if GCP/Workspace write-through checks are blocked.",
+      commandIds: commandIds("hosted-readonly", "hosted-write-through", "hosted-evidence", "hosted-proof-bundle"),
+      requiredArtifactIds: [
+        "verify-production-readonly-json",
+        "verify-production-write-json",
+        "hosted-evidence-json",
+        "hosted-proof-bundle-manifest-json",
+        "hosted-proof-release-evidence-json"
+      ],
+      proofFiles: proofFiles(
+        "verify-production-readonly-json",
+        "verify-production-write-json",
+        "hosted-evidence-json",
+        "hosted-proof-bundle-manifest-json",
+        "hosted-proof-release-evidence-json"
+      ),
+      stopCondition:
+        "Stop if hosted checks are local/mock-only, if Gemini proof is not provider=gemini-api, if GCP/Workspace write-through checks are blocked, or if hosted proof bundle release integrity is not passed.",
       redactionCheck: "Redact customer identifiers, Workspace resource ids, raw findings, tokens, and cloud response details before judge or Evidence Vault use.",
-      nextStep: "Import only the redacted hosted verification JSON into the Evidence Vault.",
+      nextStep: "Dry-run the hosted proof bundle import and review the redacted request before any Evidence Vault write.",
       externalProofRequired: true
     }),
     runbookStep({
@@ -157,10 +170,11 @@ function buildRunbook(input: {
       phase: "evidence-import",
       label: "Import redacted proof and prepare judge packet",
       ownerRole: "legal",
-      commandIds: commandIds("vault-import"),
-      requiredArtifactIds: ["evidence-vault-import-response-json"],
-      proofFiles: proofFiles("evidence-vault-import-response-json"),
-      stopCondition: "Stop if import input is not redacted, if checksums are missing, or if customer consent and Devpost disclosure review are incomplete.",
+      commandIds: commandIds("hosted-proof-import-dry-run", "hosted-proof-import-confirm"),
+      requiredArtifactIds: ["evidence-vault-import-request-json", "evidence-vault-import-response-json"],
+      proofFiles: proofFiles("evidence-vault-import-request-json", "evidence-vault-import-response-json"),
+      stopCondition:
+        "Stop if import input is not redacted, release integrity is not passed, checksums are missing, or customer consent and Devpost disclosure review are incomplete.",
       redactionCheck: "Share checksums, statuses, consent flags, and aggregate evidence; keep raw logs, invoices, security findings, and customer contact data private.",
       nextStep: "Attach release id, source commit, Cloud Run revision, checksums, demo video link, judge access instructions, and revenue/user evidence to Devpost.",
       externalProofRequired: true
@@ -367,15 +381,58 @@ function buildArtifactManifest(input: {
       nextAction: "Capture after hosted checks and proof imports have run."
     }),
     artifact({
+      id: "hosted-proof-bundle-manifest-json",
+      label: "Hosted proof bundle manifest JSON",
+      ownerRole: "engineering",
+      status: "external-required",
+      sourceCommand:
+        "npm run collect:hosted-proof -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --include-write-checks --strict",
+      privateStorePath: `${basePath}/hosted-proof-bundle/manifest.json`,
+      evidenceVaultTarget: "release-bound hosted proof bundle",
+      redactionRules: [
+        "Review every hosted bundle artifact before judge sharing; the collector redacts common secrets but cannot replace human review.",
+        "Do not import the bundle if release integrity, proof-flag checks, or hosted write-through checks are blocked."
+      ],
+      nextAction: "Collect the release-bound hosted proof bundle after Cloud Run and hosted write-through verification."
+    }),
+    artifact({
+      id: "hosted-proof-release-evidence-json",
+      label: "Hosted proof release evidence manifest",
+      ownerRole: "engineering",
+      status: "external-required",
+      sourceCommand:
+        "npm run collect:hosted-proof -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --include-write-checks --strict",
+      privateStorePath: `${basePath}/hosted-proof-bundle/release-evidence-manifest.json`,
+      evidenceVaultTarget: "release-integrity and proof-flag status",
+      redactionRules: [
+        "Share aggregate verified, needs-review, missing, mock-only, and transport-error statuses only after reviewing source artifact details.",
+        "Keep customer evidence locations, raw Workspace ids, invoices, screenshots, and logs in the private store."
+      ],
+      nextAction: "Review release-integrity and proof-flag status before any Evidence Vault import."
+    }),
+    artifact({
+      id: "evidence-vault-import-request-json",
+      label: "Evidence Vault dry-run import request JSON",
+      ownerRole: "legal",
+      status: "external-required",
+      sourceCommand:
+        "npm run import:hosted-proof -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --url https://YOUR-CLOUD-RUN-URL --dry-run",
+      privateStorePath: `${basePath}/hosted-proof-bundle/evidence-vault-import-request.json`,
+      evidenceVaultTarget: "redacted import request preview",
+      redactionRules: ["Human-review the redacted request before making the hosted Evidence Vault write."],
+      nextAction: "Run the dry-run import and confirm the request contains only redacted hosted verify:production JSON."
+    }),
+    artifact({
       id: "evidence-vault-import-response-json",
       label: "Evidence Vault import response JSON",
       ownerRole: "legal",
       status: "external-required",
-      sourceCommand: "curl -s -X POST https://YOUR-CLOUD-RUN-URL/api/evidence/vault/import -H 'content-type: application/json' -H 'x-sentinel-admin-token: $SENTINEL_ADMIN_ACTION_TOKEN' --data @/secure/local/redacted-verify-production.json",
-      privateStorePath: `${basePath}/evidence-vault-import-response.json`,
+      sourceCommand:
+        "npm run import:hosted-proof -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --url https://YOUR-CLOUD-RUN-URL --confirm-import",
+      privateStorePath: `${basePath}/hosted-proof-bundle/evidence-vault-import-response.json`,
       evidenceVaultTarget: "checksummed private artifact records",
       redactionRules: ["Share checksums and status only; keep raw imported JSON in the private store."],
-      nextAction: "Import redacted verification JSON and confirm checksummed artifact records are created."
+      nextAction: "Import the hosted proof bundle only after dry-run review, redaction review, and release-integrity pass."
     }),
     artifact({
       id: "source-release-json",
@@ -522,13 +579,31 @@ function buildCommandSequence(input: {
       "Capture after the hosted proof artifacts have been generated or imported."
     ),
     command(
-      "vault-import",
-      "Import redacted verification JSON",
-      `curl -s -X POST ${input.productUrl}/api/evidence/vault/import -H 'content-type: application/json' -H 'x-sentinel-admin-token: $SENTINEL_ADMIN_ACTION_TOKEN' --data @/secure/local/redacted-verify-production.json`,
+      "hosted-proof-bundle",
+      "Collect release-bound hosted proof bundle",
+      `npm run collect:hosted-proof -- --url ${input.productUrl} --release-id $SENTINEL_RELEASE_ID --include-write-checks --strict`,
+      true,
+      true,
+      "hosted-proof-bundle-manifest-json",
+      "Collects hosted proof, release-integrity checks, proof-flag checks, and redacted bundle artifacts before Evidence Vault import."
+    ),
+    command(
+      "hosted-proof-import-dry-run",
+      "Dry-run hosted proof import",
+      `npm run import:hosted-proof -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --url ${input.productUrl} --dry-run`,
+      false,
+      false,
+      "evidence-vault-import-request-json",
+      "Writes the redacted Evidence Vault import request without contacting the hosted app."
+    ),
+    command(
+      "hosted-proof-import-confirm",
+      "Import hosted proof bundle",
+      `npm run import:hosted-proof -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --url ${input.productUrl} --confirm-import`,
       true,
       true,
       "evidence-vault-import-response-json",
-      "Imports metadata into the hosted Evidence Vault; keep raw JSON and token private."
+      "Imports metadata into the hosted Evidence Vault only after bundle release integrity and dry-run review pass."
     ),
     command(
       "source-release",

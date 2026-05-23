@@ -42,6 +42,9 @@ describe("deployment evidence packet", () => {
         "verify-production-readonly-json",
         "verify-production-write-json",
         "hosted-evidence-json",
+        "hosted-proof-bundle-manifest-json",
+        "hosted-proof-release-evidence-json",
+        "evidence-vault-import-request-json",
         "evidence-vault-import-response-json",
         "source-release-json",
         "provenance-json"
@@ -59,7 +62,9 @@ describe("deployment evidence packet", () => {
         "cloudrun-deployment-transcript-collect",
         "hosted-readonly",
         "hosted-write-through",
-        "vault-import",
+        "hosted-proof-bundle",
+        "hosted-proof-import-dry-run",
+        "hosted-proof-import-confirm",
         "source-release",
         "provenance"
       ])
@@ -89,10 +94,24 @@ describe("deployment evidence packet", () => {
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-deployment-transcript-collect")?.expectedArtifactId).toBe(
       "cloudrun-deployment-transcript-packet-json"
     );
-    expect(packet.commandSequence.find((command) => command.id === "vault-import")?.command).toContain(
-      "$SENTINEL_ADMIN_ACTION_TOKEN"
+    expect(packet.commandSequence.map((command) => command.id)).not.toContain("vault-import");
+    expect(packet.commandSequence.find((command) => command.id === "hosted-proof-bundle")?.command).toContain(
+      "npm run collect:hosted-proof"
     );
-    expect(packet.commandSequence.find((command) => command.id === "vault-import")?.command).not.toContain("Bearer ");
+    expect(packet.commandSequence.find((command) => command.id === "hosted-proof-bundle")?.mutatesProduction).toBe(true);
+    expect(packet.commandSequence.find((command) => command.id === "hosted-proof-bundle")?.requiresAdminToken).toBe(true);
+    expect(packet.commandSequence.find((command) => command.id === "hosted-proof-import-dry-run")?.command).toContain(
+      "npm run import:hosted-proof"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "hosted-proof-import-dry-run")?.command).toContain("--dry-run");
+    expect(packet.commandSequence.find((command) => command.id === "hosted-proof-import-confirm")?.command).toContain(
+      "--confirm-import"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "hosted-proof-import-confirm")?.requiresAdminToken).toBe(true);
+    expect(packet.commandSequence.find((command) => command.id === "hosted-proof-import-confirm")?.command).not.toContain("Bearer ");
+    expect(packet.commandSequence.find((command) => command.id === "hosted-proof-import-confirm")?.command).not.toContain(
+      "x-sentinel-admin-token"
+    );
     expect(packet.redactionChecklist.join(" ")).toContain("OAuth client secrets");
   });
 
@@ -143,7 +162,21 @@ describe("deployment evidence packet", () => {
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-deployment-transcript-packet.json"
       ])
     );
+    expect(packet.runbook[3].requiredArtifactIds).toEqual(
+      expect.arrayContaining(["hosted-proof-bundle-manifest-json", "hosted-proof-release-evidence-json"])
+    );
+    expect(packet.runbook[3].proofFiles).toEqual(
+      expect.arrayContaining([
+        "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/hosted-proof-bundle/manifest.json",
+        "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/hosted-proof-bundle/release-evidence-manifest.json"
+      ])
+    );
     expect(packet.runbook[3].stopCondition).toContain("provider=gemini-api");
+    expect(packet.runbook[3].stopCondition).toContain("release integrity is not passed");
+    expect(packet.runbook[4].requiredArtifactIds).toEqual(
+      expect.arrayContaining(["evidence-vault-import-request-json", "evidence-vault-import-response-json"])
+    );
+    expect(packet.runbook[4].stopCondition).toContain("release integrity is not passed");
     expect(packet.runbook[4].redactionCheck).toContain("checksums");
     expect(packet.runbook.filter((step) => step.externalProofRequired)).toHaveLength(3);
   });

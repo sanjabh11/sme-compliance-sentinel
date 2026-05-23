@@ -61,7 +61,9 @@ describe("production provisioning pack", () => {
         "manifest-regression",
         "collect-cloudrun-deployment-transcript",
         "hosted-smoke",
-        "write-through-smoke"
+        "write-through-smoke",
+        "collect-hosted-proof-bundle",
+        "dry-run-hosted-proof-import"
       ])
     );
     expect(pack.verificationSequence.findIndex((command) => command.id === "audit-render-values")).toBeLessThan(
@@ -81,6 +83,15 @@ describe("production provisioning pack", () => {
     );
     expect(pack.verificationSequence.findIndex((command) => command.id === "collect-cloudrun-deployment-transcript")).toBeLessThan(
       pack.verificationSequence.findIndex((command) => command.id === "hosted-smoke")
+    );
+    expect(pack.verificationSequence.findIndex((command) => command.id === "write-through-smoke")).toBeLessThan(
+      pack.verificationSequence.findIndex((command) => command.id === "collect-hosted-proof-bundle")
+    );
+    expect(pack.verificationSequence.findIndex((command) => command.id === "collect-hosted-proof-bundle")).toBeLessThan(
+      pack.verificationSequence.findIndex((command) => command.id === "dry-run-hosted-proof-import")
+    );
+    expect(pack.verificationSequence.findIndex((command) => command.id === "dry-run-hosted-proof-import")).toBeLessThan(
+      pack.verificationSequence.findIndex((command) => command.id === "import-hosted-proof")
     );
     expect(pack.verificationSequence.find((command) => command.id === "audit-render-values")?.command).toContain(
       "npm run audit:cloudrun-values"
@@ -106,6 +117,20 @@ describe("production provisioning pack", () => {
     expect(pack.verificationSequence.find((command) => command.id === "collect-cloudrun-deployment-transcript")?.expectedProof).toContain(
       "cloudrun-deployment-transcript-packet.json"
     );
+    expect(pack.verificationSequence.find((command) => command.id === "collect-hosted-proof-bundle")?.command).toContain(
+      "npm run collect:hosted-proof"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "collect-hosted-proof-bundle")?.expectedProof).toContain(
+      "release-evidence-manifest.json"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "dry-run-hosted-proof-import")?.command).toContain(
+      "npm run import:hosted-proof"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "dry-run-hosted-proof-import")?.command).toContain("--dry-run");
+    expect(pack.verificationSequence.find((command) => command.id === "import-hosted-proof")?.command).toContain(
+      "npm run import:hosted-proof"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "import-hosted-proof")?.command).toContain("--confirm-import");
     expect(pack.verificationSequence.map((command) => command.id)).toContain("import-hosted-proof");
   });
 
@@ -123,7 +148,10 @@ describe("production provisioning pack", () => {
     expect(allCommands).not.toContain("/web:latest");
     expect(pack.commands.filter((command) => command.requiresSecretInput).every((command) => command.command.includes("--data-file="))).toBe(true);
     expect(pack.verificationSequence.find((command) => command.id === "import-hosted-proof")?.command).toContain(
-      "x-sentinel-admin-token: $SENTINEL_ADMIN_ACTION_TOKEN"
+      "--confirm-import"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "import-hosted-proof")?.command).not.toContain(
+      "x-sentinel-admin-token"
     );
     expect(pack.checklist.find((item) => item.id === "human-attestations")?.status).toBe("manual-review");
     expect(pack.checklist.find((item) => item.id === "xprize-category")?.status).toBe("configured");
@@ -137,6 +165,8 @@ describe("production provisioning pack", () => {
     expect(pack.privateHandlingRules.join(" ")).toContain("audit:cloudrun-values");
     expect(pack.privateHandlingRules.join(" ")).toContain("verify:cloudrun-dry-run-packet");
     expect(pack.privateHandlingRules.join(" ")).toContain("collect:cloudrun-deployment");
+    expect(pack.privateHandlingRules.join(" ")).toContain("collect:hosted-proof");
+    expect(pack.privateHandlingRules.join(" ")).toContain("release-integrity");
 
     const violations = scanClaimText({
       artifact: "production-provisioning",

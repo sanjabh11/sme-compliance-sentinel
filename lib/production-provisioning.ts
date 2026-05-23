@@ -172,9 +172,27 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
         "JSON report showing Firestore, BigQuery, Secret Manager, cost-control, and Workspace reconciliation checks after credentials and SENTINEL_ADMIN_ACTION_TOKEN are configured."
       ),
       command(
+        "collect-hosted-proof-bundle",
+        "Collect release-bound hosted proof bundle",
+        "npm run collect:hosted-proof -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --include-write-checks --strict",
+        "engineering",
+        false,
+        true,
+        "Ignored artifacts/hosted-proof/$SENTINEL_RELEASE_ID bundle with verify-production.json, release-evidence-manifest.json, manifest.json, release-integrity status, and proof-flag status."
+      ),
+      command(
+        "dry-run-hosted-proof-import",
+        "Dry-run hosted proof Evidence Vault import",
+        "npm run import:hosted-proof -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --url https://YOUR-CLOUD-RUN-URL --dry-run",
+        "legal",
+        false,
+        false,
+        "evidence-vault-import-request.json and evidence-vault-import-summary.json generated without a hosted write."
+      ),
+      command(
         "import-hosted-proof",
         "Import redacted hosted proof",
-        "curl -s -X POST https://YOUR-CLOUD-RUN-URL/api/evidence/vault/import -H 'content-type: application/json' -H 'x-sentinel-admin-token: $SENTINEL_ADMIN_ACTION_TOKEN' --data @/secure/local/redacted-verify-production.json",
+        "npm run import:hosted-proof -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --url https://YOUR-CLOUD-RUN-URL --confirm-import",
         "engineering",
         true,
         false,
@@ -188,6 +206,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
       "Run npm run audit:cloudrun-values against the filled private values file before rendering; stop if the audit is not ready-to-render.",
       "Run npm run prepare:cloudrun-dry-run and npm run verify:cloudrun-dry-run-packet before gcloud dry-run; preserve both JSON outputs in the private evidence store.",
       "Run npm run collect:cloudrun-deployment after Cloud Run dry-run, deploy, and describe; keep raw gcloud logs private and share only the redacted transcript packet.",
+      "Run npm run collect:hosted-proof and npm run import:hosted-proof --dry-run before the final hosted Evidence Vault import; do not bypass release-integrity checks with raw curl.",
       "Use Secret Manager for the runtime secrets and grant access only to the Cloud Run runtime service account.",
       "Use Devpost private testing instructions for judge credentials; keep public README and video free of login secrets.",
       "Use the admin action token only from private operator tooling when importing hosted proof JSON.",
