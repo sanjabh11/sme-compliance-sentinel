@@ -202,6 +202,7 @@ const writeThroughChecks = [
 export function parseArgs(argv) {
   const args = {
     url: "",
+    releaseId: process.env.SENTINEL_RELEASE_ID ?? "",
     strict: false,
     includeWriteChecks: false,
     timeoutMs: defaultTimeoutMs,
@@ -220,6 +221,17 @@ export function parseArgs(argv) {
 
     if (arg.startsWith("--url=")) {
       args.url = arg.slice("--url=".length);
+      continue;
+    }
+
+    if (arg === "--release-id") {
+      args.releaseId = argv[index + 1] ?? "";
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--release-id=")) {
+      args.releaseId = arg.slice("--release-id=".length);
       continue;
     }
 
@@ -275,6 +287,7 @@ export async function runProductionReadinessVerification(options) {
   return {
     generatedAt: new Date().toISOString(),
     baseUrl,
+    releaseId: options.releaseId ?? process.env.SENTINEL_RELEASE_ID ?? "",
     mode: options.includeWriteChecks ? "read-and-write-through" : "read-only",
     strict: Boolean(options.strict),
     writeAuth: {

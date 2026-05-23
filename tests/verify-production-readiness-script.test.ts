@@ -3,12 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 interface VerifyProductionModule {
   parseArgs: (argv: string[]) => {
     url: string;
+    releaseId: string;
     includeWriteChecks: boolean;
     adminTokenEnv: string;
     adminToken: string;
   };
   runProductionReadinessVerification: (options: {
     url: string;
+    releaseId?: string;
     includeWriteChecks: boolean;
     adminTokenEnv: string;
     adminToken: string;
@@ -61,8 +63,16 @@ describe("verify-production readiness script auth", () => {
     const { parseArgs } = await loadVerifier();
     vi.stubEnv("SENTINEL_OPERATOR_TOKEN", "operator-secret");
 
-    const args = parseArgs(["--url=https://sentinel.example.com", "--include-write-checks", "--admin-token-env", "SENTINEL_OPERATOR_TOKEN"]);
+    const args = parseArgs([
+      "--url=https://sentinel.example.com",
+      "--release-id",
+      "release-20260523-001",
+      "--include-write-checks",
+      "--admin-token-env",
+      "SENTINEL_OPERATOR_TOKEN"
+    ]);
 
+    expect(args.releaseId).toBe("release-20260523-001");
     expect(args.adminTokenEnv).toBe("SENTINEL_OPERATOR_TOKEN");
     expect(args.adminToken).toBe("operator-secret");
   });

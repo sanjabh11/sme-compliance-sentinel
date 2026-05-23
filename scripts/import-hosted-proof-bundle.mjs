@@ -7,6 +7,8 @@ const defaultTimeoutMs = 15000;
 const defaultAdminTokenEnv = "SENTINEL_ADMIN_ACTION_TOKEN";
 const adminTokenHeader = "x-sentinel-admin-token";
 const defaultVerifyFileName = "verify-production.json";
+const bundleManifestFileName = "manifest.json";
+const releaseEvidenceFileName = "release-evidence-manifest.json";
 const requestFileName = "evidence-vault-import-request.json";
 const responseFileName = "evidence-vault-import-response.json";
 const summaryFileName = "evidence-vault-import-summary.json";
@@ -126,11 +128,14 @@ export async function importHostedProofBundle(options) {
   const sourceFile = options.sourceFile || join(options.bundleDir, defaultVerifyFileName);
   const bundleDir = options.bundleDir || dirname(sourceFile);
   const verifyReport = parseJson(await readFile(sourceFile, "utf8"));
+  const bundleMetadata = options.bundleDir ? await readBundleMetadata(bundleDir) : undefined;
   assertVerifyProductionReport(verifyReport);
   const baseUrl = normalizeBaseUrl(options.url || verifyReport.baseUrl || "");
+  assertBundleConsistency({ verifyReport, bundleMetadata, baseUrl });
   assertHostedUrl(baseUrl, Boolean(options.allowLocal));
   assertRedacted(verifyReport);
   await mkdir(bundleDir, { recursive: true });
+  const releaseId = bundleMetadata?.releaseId ?? cleanString(verifyReport.releaseId);
 
   const requestBody = {
     source: "verify-production",
@@ -138,7 +143,7 @@ export async function importHostedProofBundle(options) {
     sourceUrl: baseUrl,
     ownerNote:
       options.ownerNote ||
-      `Imported from hosted proof bundle ${bundleDir}. Operator must keep raw bundle artifacts private and redacted.`,
+      `Imported release ${releaseId || "unbound-release"} from hosted proof bundle ${bundleDir}. Operator must keep raw bundle artifacts private and redacted.`,
     payload: verifyReport
   };
   await writeJson(join(bundleDir, requestFileName), redact(requestBody));
@@ -151,6 +156,8 @@ export async function importHostedProofBundle(options) {
       baseUrl,
       adminTokenEnv: options.adminTokenEnv ?? defaultAdminTokenEnv,
       adminTokenConfigured: Boolean(options.adminToken),
+      releaseId,
+      releaseIntegrityStatus: bundleMetadata?.releaseIntegrityStatus ?? "",
       responseStatus: 0,
       responsePayload: { ok: true, dryRun: true }
     });
@@ -181,6 +188,8 @@ export async function importHostedProofBundle(options) {
     baseUrl,
     adminTokenEnv: options.adminTokenEnv ?? defaultAdminTokenEnv,
     adminTokenConfigured: Boolean(options.adminToken),
+    releaseId,
+    releaseIntegrityStatus: bundleMetadata?.releaseIntegrityStatus ?? "",
     responseStatus: responsePayload.httpStatus,
     responsePayload: redactedResponse
   });
@@ -220,6 +229,67 @@ async function postImport(input) {
   }
 }
 
+async function readBundleMetadata(bundleDir) {
+  const manifest = await readRequiredJson(join(bundleDir, bundleManifestFileName), bundleManifestFileName);
+  const releaseEvidence = await readRequiredJson(join(bundleDir, releaseEvidenceFileName), releaseEvidenceFileName);
+
+  return {
+    manifest,
+    releaseEvidence,
+    releaseId: cleanString(manifest.releaseId),
+    releaseIntegrityStatus: cleanString(releaseEvidence.releaseIntegrity?.status || manifest.releaseIntegrity?.status)
+  };
+}
+
+async function readRequiredJson(path, fileName) {
+  try {
+    return parseJson(await readFile(path, "utf8"));
+  } catch {
+    throw new Error(
+      `Hosted proof bundle is missing ${fileName}. Use npm run collect:hosted-proof before importing release evidence.`
+    );
+  }
+}
+
+function assertBundleConsistency(input) {
+  if (!input.bundleMetadata) {
+    return;
+  }
+
+  const manifest = input.bundleMetadata.manifest;
+  const releaseEvidence = input.bundleMetadata.releaseEvidence;
+  const manifestReleaseId = cleanString(manifest.releaseId);
+  const releaseEvidenceReleaseId = cleanString(releaseEvidence.releaseId);
+  const verifyReleaseId = cleanString(input.verifyReport.releaseId);
+  const manifestBaseUrl = cleanString(manifest.baseUrl);
+  const releaseEvidenceBaseUrl = cleanString(releaseEvidence.baseUrl);
+  const releaseIntegrityStatus = input.bundleMetadata.releaseIntegrityStatus;
+
+  if (!manifestReleaseId || !releaseEvidenceReleaseId || !verifyReleaseId) {
+    throw new Error(
+      "Release consistency check failed: manifest.json, release-evidence-manifest.json, and verify-production.json must all include releaseId."
+    );
+  }
+
+  if (manifestReleaseId !== releaseEvidenceReleaseId || manifestReleaseId !== verifyReleaseId) {
+    throw new Error(
+      `Release consistency check failed: manifest=${manifestReleaseId}, releaseEvidence=${releaseEvidenceReleaseId}, verifyProduction=${verifyReleaseId}.`
+    );
+  }
+
+  if (manifestBaseUrl !== input.baseUrl || releaseEvidenceBaseUrl !== input.baseUrl) {
+    throw new Error(
+      `Release consistency check failed: bundle base URLs must match ${input.baseUrl}.`
+    );
+  }
+
+  if (releaseIntegrityStatus !== "passed") {
+    throw new Error(
+      `Release integrity check failed: expected passed, received ${releaseIntegrityStatus || "missing"}. Rerun collect:hosted-proof after fixing bundle blockers.`
+    );
+  }
+}
+
 function buildSummary(input) {
   const importResult = input.responsePayload?.importResult;
   const artifactCount =
@@ -228,6 +298,8 @@ function buildSummary(input) {
   return {
     generatedAt: new Date().toISOString(),
     status: input.status,
+    releaseId: input.releaseId || null,
+    releaseIntegrityStatus: input.releaseIntegrityStatus || null,
     bundleDir: input.bundleDir,
     sourceFile: input.sourceFile,
     sourceUrl: input.baseUrl,
@@ -370,6 +442,10 @@ function normalizeBaseUrl(rawUrl) {
   parsed.search = "";
   parsed.hash = "";
   return parsed.toString().replace(/\/$/u, "");
+}
+
+function cleanString(value) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function parseTimeout(value) {

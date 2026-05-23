@@ -31,6 +31,11 @@ const bundleEndpoints = [
     privateHandling: "Repository release guard; review before sharing source status or provenance notes externally."
   },
   {
+    id: "project-provenance",
+    path: "/api/xprize/provenance",
+    privateHandling: "Repository provenance report; verify pushed HEAD and disclosure status before judge sharing."
+  },
+  {
     id: "license-manifest",
     path: "/api/xprize/license-manifest",
     privateHandling: "Third-party dependency and API-use review packet; keep final human legal/IP review notes private."
@@ -165,6 +170,7 @@ export async function collectHostedProofBundle(options) {
       includeWriteChecks: Boolean(options.includeWriteChecks),
       strict: Boolean(options.strict),
       timeoutMs: options.timeoutMs ?? defaultTimeoutMs,
+      releaseId,
       adminTokenEnv: options.adminTokenEnv ?? defaultAdminTokenEnv,
       adminToken: options.adminToken ?? process.env[options.adminTokenEnv ?? defaultAdminTokenEnv] ?? ""
     }
@@ -181,8 +187,10 @@ export async function collectHostedProofBundle(options) {
     })
   );
 
+  const endpointPayloads = new Map();
   for (const endpoint of bundleEndpoints) {
     const payload = await fetchEndpoint(baseUrl, endpoint, options.timeoutMs ?? defaultTimeoutMs);
+    endpointPayloads.set(endpoint.id, payload);
     artifacts.push(
       await writeJsonArtifact(outputDirectory, {
         id: endpoint.id,
@@ -194,11 +202,18 @@ export async function collectHostedProofBundle(options) {
     );
   }
 
+  const releaseIntegrity = buildReleaseIntegrity({
+    baseUrl,
+    releaseId,
+    verifyReport,
+    endpointPayloads
+  });
   const releaseEvidenceManifest = buildReleaseEvidenceManifest({
     baseUrl,
     releaseId,
     verifyReport,
-    artifacts
+    artifacts,
+    releaseIntegrity
   });
   artifacts.push(
     await writeJsonArtifact(outputDirectory, {
@@ -221,7 +236,8 @@ export async function collectHostedProofBundle(options) {
     adminTokenConfigured: Boolean(options.adminToken),
     verifyReport,
     artifacts,
-    releaseEvidenceManifest
+    releaseEvidenceManifest,
+    releaseIntegrity
   });
   const manifestArtifact = await writeJsonArtifact(outputDirectory, {
     id: "manifest",
@@ -290,9 +306,164 @@ async function writeJsonArtifact(outputDirectory, artifact) {
   };
 }
 
+function buildReleaseIntegrity(input) {
+  const deploymentPacket = input.endpointPayloads.get("deployment-packet")?.payload ?? {};
+  const projectProvenance = input.endpointPayloads.get("project-provenance")?.payload ?? {};
+  const checks = [
+    exactReleaseCheck({
+      id: "verify-production-release-id",
+      label: "Verify-production release id",
+      expected: input.releaseId,
+      actual: input.verifyReport?.releaseId,
+      missingDetail:
+        "verify-production.json is missing releaseId. Rerun the collector or verifier with --release-id $SENTINEL_RELEASE_ID before importing evidence."
+    }),
+    exactReleaseCheck({
+      id: "verify-production-base-url",
+      label: "Verify-production base URL",
+      expected: input.baseUrl,
+      actual: input.verifyReport?.baseUrl,
+      missingDetail: "verify-production.json is missing baseUrl. Rerun hosted verification against the deployed product URL."
+    }),
+    exactReleaseCheck({
+      id: "deployment-packet-release-id",
+      label: "Deployment packet release id",
+      expected: input.releaseId,
+      actual: deploymentPacket.releaseId,
+      missingDetail:
+        "deployment-packet.json is missing releaseId. Set SENTINEL_RELEASE_ID in the deployed environment and recapture the bundle."
+    }),
+    exactReleaseCheck({
+      id: "deployment-packet-product-url",
+      label: "Deployment packet product URL",
+      expected: input.baseUrl,
+      actual: deploymentPacket.productUrl,
+      missingDetail:
+        "deployment-packet.json is missing productUrl. Set NEXT_PUBLIC_PRODUCT_URL in the deployed environment and recapture the bundle."
+    }),
+    exactReleaseCheck({
+      id: "evidence-vault-template-release-id",
+      label: "Evidence Vault import template release id",
+      expected: input.releaseId,
+      actual: deploymentPacket.evidenceVaultImportTemplate?.payload?.releaseId,
+      missingDetail:
+        "deployment-packet evidenceVaultImportTemplate is missing payload.releaseId. Recapture after deployment packet configuration is fixed."
+    }),
+    exactReleaseCheck({
+      id: "evidence-vault-template-source-url",
+      label: "Evidence Vault import template source URL",
+      expected: input.baseUrl,
+      actual: deploymentPacket.evidenceVaultImportTemplate?.sourceUrl,
+      missingDetail:
+        "deployment-packet evidenceVaultImportTemplate is missing sourceUrl. Recapture after hosted URL configuration is fixed."
+    }),
+    pushedHeadCheck(projectProvenance)
+  ];
+  const blockers = checks
+    .filter((check) => check.status === "blocked")
+    .map((check) => `${check.label}: ${check.detail}`);
+  const needsReview = checks.filter((check) => check.status === "needs-review");
+
+  return {
+    generatedAt: new Date().toISOString(),
+    status: blockers.length ? "blocked" : needsReview.length ? "needs-review" : "passed",
+    expected: {
+      releaseId: input.releaseId,
+      baseUrl: input.baseUrl
+    },
+    checks,
+    blockers,
+    nextAction: blockers.length
+      ? "Fix release/base URL mismatches or missing provenance, redeploy if needed, then rerun collect:hosted-proof before importing."
+      : needsReview.length
+        ? "Review release provenance warnings before treating this bundle as final judge evidence."
+        : "Release id, hosted URL, deployment packet, import template, and pushed-source provenance are aligned.",
+    disclaimer:
+      "Release integrity only proves that collected proof artifacts belong to the same declared release; it does not prove external revenue, user, Cloud Run, Gemini, Workspace, or judging outcomes."
+  };
+}
+
+function exactReleaseCheck(input) {
+  const expected = cleanString(input.expected);
+  const actual = cleanString(input.actual);
+
+  if (!actual) {
+    return {
+      id: input.id,
+      label: input.label,
+      status: "blocked",
+      expected,
+      actual: "",
+      detail: input.missingDetail
+    };
+  }
+
+  if (actual !== expected) {
+    return {
+      id: input.id,
+      label: input.label,
+      status: "blocked",
+      expected,
+      actual,
+      detail: `Expected ${expected}, received ${actual}.`
+    };
+  }
+
+  return {
+    id: input.id,
+    label: input.label,
+    status: "passed",
+    expected,
+    actual,
+    detail: "Matched."
+  };
+}
+
+function pushedHeadCheck(projectProvenance) {
+  const headCommit = cleanString(projectProvenance?.git?.headCommit);
+  const remoteHeadCommit = cleanString(projectProvenance?.git?.remoteHeadCommit);
+  const upstreamBranch = cleanString(projectProvenance?.git?.upstreamBranch);
+
+  if (!headCommit || !remoteHeadCommit) {
+    return {
+      id: "project-provenance-pushed-head",
+      label: "Project provenance pushed HEAD",
+      status: "blocked",
+      expected: "local HEAD equals upstream HEAD",
+      actual: `HEAD ${headCommit || "missing"}; upstream ${upstreamBranch || "missing"} ${remoteHeadCommit || "missing"}`,
+      detail: "Project provenance is missing local or upstream commit evidence. Push the release commit and recapture provenance."
+    };
+  }
+
+  if (headCommit !== remoteHeadCommit) {
+    return {
+      id: "project-provenance-pushed-head",
+      label: "Project provenance pushed HEAD",
+      status: "blocked",
+      expected: headCommit,
+      actual: remoteHeadCommit,
+      detail: "The hosted provenance artifact does not show the same commit at local HEAD and upstream HEAD."
+    };
+  }
+
+  return {
+    id: "project-provenance-pushed-head",
+    label: "Project provenance pushed HEAD",
+    status: "passed",
+    expected: headCommit,
+    actual: remoteHeadCommit,
+    detail: `Matched on ${upstreamBranch || "upstream branch"}.`
+  };
+}
+
+function cleanString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function buildManifest(input) {
   const failedArtifacts = input.artifacts.filter((artifact) => artifact.status === "transport-error");
   const blockedArtifacts = input.artifacts.filter((artifact) => isBlockedStatus(artifact.status));
+  const releaseIntegrityBlocked = input.releaseIntegrity.status === "blocked";
 
   return {
     generatedAt: new Date().toISOString(),
@@ -310,10 +481,15 @@ function buildManifest(input) {
     summary: {
       artifactCount: input.artifacts.length,
       failedTransport: failedArtifacts.length + (input.verifyReport?.summary?.failedTransport ?? 0),
-      blockedOrNeedsReview: blockedArtifacts.length + (input.verifyReport?.summary?.blockedOrNeedsReview ?? 0),
+      blockedOrNeedsReview:
+        blockedArtifacts.length +
+        (input.verifyReport?.summary?.blockedOrNeedsReview ?? 0) +
+        (input.releaseIntegrity.status === "passed" ? 0 : 1),
       releaseEvidenceStatus: input.releaseEvidenceManifest.overallStatus,
+      releaseIntegrityStatus: input.releaseIntegrity.status,
       releaseEvidenceSlots: input.releaseEvidenceManifest.summary
     },
+    releaseIntegrity: input.releaseIntegrity,
     releaseEvidence: {
       artifact: "release-evidence-manifest.json",
       overallStatus: input.releaseEvidenceManifest.overallStatus,
@@ -331,11 +507,12 @@ function buildManifest(input) {
       ...(failedArtifacts.length ? [`Transport failed for ${failedArtifacts.map((artifact) => artifact.id).join(", ")}.`] : []),
       ...(blockedArtifacts.length
         ? [`Blocked or review status remains for ${blockedArtifacts.map((artifact) => artifact.id).join(", ")}.`]
-        : [])
+        : []),
+      ...(releaseIntegrityBlocked ? input.releaseIntegrity.blockers : [])
     ],
     nextActions: [
       "Review every JSON artifact for redaction before sharing with judges or importing into the Evidence Vault.",
-      "Import only redacted verify-production JSON through /api/evidence/vault/import after production proof is complete.",
+      "Import only after release integrity passes and the redacted verify-production JSON matches this bundle release id.",
       "Use release-evidence-manifest.json as the release-level proof index; do not treat missing or mock-only slots as complete.",
       "Attach Cloud Run revision, Gemini usage, GCP persistence, Workspace sync, revenue, cost, CAC, user, demo-video, and judge-access proof privately.",
       "Rerun this collector after every hosted deployment or evidence-status change."
@@ -392,8 +569,11 @@ function buildReleaseEvidenceManifest(input) {
     generatedAt: new Date().toISOString(),
     releaseId: input.releaseId,
     baseUrl: input.baseUrl,
+    releaseIntegrity: input.releaseIntegrity,
     overallStatus:
-      summary["transport-error"] > 0
+      input.releaseIntegrity.status === "blocked"
+        ? "blocked"
+        : summary["transport-error"] > 0
         ? "blocked"
         : summary.missing + summary["mock-only"] + summary["needs-review"] > 0
           ? "needs-proof"
@@ -493,7 +673,7 @@ function releaseEvidenceSlotDefinitions() {
       id: "repository-source",
       label: "Repository source and provenance proof",
       ruleBucket: "Repository access and source sharing",
-      sources: [rowSource("source-release"), artifactSource("source-release")],
+      sources: [rowSource("source-release"), artifactSource("source-release"), artifactSource("project-provenance")],
       nextAction: "Keep the pushed repository URL, source-release output, and provenance report ready for Devpost and private judge follow-up.",
       privateHandling: "Do not include private evidence bundles, generated artifacts, credentials, or customer data in the repository."
     },
@@ -610,6 +790,11 @@ async function writeMarkdownSummary(outputDirectory, manifest) {
     `- Failed transport: ${manifest.summary.failedTransport}`,
     `- Blocked or needs review: ${manifest.summary.blockedOrNeedsReview}`,
     `- Release evidence status: ${manifest.releaseEvidence.overallStatus}`,
+    `- Release integrity: ${manifest.releaseIntegrity.status}`,
+    "",
+    "## Release Integrity",
+    "",
+    ...manifest.releaseIntegrity.checks.map((check) => `- ${check.label}: ${check.status} (${check.detail})`),
     "",
     "## Release Evidence Manifest",
     "",

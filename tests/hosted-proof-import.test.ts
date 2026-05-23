@@ -27,6 +27,8 @@ interface HostedProofImportModule {
     allowLocal?: boolean;
   }) => Promise<{
     status: string;
+    releaseId: string | null;
+    releaseIntegrityStatus: string | null;
     sourceUrl: string;
     requestFile: string;
     responseFile: string | null;
@@ -92,6 +94,8 @@ describe("hosted proof bundle Evidence Vault importer", () => {
 
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(summary.status).toBe("dry-run");
+    expect(summary.releaseId).toBe("release-1");
+    expect(summary.releaseIntegrityStatus).toBe("passed");
     expect(summary.sourceUrl).toBe("https://sentinel.example.com");
     expect(summary.responseFile).toBeNull();
     expect(JSON.parse(requestJson)).toMatchObject({
@@ -146,6 +150,29 @@ describe("hosted proof bundle Evidence Vault importer", () => {
     expect(responseJson).toContain("[REDACTED]");
   });
 
+  it("rejects hosted bundles when release metadata is missing or inconsistent", async () => {
+    const { importHostedProofBundle } = await loadImporter();
+    const missingMetadataDir = await mkdtemp(join(tmpdir(), "sentinel-import-missing-"));
+    tempDirs.push(missingMetadataDir);
+    await writeFile(
+      join(missingMetadataDir, "verify-production.json"),
+      `${JSON.stringify(verifyProductionReport("https://sentinel.example.com"), null, 2)}\n`,
+      "utf8"
+    );
+    const mismatchedBundle = await makeBundle("https://sentinel.example.com", {}, { manifestReleaseId: "release-2" });
+    const blockedIntegrityBundle = await makeBundle("https://sentinel.example.com", {}, { releaseIntegrityStatus: "blocked" });
+
+    await expect(importHostedProofBundle({ bundleDir: missingMetadataDir, dryRun: true })).rejects.toThrow(
+      /missing manifest\.json/u
+    );
+    await expect(importHostedProofBundle({ bundleDir: mismatchedBundle, dryRun: true })).rejects.toThrow(
+      /Release consistency check failed/u
+    );
+    await expect(importHostedProofBundle({ bundleDir: blockedIntegrityBundle, dryRun: true })).rejects.toThrow(
+      /Release integrity check failed/u
+    );
+  });
+
   it("rejects local, non-verifier, or unredacted source files before import", async () => {
     const { importHostedProofBundle } = await loadImporter();
     const localBundle = await makeBundle("http://127.0.0.1:3000");
@@ -169,12 +196,53 @@ async function loadImporter() {
   return (await import("../scripts/import-hosted-proof-bundle.mjs")) as HostedProofImportModule;
 }
 
-async function makeBundle(baseUrl = "https://sentinel.example.com", overrides: Record<string, unknown> = {}) {
+async function makeBundle(
+  baseUrl = "https://sentinel.example.com",
+  overrides: Record<string, unknown> = {},
+  metadataOverrides: {
+    manifestReleaseId?: string;
+    releaseEvidenceReleaseId?: string;
+    releaseIntegrityStatus?: string;
+  } = {}
+) {
   const bundleDir = await mkdtemp(join(tmpdir(), "sentinel-import-"));
+  const releaseId = "release-1";
+  const manifestReleaseId = metadataOverrides.manifestReleaseId ?? releaseId;
+  const releaseEvidenceReleaseId = metadataOverrides.releaseEvidenceReleaseId ?? releaseId;
+  const releaseIntegrityStatus = metadataOverrides.releaseIntegrityStatus ?? "passed";
   tempDirs.push(bundleDir);
   await writeFile(
     join(bundleDir, "verify-production.json"),
     `${JSON.stringify({ ...verifyProductionReport(baseUrl), ...overrides }, null, 2)}\n`,
+    "utf8"
+  );
+  await writeFile(
+    join(bundleDir, "manifest.json"),
+    `${JSON.stringify(
+      {
+        generatedAt: "2026-05-23T12:00:00.000Z",
+        releaseId: manifestReleaseId,
+        baseUrl,
+        releaseIntegrity: { status: releaseIntegrityStatus }
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
+  await writeFile(
+    join(bundleDir, "release-evidence-manifest.json"),
+    `${JSON.stringify(
+      {
+        generatedAt: "2026-05-23T12:00:00.000Z",
+        releaseId: releaseEvidenceReleaseId,
+        baseUrl,
+        releaseIntegrity: { status: releaseIntegrityStatus },
+        overallStatus: releaseIntegrityStatus === "passed" ? "ready-for-private-review" : "blocked"
+      },
+      null,
+      2
+    )}\n`,
     "utf8"
   );
   return bundleDir;
@@ -184,6 +252,7 @@ function verifyProductionReport(baseUrl: string) {
   return {
     generatedAt: "2026-05-23T12:00:00.000Z",
     baseUrl,
+    releaseId: "release-1",
     mode: "read-and-write-through",
     strict: true,
     summary: {

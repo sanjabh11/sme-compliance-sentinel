@@ -32,6 +32,11 @@ interface HostedProofBundleModule {
     summary: {
       artifactCount: number;
       releaseEvidenceStatus?: string;
+      releaseIntegrityStatus?: string;
+    };
+    releaseIntegrity: {
+      status: string;
+      checks: Array<{ id: string; status: string }>;
     };
     releaseEvidence?: {
       overallStatus: string;
@@ -105,13 +110,16 @@ describe("hosted proof bundle collector", () => {
       const readme = await readFile(join(manifest.outputDirectory, "README.md"), "utf8");
       const releaseEvidence = JSON.parse(releaseEvidenceJson) as {
         overallStatus: string;
+        releaseIntegrity: { status: string };
         slots: Array<{ id: string; status: string; evidence: Array<{ id: string; status: string }> }>;
       };
       const postCalls = fetchImpl.mock.calls.filter(([, init]) => init?.method === "POST");
       const getCalls = fetchImpl.mock.calls.filter(([, init]) => (init?.method ?? "GET") === "GET");
 
       expect(manifest.releaseId).toBe("release-test-unsafe");
-      expect(manifest.summary.artifactCount).toBeGreaterThanOrEqual(11);
+      expect(manifest.summary.artifactCount).toBeGreaterThanOrEqual(12);
+      expect(manifest.summary.releaseIntegrityStatus).toBe("passed");
+      expect(manifest.releaseIntegrity.status).toBe("passed");
       expect(manifest.artifacts.map((artifact) => artifact.id)).toEqual(
         expect.arrayContaining([
           "verify-production",
@@ -119,6 +127,7 @@ describe("hosted proof bundle collector", () => {
           "deployment-packet",
           "hosted-evidence",
           "source-release",
+          "project-provenance",
           "license-manifest",
           "workspace-sync-status",
           "release-evidence-manifest",
@@ -127,6 +136,7 @@ describe("hosted proof bundle collector", () => {
       );
       expect(manifest.releaseEvidence?.overallStatus).toBe("needs-proof");
       expect(releaseEvidence.overallStatus).toBe("needs-proof");
+      expect(releaseEvidence.releaseIntegrity.status).toBe("passed");
       expect(releaseEvidence.slots.map((slot) => slot.id)).toEqual(
         expect.arrayContaining(["cloud-run-deployment", "workspace-sync", "live-gemini", "judge-access", "business-viability"])
       );
@@ -191,6 +201,19 @@ function payloadForRequest(url: string, method: string) {
     };
   }
 
+  if (url.includes("/api/xprize/provenance")) {
+    return {
+      overallStatus: "passed",
+      git: {
+        headCommit: "a".repeat(40),
+        remoteHeadCommit: "a".repeat(40),
+        upstreamBranch: "origin/main"
+      },
+      checks: [{ id: "repository-pushed", status: "passed" }],
+      blockers: []
+    };
+  }
+
   if (url.includes("/api/xprize/license-manifest")) {
     return {
       summary: {
@@ -220,9 +243,17 @@ function payloadForRequest(url: string, method: string) {
 
   if (url.includes("/api/production/deployment-packet")) {
     return {
+      releaseId: "release-test-unsafe",
       status: "template-needs-values",
+      productUrl: "https://sentinel.example.com",
       artifactManifest: [],
       commandSequence: [],
+      evidenceVaultImportTemplate: {
+        sourceUrl: "https://sentinel.example.com",
+        payload: {
+          releaseId: "release-test-unsafe"
+        }
+      },
       blockers: []
     };
   }
