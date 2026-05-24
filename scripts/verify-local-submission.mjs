@@ -55,6 +55,14 @@ const gates = [
     script: "scripts/verify-judge-access-pack.mjs",
     priority: 5,
     summarize: summarizeJudgeAccess
+  },
+  {
+    id: "business-evidence-readiness",
+    label: "Business viability evidence packet",
+    command: "npm run verify:business-evidence",
+    script: "scripts/verify-business-evidence.mjs",
+    priority: 5,
+    summarize: summarizeBusinessEvidence
   }
 ];
 
@@ -208,6 +216,7 @@ function buildPhasePlan(gateReports) {
         "gcloud run services describe $SENTINEL_CLOUD_RUN_SERVICE_NAME --region $SENTINEL_CLOUD_RUN_REGION --format=json",
         "npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log /secure/local/cloudrun-dry-run.log --deploy-log /secure/local/cloudrun-deploy.log --describe-json /secure/local/cloudrun-describe.json --out-dir artifacts/deployment --strict",
         "npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --strict --include-write-checks",
+        "npm run verify:business-evidence -- --write-template /secure/local/business-evidence-template.json --out /secure/local/business-evidence-readiness.json",
         "npm run verify:judge-access -- --out /secure/local/judge-access-readiness.json --strict",
         "npm run collect:hosted-proof -- --url $NEXT_PUBLIC_PRODUCT_URL --release-id $SENTINEL_RELEASE_ID",
         "npm run import:hosted-proof -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --url $NEXT_PUBLIC_PRODUCT_URL --dry-run"
@@ -216,6 +225,7 @@ function buildPhasePlan(gateReports) {
         "Cloud Run service URL, revision, release id, service account, and redacted deployment transcript",
         "hosted live Gemini API call evidence with provider=gemini-api",
         "hosted GCP persistence and Workspace OAuth/sync proof",
+        "business-evidence readiness packet for revenue, users, costs, CAC, consent, and related-party review",
         "judge-access readiness packet with private testing instructions withheld"
       ],
       stopConditions: [
@@ -230,8 +240,10 @@ function buildPhasePlan(gateReports) {
       owner: "founder/sales",
       status: "external-required",
       currentPhaseRemainingPercent: 100,
-      relatedGateIds: ["project-provenance", "license-ip-review", "judge-access-readiness"],
+      relatedGateIds: ["project-provenance", "license-ip-review", "judge-access-readiness", "business-evidence-readiness"],
       commands: [
+        "npm run verify:business-evidence -- --write-template /secure/local/business-evidence-template.json --out /secure/local/business-evidence-readiness.json",
+        "npm run verify:business-evidence -- --evidence /secure/local/business-evidence.json --out /secure/local/business-evidence-readiness.json --strict",
         "GET /api/pilots/consent-packet",
         "GET /api/pilots/conversion-kit",
         "GET /api/evidence/vault?view=intake",
@@ -240,6 +252,7 @@ function buildPhasePlan(gateReports) {
       evidenceNeeded: [
         "active pilot install or signed consent packet",
         "invoice/payment, MRR, CAC, cost, and active-user evidence",
+        "private business-evidence readiness packet with redacted checksummed artifacts",
         "judge access, testing instructions, demo video clearance, and consented testimonials"
       ],
       stopConditions: [
@@ -405,6 +418,24 @@ function summarizeJudgeAccess(report) {
       report.nextActions?.length > 0
         ? report.nextActions
         : ["Run hosted judge-access smoke checks, store private proof, and keep credentials outside source."]
+  };
+}
+
+function summarizeBusinessEvidence(report) {
+  const status = normalizeStatus(report.overallStatus);
+  const blockers = report.blockers ?? [];
+  const summary = report.summary ?? {};
+
+  return {
+    rawStatus: report.overallStatus ?? "unknown",
+    status,
+    externalRequired: true,
+    evidence: `Revenue $${summary.totalRevenueUsd ?? 0}; active users ${summary.activeUsers ?? 0}; paid pilots ${summary.paidPilotCount ?? 0}; artifact buckets ready ${summary.artifactBucketsReady ?? 0}.`,
+    blockers,
+    nextActions:
+      report.nextActions?.length > 0
+        ? report.nextActions
+        : ["Collect redacted invoices, payment proof, active-user logs, cost/CAC proof, related-party review, and testimonial consent."]
   };
 }
 
