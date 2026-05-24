@@ -106,6 +106,7 @@ function buildRunbook(input: {
       commandIds: commandIds(
         "cloudrun-release-values",
         "cloudrun-render-values-audit",
+        "cloudrun-render-evidence-verify",
         "cloudrun-render-manifest",
         "cloudrun-template-strict",
         "cloudrun-dry-run-preflight",
@@ -115,6 +116,7 @@ function buildRunbook(input: {
         "cloudrun-release-values-json",
         "cloudrun-render-values-audit-json",
         "cloudrun-render-evidence-packet-json",
+        "cloudrun-render-evidence-packet-verifier-json",
         "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
         "cloudrun-dry-run-preflight-json",
@@ -124,13 +126,14 @@ function buildRunbook(input: {
         "cloudrun-release-values-json",
         "cloudrun-render-values-audit-json",
         "cloudrun-render-evidence-packet-json",
+        "cloudrun-render-evidence-packet-verifier-json",
         "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
         "cloudrun-dry-run-preflight-json",
         "cloudrun-dry-run-packet-verifier-json"
       ),
       stopCondition:
-        "Stop unless the render-values audit is ready-to-render, the rendered verifier status is ready-to-dry-run, and the dry-run packet verifier status is verified with zero digest drift.",
+        "Stop unless the render-values audit is ready-to-render, the render evidence packet verifier is verified, the rendered verifier status is ready-to-dry-run, and the dry-run packet verifier status is verified with zero digest drift.",
       redactionCheck:
         "Keep the filled values file, rendered manifest, and command files private; share only redacted audit/verifier status, Secret Manager lookup names, and release id.",
       nextStep: "Run the generated Cloud Run dry-run command from a private operator shell only after the preflight packet is ready-to-dry-run.",
@@ -299,6 +302,22 @@ function buildArtifactManifest(input: {
       ],
       nextAction:
         "Use the owner queues to clear requiredBeforeDryRun rows before rendering and to keep public XPRIZE proof flags false until private evidence exists."
+    }),
+    artifact({
+      id: "cloudrun-render-evidence-packet-verifier-json",
+      label: "Cloud Run render evidence packet verifier",
+      ownerRole: "engineering",
+      status: localVerifierStatus,
+      sourceCommand:
+        "npm run verify:cloudrun-render-evidence -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json --strict",
+      privateStorePath: `${basePath}/cloudrun-render-evidence-packet-verifier.json`,
+      evidenceVaultTarget: "cloud-run-proof",
+      redactionRules: [
+        "Keep local private paths and owner notes private until redacted.",
+        "Share only verifier status, digest match counts, and stop-condition coverage after human review."
+      ],
+      nextAction:
+        "Verify the render evidence packet immediately after owner handoff or edits; stop before manifest render if the verifier is not verified."
     }),
     artifact({
       id: "cloudrun-render-summary-json",
@@ -587,6 +606,15 @@ function buildCommandSequence(input: {
       false,
       "cloudrun-render-values-audit-json",
       "Writes the private render-values audit; do not render unless status is ready-to-render."
+    ),
+    command(
+      "cloudrun-render-evidence-verify",
+      "Verify Cloud Run render evidence packet",
+      "npm run verify:cloudrun-render-evidence -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json --strict",
+      false,
+      false,
+      "cloudrun-render-evidence-packet-verifier-json",
+      "Rechecks the render evidence packet, regenerated Markdown, command sequence, stop conditions, and secret-shaped text checks before manifest render."
     ),
     command(
       "cloudrun-render-manifest",

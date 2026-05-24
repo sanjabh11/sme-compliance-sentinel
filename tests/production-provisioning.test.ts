@@ -60,6 +60,7 @@ describe("production provisioning pack", () => {
         "local-quality-gates",
         "write-release-render-values",
         "audit-render-values",
+        "verify-render-evidence-packet",
         "render-cloudrun-manifest",
         "prepare-cloudrun-dry-run",
         "verify-cloudrun-dry-run-packet",
@@ -83,6 +84,9 @@ describe("production provisioning pack", () => {
       pack.verificationSequence.findIndex((command) => command.id === "audit-render-values")
     );
     expect(pack.verificationSequence.findIndex((command) => command.id === "audit-render-values")).toBeLessThan(
+      pack.verificationSequence.findIndex((command) => command.id === "verify-render-evidence-packet")
+    );
+    expect(pack.verificationSequence.findIndex((command) => command.id === "verify-render-evidence-packet")).toBeLessThan(
       pack.verificationSequence.findIndex((command) => command.id === "render-cloudrun-manifest")
     );
     expect(pack.verificationSequence.findIndex((command) => command.id === "render-cloudrun-manifest")).toBeLessThan(
@@ -120,6 +124,12 @@ describe("production provisioning pack", () => {
     );
     expect(pack.verificationSequence.find((command) => command.id === "audit-render-values")?.expectedProof).toContain(
       "ready-to-render"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "verify-render-evidence-packet")?.command).toContain(
+      "npm run verify:cloudrun-render-evidence"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "verify-render-evidence-packet")?.expectedProof).toContain(
+      "cloudrun-render-evidence-packet-verifier.json"
     );
     expect(pack.verificationSequence.find((command) => command.id === "prepare-cloudrun-dry-run")?.command).toContain(
       "npm run prepare:cloudrun-dry-run"
@@ -204,6 +214,7 @@ describe("production provisioning pack", () => {
     expect(pack.privateHandlingRules.join(" ")).toContain("Secret Manager");
     expect(pack.privateHandlingRules.join(" ")).toContain("cloudrun-render-values.template.json");
     expect(pack.privateHandlingRules.join(" ")).toContain("audit:cloudrun-values");
+    expect(pack.privateHandlingRules.join(" ")).toContain("verify:cloudrun-render-evidence");
     expect(pack.privateHandlingRules.join(" ")).toContain("verify:cloudrun-dry-run-packet");
     expect(pack.privateHandlingRules.join(" ")).toContain("collect:cloudrun-deployment");
     expect(pack.privateHandlingRules.join(" ")).toContain("/secure/local/cloudrun/$SENTINEL_RELEASE_ID/");

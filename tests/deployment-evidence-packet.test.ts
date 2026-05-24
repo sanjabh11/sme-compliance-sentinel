@@ -33,6 +33,7 @@ describe("deployment evidence packet", () => {
         "cloudrun-release-values-json",
         "cloudrun-render-values-audit-json",
         "cloudrun-render-evidence-packet-json",
+        "cloudrun-render-evidence-packet-verifier-json",
         "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
         "cloudrun-dry-run-preflight-json",
@@ -58,6 +59,7 @@ describe("deployment evidence packet", () => {
       expect.arrayContaining([
         "cloudrun-release-values",
         "cloudrun-render-values-audit",
+        "cloudrun-render-evidence-verify",
         "cloudrun-render-manifest",
         "cloudrun-template-strict",
         "cloudrun-dry-run-preflight",
@@ -87,6 +89,18 @@ describe("deployment evidence packet", () => {
     );
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-render-values-audit")?.command).toContain(
       "npm run audit:cloudrun-values"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-render-evidence-verify")?.command).toContain(
+      "npm run verify:cloudrun-render-evidence"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-render-evidence-verify")?.expectedArtifactId).toBe(
+      "cloudrun-render-evidence-packet-verifier-json"
+    );
+    expect(packet.commandSequence.findIndex((command) => command.id === "cloudrun-render-values-audit")).toBeLessThan(
+      packet.commandSequence.findIndex((command) => command.id === "cloudrun-render-evidence-verify")
+    );
+    expect(packet.commandSequence.findIndex((command) => command.id === "cloudrun-render-evidence-verify")).toBeLessThan(
+      packet.commandSequence.findIndex((command) => command.id === "cloudrun-render-manifest")
     );
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-render-manifest")?.command).toContain(
       "npm run render:cloudrun-manifest"
@@ -184,6 +198,7 @@ describe("deployment evidence packet", () => {
         "cloudrun-release-values-json",
         "cloudrun-render-values-audit-json",
         "cloudrun-render-evidence-packet-json",
+        "cloudrun-render-evidence-packet-verifier-json",
         "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
         "cloudrun-dry-run-preflight-json",
@@ -195,6 +210,7 @@ describe("deployment evidence packet", () => {
         "/secure/local/cloudrun-render-values.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-values-audit.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-evidence-packet.json",
+        "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-evidence-packet-verifier.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-summary.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-manifest-verifier.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-dry-run-preflight-packet.json",

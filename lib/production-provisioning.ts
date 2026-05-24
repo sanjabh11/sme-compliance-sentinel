@@ -117,6 +117,15 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
         "Private cloudrun-render-values-audit.json showing status ready-to-render before any manifest render."
       ),
       command(
+        "verify-render-evidence-packet",
+        "Verify Cloud Run render evidence packet",
+        "npm run verify:cloudrun-render-evidence -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json --strict",
+        "engineering",
+        false,
+        false,
+        "Private cloudrun-render-evidence-packet-verifier.json showing the audit packet, owner packet, regenerated Markdown, command gates, stop conditions, and secret-shaped text checks still match before manifest render."
+      ),
+      command(
         "render-cloudrun-manifest",
         "Render private Cloud Run manifest",
         `npm run render:cloudrun-manifest -- --values ${privateRenderValuesPath} --out-dir ${deploymentArtifactsDir} --release-id $SENTINEL_RELEASE_ID --strict`,
@@ -230,6 +239,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
       "Never put API keys, OAuth client secrets, evidence-signing secrets, Drive channel tokens, judge credentials, invoices, or customer findings in the repository.",
       `Use ${renderValuesTemplatePath} only as a non-secret starting point; filled render values belong in a private path such as ${privateRenderValuesPath}.`,
       "Run npm run audit:cloudrun-values against the filled private values file before rendering; stop if the audit is not ready-to-render.",
+      "Run npm run verify:cloudrun-render-evidence against the owner packet before rendering; stop if the packet verifier is not verified.",
       "Run npm run prepare:cloudrun-dry-run and npm run verify:cloudrun-dry-run-packet before gcloud dry-run; preserve both JSON outputs in the private evidence store.",
       `Run npm run collect:cloudrun-deployment after Cloud Run dry-run, deploy, and describe; save raw gcloud logs under ${cloudRunTranscriptDir}/, keep them private, and share only the redacted transcript packet.`,
       "Run npm run collect:hosted-proof, npm run import:hosted-proof --dry-run, npm run prepare:deployment-execution-checklist -- --write-results-template, and npm run prepare:deployment-execution-checklist -- --results before the final hosted Evidence Vault import; do not bypass release-integrity checks with raw curl.",

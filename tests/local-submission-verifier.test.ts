@@ -276,6 +276,27 @@ describe("local XPRIZE submission verifier", () => {
     expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("operator handoff");
     expect(report.phasePlan.recommendedNextCodeControllableAction.commands.join(" ")).toContain("write:cloudrun-release-values");
     expect(report.phasePlan.recommendedNextCodeControllableAction.commands.join(" ")).toContain("audit:cloudrun-values");
+    expect(report.phasePlan.recommendedNextCodeControllableAction.commands.join(" ")).toContain(
+      "verify:cloudrun-render-evidence"
+    );
+    expect(
+      report.phasePlan.recommendedNextCodeControllableAction.commands.findIndex((command) =>
+        command.includes("audit:cloudrun-values")
+      )
+    ).toBeLessThan(
+      report.phasePlan.recommendedNextCodeControllableAction.commands.findIndex((command) =>
+        command.includes("verify:cloudrun-render-evidence")
+      )
+    );
+    expect(
+      report.phasePlan.recommendedNextCodeControllableAction.commands.findIndex((command) =>
+        command.includes("verify:cloudrun-render-evidence")
+      )
+    ).toBeLessThan(
+      report.phasePlan.recommendedNextCodeControllableAction.commands.findIndex((command) =>
+        command.includes("render:cloudrun-manifest")
+      )
+    );
     expect(report.phasePlan.recommendedNextCodeControllableAction.privateArtifactPaths).toContain(
       "/secure/local/cloudrun-render-values.json"
     );
@@ -616,6 +637,7 @@ describe("local XPRIZE submission verifier", () => {
       "Do not set XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED=true"
     );
     expect(phasesById["cloudrun-render-dry-run"].commands.join(" ")).toContain("audit:cloudrun-values");
+    expect(phasesById["cloudrun-render-dry-run"].commands.join(" ")).toContain("verify:cloudrun-render-evidence");
     expect(phasesById["cloudrun-render-dry-run"].commands.join(" ")).toContain("verify:cloudrun-dry-run-packet");
     expect(phasesById["cloudrun-render-dry-run"].stopConditions.join(" ")).toContain("Do not run gcloud dry-run");
     expect(phasesById["hosted-proof-capture"]).toMatchObject({

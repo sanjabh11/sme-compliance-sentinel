@@ -689,13 +689,14 @@ function buildPhasePlan(gateReports) {
         "npm run verify:gemini-model -- --out /secure/local/gemini-model-readiness.json --strict",
         "npm run write:cloudrun-release-values -- /secure/local/cloudrun-render-values.json",
         "npm run audit:cloudrun-values -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
+        "npm run verify:cloudrun-render-evidence -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json --strict",
         "npm run render:cloudrun-manifest -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
         "npm run prepare:cloudrun-dry-run -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
         "npm run verify:cloudrun-dry-run-packet -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json --strict"
       ],
       evidenceNeeded: [
         "release-prefilled private render-values file with source metadata and no raw secrets",
-        "render-values audit JSON/Markdown plus owner-routed render evidence packet",
+        "render-values audit JSON/Markdown plus verified owner-routed render evidence packet",
         "dry-run preflight packet and digest verifier"
       ],
       stopConditions: [
