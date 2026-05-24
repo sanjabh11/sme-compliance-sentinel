@@ -451,7 +451,7 @@ function buildRenderValues(fileValues) {
     values.WORKSPACE_GMAIL_SUBSCRIPTION ||= `projects/${projectId}/subscriptions/workspace-gmail-push`;
     values.WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL ||= `workspace-push@${projectId}.iam.gserviceaccount.com`;
     values.SENTINEL_CLOUD_RUN_SERVICE_ACCOUNT_EMAIL ||= `sentinel-runtime@${projectId}.iam.gserviceaccount.com`;
-    values.SENTINEL_CLOUD_RUN_IMAGE ||= `${region}-docker.pkg.dev/${projectId}/sentinel/web:${dockerTag(releaseId || "latest")}`;
+    values.SENTINEL_CLOUD_RUN_IMAGE ||= `${region}-docker.pkg.dev/${projectId}/sentinel/web:${releaseId ? dockerTag(releaseId) : "RELEASE_ID"}`;
   }
 
   if (productUrl) {

@@ -439,7 +439,7 @@ function addEnv(source: string, entries: Array<[string, string]>) {
 
 function renderProductionCandidateManifest() {
   return manifest
-    .replace("REGION-docker.pkg.dev/PROJECT_ID/sentinel/web:latest", "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:release-20260523-001")
+    .replace("REGION-docker.pkg.dev/PROJECT_ID/sentinel/web:RELEASE_ID", "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:release-20260523-001")
     .replace("sentinel-runtime@PROJECT_ID.iam.gserviceaccount.com", "sentinel-runtime@sentinel-prod.iam.gserviceaccount.com")
     .replaceAll("https://YOUR-SERVICE-URL", "https://sme-workspace-sentinel-abc-uc.a.run.app")
     .replace("https://youtu.be/YOUR_VIDEO", "https://youtu.be/sentinel-demo")

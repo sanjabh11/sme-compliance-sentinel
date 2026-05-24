@@ -122,6 +122,8 @@ describe("Cloud Run deployment manifest", () => {
     expect(manifest).toContain("run.googleapis.com/execution-environment: gen2");
     expect(manifest).toContain("run.googleapis.com/secrets:");
     expect(manifest).toContain("serviceAccountName: sentinel-runtime@PROJECT_ID.iam.gserviceaccount.com");
+    expect(manifest).toContain("REGION-docker.pkg.dev/PROJECT_ID/sentinel/web:RELEASE_ID");
+    expect(manifest).not.toContain("/web:latest");
     expect(manifest).toContain("containerConcurrency: 80");
     expect(manifest).toContain("timeoutSeconds: 60");
 
