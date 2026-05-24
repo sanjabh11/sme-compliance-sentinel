@@ -177,7 +177,7 @@ export async function prepareDeploymentExecutionChecklist(options) {
   const sourceUrl = cleanString(manifest.baseUrl || deploymentPacket.productUrl);
   const commandById = new Map((Array.isArray(deploymentPacket.commandSequence) ? deploymentPacket.commandSequence : []).map((command) => [cleanString(command.id), command]));
   const artifactById = new Map((Array.isArray(deploymentPacket.artifactManifest) ? deploymentPacket.artifactManifest : []).map((artifact) => [cleanString(artifact.id), artifact]));
-  const entries = deploymentImportRequiredCommandIds.map((commandId) =>
+  const entries = await Promise.all(deploymentImportRequiredCommandIds.map((commandId) =>
     buildEntry({
       commandId,
       command: commandById.get(commandId),
@@ -186,7 +186,7 @@ export async function prepareDeploymentExecutionChecklist(options) {
       releaseId,
       sourceUrl
     })
-  );
+  ));
   const resultsTemplate = buildResultsTemplateLineage({
     payload: resultsPayload,
     releaseId,
@@ -243,7 +243,7 @@ export async function prepareDeploymentExecutionChecklist(options) {
   return checklist;
 }
 
-function buildEntry(input) {
+async function buildEntry(input) {
   const result = input.result ?? {};
   const expectedArtifactId = cleanString(input.command?.expectedArtifactId);
   const expectedArtifactPath = cleanString(input.artifactById.get(expectedArtifactId)?.privateStorePath);
@@ -254,6 +254,7 @@ function buildEntry(input) {
   const evidencePath = cleanString(result.evidencePath);
   const evidenceSha256 = cleanString(result.evidenceSha256);
   const note = cleanString(result.note);
+  const evidenceFileVerification = await verifyEvidenceFile({ commandId: input.commandId, evidencePath, evidenceSha256 });
   const blockers = [
     ...(input.command ? [] : [`${input.commandId} is missing from deployment-packet commandSequence.`]),
     ...(expectedArtifactId ? [] : [`${input.commandId} is missing an expectedArtifactId.`]),
@@ -268,6 +269,7 @@ function buildEntry(input) {
       ? []
       : [`${input.commandId} evidencePath must match expectedArtifactPath.`]),
     ...(isSha256(evidenceSha256) ? [] : [`${input.commandId} is missing a valid evidenceSha256.`]),
+    ...evidenceFileVerification.blockers,
     ...(hasUnsafeText(`${evidencePath} ${note}`) ? [`${input.commandId} evidence fields contain secret-shaped text.`] : [])
   ];
 
@@ -285,6 +287,7 @@ function buildEntry(input) {
     expectedArtifactPath,
     evidencePath,
     evidenceSha256,
+    evidenceFileVerification,
     commandSha256: sha256(cleanString(input.command?.command)),
     mutatesProduction: Boolean(input.command?.mutatesProduction),
     requiresAdminToken: Boolean(input.command?.requiresAdminToken),
@@ -292,6 +295,65 @@ function buildEntry(input) {
     blockers,
     nextAction: blockers.length ? "Record the command result and attach the expected private evidence before hosted proof import." : "Preserve this command result with the release proof bundle."
   };
+}
+
+async function verifyEvidenceFile(input) {
+  if (!input.evidencePath || !isSha256(input.evidenceSha256)) {
+    return {
+      status: "not-checked",
+      local: false,
+      path: input.evidencePath,
+      expectedSha256: input.evidenceSha256,
+      actualSha256: "",
+      byteLength: 0,
+      blockers: []
+    };
+  }
+
+  if (!isLocalEvidencePath(input.evidencePath)) {
+    return {
+      status: "external-private",
+      local: false,
+      path: input.evidencePath,
+      expectedSha256: input.evidenceSha256,
+      actualSha256: "",
+      byteLength: 0,
+      blockers: [],
+      note: "Remote/private evidence path was recorded but not read by this local verifier."
+    };
+  }
+
+  try {
+    const buffer = await readFile(input.evidencePath);
+    const actualSha256 = sha256(buffer);
+    const contentPreview = buffer.toString("utf8");
+    const blockers = [
+      ...(actualSha256 === input.evidenceSha256
+        ? []
+        : [`${input.commandId} local evidence SHA-256 ${actualSha256} does not match recorded ${input.evidenceSha256}.`]),
+      ...(hasUnsafeText(contentPreview) ? [`${input.commandId} local evidence file contains secret-shaped text.`] : [])
+    ];
+
+    return {
+      status: blockers.length ? "blocked" : "verified",
+      local: true,
+      path: input.evidencePath,
+      expectedSha256: input.evidenceSha256,
+      actualSha256,
+      byteLength: buffer.length,
+      blockers
+    };
+  } catch (error) {
+    return {
+      status: "blocked",
+      local: true,
+      path: input.evidencePath,
+      expectedSha256: input.evidenceSha256,
+      actualSha256: "",
+      byteLength: 0,
+      blockers: [`${input.commandId} local evidence file is not readable: ${error instanceof Error ? error.message : "unknown error"}.`]
+    };
+  }
 }
 
 function buildBlockers(input) {
@@ -431,6 +493,10 @@ function hasUnsafeText(value) {
     /refresh[_-]?token["':\s]+(?!\[REDACTED\])[\w.~+/=-]+/iu,
     /access[_-]?token["':\s]+(?!\[REDACTED\])[\w.~+/=-]+/iu
   ].some((pattern) => pattern.test(value));
+}
+
+function isLocalEvidencePath(value) {
+  return !/^[a-z][a-z0-9+.-]*:\/\//iu.test(value);
 }
 
 function sha256(value) {

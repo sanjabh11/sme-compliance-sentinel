@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -45,6 +46,15 @@ interface DeploymentExecutionChecklistModule {
       recordedAt: string;
       expectedArtifactPath: string;
       evidencePath: string;
+      evidenceFileVerification: {
+        status: string;
+        local: boolean;
+        path: string;
+        expectedSha256: string;
+        actualSha256: string;
+        byteLength: number;
+        blockers: string[];
+      };
       commandSha256: string;
       blockers: string[];
     }>;
@@ -213,11 +223,85 @@ describe("deployment execution checklist", () => {
       resultSourceUrl: "https://sentinel.example.com",
       expectedArtifactPath: `gs://sentinel-private/releases/release-1/${deploymentImportRequiredCommandIds[0]}.json`,
       evidencePath: `gs://sentinel-private/releases/release-1/${deploymentImportRequiredCommandIds[0]}.json`,
+      evidenceFileVerification: {
+        status: "external-private",
+        local: false
+      },
       blockers: []
     });
     expect(checklist.entries[0].commandSha256).toMatch(/^[a-f0-9]{64}$/u);
     expect(JSON.parse(checklistJson)).toMatchObject({ overallStatus: "passed" });
     expect(checklistMarkdown).toContain("Deployment Execution Checklist");
+  });
+
+  it("verifies local private evidence files before hosted proof import", async () => {
+    const {
+      deploymentImportRequiredCommandIds,
+      prepareDeploymentExecutionChecklist,
+      writeDeploymentCommandResultsTemplate
+    } = await loadChecklist();
+    const bundleDir = await makeBundle(deploymentImportRequiredCommandIds, { localArtifacts: true });
+    const resultsPath = await writeFilledResultsTemplate({
+      bundleDir,
+      commandIds: deploymentImportRequiredCommandIds,
+      writeDeploymentCommandResultsTemplate,
+      mutateEntry: (entry) => ({
+        ...entry,
+        evidenceSha256: sha256(localEvidenceContent(String(entry.commandId)))
+      })
+    });
+
+    const checklist = await prepareDeploymentExecutionChecklist({
+      bundleDir,
+      resultsPath,
+      strict: true
+    });
+
+    expect(checklist.overallStatus).toBe("passed");
+    expect(checklist.entries.every((entry) => entry.evidenceFileVerification.status === "verified")).toBe(true);
+    expect(checklist.entries.every((entry) => entry.evidenceFileVerification.local)).toBe(true);
+    expect(checklist.entries[0].evidenceFileVerification.actualSha256).toBe(
+      sha256(localEvidenceContent(deploymentImportRequiredCommandIds[0]))
+    );
+  });
+
+  it("blocks local private evidence files that are missing, checksum-drifted, or secret-shaped", async () => {
+    const {
+      deploymentImportRequiredCommandIds,
+      prepareDeploymentExecutionChecklist,
+      writeDeploymentCommandResultsTemplate
+    } = await loadChecklist();
+    const bundleDir = await makeBundle(deploymentImportRequiredCommandIds, { localArtifacts: true });
+    const [missingCommandId, checksumCommandId, secretCommandId] = deploymentImportRequiredCommandIds;
+    const secretContent = "Bearer abcdefghijklmnopqrstuvwxyz123456\n";
+    await writeFile(localEvidencePath(bundleDir, secretCommandId), secretContent, "utf8");
+    const resultsPath = await writeFilledResultsTemplate({
+      bundleDir,
+      commandIds: deploymentImportRequiredCommandIds,
+      writeDeploymentCommandResultsTemplate,
+      mutateEntry: (entry) => ({
+        ...entry,
+        evidenceSha256:
+          entry.commandId === checksumCommandId
+            ? "b".repeat(64)
+            : entry.commandId === secretCommandId
+              ? sha256(secretContent)
+              : sha256(localEvidenceContent(String(entry.commandId)))
+      })
+    });
+    await rm(localEvidencePath(bundleDir, missingCommandId), { force: true });
+
+    const checklist = await prepareDeploymentExecutionChecklist({
+      bundleDir,
+      resultsPath
+    });
+    const entriesById = Object.fromEntries(checklist.entries.map((entry) => [entry.commandId, entry]));
+
+    expect(checklist.overallStatus).toBe("blocked");
+    expect(entriesById[missingCommandId].evidenceFileVerification.status).toBe("blocked");
+    expect(entriesById[missingCommandId].blockers.join(" ")).toContain("local evidence file is not readable");
+    expect(entriesById[checksumCommandId].blockers.join(" ")).toContain("local evidence SHA-256");
+    expect(entriesById[secretCommandId].blockers.join(" ")).toContain("local evidence file contains secret-shaped text");
   });
 
   it("blocks strict mode when operator results are missing", async () => {
@@ -312,15 +396,20 @@ async function loadChecklist() {
   return (await import("../scripts/prepare-deployment-execution-checklist.mjs")) as DeploymentExecutionChecklistModule;
 }
 
-async function makeBundle(commandIds: string[]) {
+async function makeBundle(commandIds: string[], options: { localArtifacts?: boolean } = {}) {
   const bundleDir = await mkdtemp(join(tmpdir(), "sentinel-deployment-checklist-"));
   tempDirs.push(bundleDir);
   const releaseId = "release-1";
   const sourceUrl = "https://sentinel.example.com";
+  if (options.localArtifacts) {
+    await mkdir(join(bundleDir, "private-evidence"), { recursive: true });
+  }
   const artifactManifest = commandIds.map((commandId) => ({
     id: `${commandId}-artifact`,
     label: `${commandId} artifact`,
-    privateStorePath: `gs://sentinel-private/releases/${releaseId}/${commandId}.json`
+    privateStorePath: options.localArtifacts
+      ? localEvidencePath(bundleDir, commandId)
+      : `gs://sentinel-private/releases/${releaseId}/${commandId}.json`
   }));
   const commandSequence = commandIds.map((commandId) => ({
     id: commandId,
@@ -341,6 +430,9 @@ async function makeBundle(commandIds: string[]) {
     `${JSON.stringify({ releaseId, productUrl: sourceUrl, artifactManifest, commandSequence }, null, 2)}\n`,
     "utf8"
   );
+  if (options.localArtifacts) {
+    await Promise.all(commandIds.map((commandId) => writeFile(localEvidencePath(bundleDir, commandId), localEvidenceContent(commandId), "utf8")));
+  }
 
   return bundleDir;
 }
@@ -374,4 +466,16 @@ async function writeFilledResultsTemplate(input: {
   await writeFile(resultsPath, `${JSON.stringify(template, null, 2)}\n`, "utf8");
 
   return resultsPath;
+}
+
+function localEvidencePath(bundleDir: string, commandId: string) {
+  return join(bundleDir, "private-evidence", `${commandId}.json`);
+}
+
+function localEvidenceContent(commandId: string) {
+  return `${JSON.stringify({ commandId, releaseId: "release-1", sourceUrl: "https://sentinel.example.com" })}\n`;
+}
+
+function sha256(value: string) {
+  return createHash("sha256").update(value).digest("hex");
 }
