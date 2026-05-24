@@ -17,6 +17,8 @@ Use this skill for `/Users/sanjayb/Documents/Xprize` and `sanjabh11/sme-complian
 - Do not run confidence-improvement loops. Stop when the selected slice is verified or when the next blocker is external/human.
 - Do not convert local, mock, seeded, or template output into hosted, production, revenue, user, or judge-proof claims.
 - If the same blocker fails twice, stop retrying it, classify it, and report the exact next action.
+- After each shipped slice, report a phase progress table with bucket, priority, rating out of 5, current-phase remaining percent, and overall remaining percent. Treat these as evidence-gate ratings, not win-probability claims.
+- If `verify:production` lacks `NEXT_PUBLIC_PRODUCT_URL`, use its structured `hosted-proof-capture` blocker output as the manual handoff. Do not retry hosted verification until a real Cloud Run URL exists.
 
 ## Swarm Policy
 
@@ -128,6 +130,11 @@ Default cycle:
 6. Run focused checks, then broader checks.
 7. Commit and push verified work.
 8. Report remaining external/human blockers without treating them as implementation failure.
+
+Progress reporting:
+- After each milestone, include a compact phase chart with bucket, priority, 1-5 evidence rating, current-phase remaining percent, and overall remaining percent.
+- Ratings measure local evidence-gate completion only. They are not forecasts of hackathon placement, market adoption, certification, legal clearance, or judge approval.
+- For hosted proof, `npm run verify:production -- --out /secure/local/verify-production.json` may be used before deployment to produce a structured missing-URL blocker, but that report is an operator handoff only.
 
 Current target: improve and ship the SME Workspace Sentinel readiness codebase in bounded increments, not prove a hackathon win.
 ```
