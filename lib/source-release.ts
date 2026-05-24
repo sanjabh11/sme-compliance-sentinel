@@ -67,15 +67,21 @@ export function buildSourceReleaseGuard(input: {
   const blockers = checks.filter((check) => check.status === "blocked").map((check) => `${check.label}: ${check.fix}`);
   const trackedFileCount = input.files.filter((file) => file.gitStatus === "tracked" || file.gitStatus === "modified").length;
   const untrackedFileCount = input.files.filter((file) => file.gitStatus === "untracked").length;
+  const modifiedFileCount = input.files.filter((file) => file.gitStatus === "modified" || file.gitStatus === "deleted").length;
   const releasableFileCount = input.files.filter((file) => file.releaseAction === "stage").length;
   const overallStatus: SourceReleaseGuard["overallStatus"] =
-    blockers.length > 0 ? "blocked" : input.git.commitCount > 0 && untrackedFileCount === 0 ? "published" : "ready-to-commit";
+    blockers.length > 0
+      ? "blocked"
+      : input.git.commitCount > 0 && untrackedFileCount === 0 && modifiedFileCount === 0
+        ? "published"
+        : "ready-to-commit";
 
   return {
     generatedAt: new Date().toISOString(),
     overallStatus,
     trackedFileCount,
     untrackedFileCount,
+    modifiedFileCount,
     releasableFileCount,
     files: input.files,
     checks,
@@ -172,6 +178,16 @@ function buildChecks(input: {
           : "blocked",
       `${input.git.commitCount} commit(s), ${input.git.trackedFileCount} tracked file(s), ${input.git.untrackedPaths.length} untracked path(s).`,
       "After quality checks pass, stage intended source files and create the first commit so provenance can evaluate the first-commit timestamp.",
+      false
+    ),
+    check(
+      "source-worktree-clean-for-publish",
+      "Tracked source has no unpublished changes",
+      input.git.commitCount > 0 && !input.files.some((file) => file.gitStatus === "modified" || file.gitStatus === "deleted" || file.gitStatus === "untracked")
+        ? "passed"
+        : "warning",
+      `${input.files.filter((file) => file.gitStatus === "modified" || file.gitStatus === "deleted").length} modified/deleted tracked file(s), ${input.files.filter((file) => file.gitStatus === "untracked").length} untracked file(s).`,
+      "Commit and push the intended source changes before treating source release as published.",
       false
     )
   ];
@@ -477,7 +493,9 @@ function buildNextActions(
     return [
       "Run the full local verification sequence.",
       "Review the file plan and stage only `releaseAction=stage` files.",
-      "Create the first source-release commit, then rerun provenance to verify first-commit timing and tracked source state."
+      input.git.commitCount > 0
+        ? "Commit and push the intended source changes, then rerun source-release and provenance."
+        : "Create the first source-release commit, then rerun provenance to verify first-commit timing and tracked source state."
     ];
   }
 
@@ -493,7 +511,7 @@ function runGit(rootDir: string, args: string[]) {
     cwd: rootDir,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
-  }).trim();
+  }).trimEnd();
 }
 
 function safeRead(rootDir: string, path: string) {

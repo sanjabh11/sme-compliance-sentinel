@@ -80,7 +80,8 @@ function parseArgs(argv) {
     strict: false,
     outPath: "",
     manualPacketsDir: "",
-    verifyManifestPath: ""
+    verifyManifestPath: "",
+    markdownOutPath: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -106,6 +107,20 @@ function parseArgs(argv) {
 
     if (arg.startsWith("--out=")) {
       args.outPath = arg.slice("--out=".length);
+      continue;
+    }
+
+    if (arg === "--markdown-out") {
+      args.markdownOutPath = argv[index + 1] ?? "";
+      if (!args.markdownOutPath) {
+        throw new Error("--markdown-out requires a non-secret output path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--markdown-out=")) {
+      args.markdownOutPath = arg.slice("--markdown-out=".length);
       continue;
     }
 
@@ -770,7 +785,7 @@ function summarizeSourceRelease(report) {
     rawStatus: report.overallStatus ?? "unknown",
     status,
     externalRequired: false,
-    evidence: `${report.commitCount ?? 0} commit(s), ${report.trackedFileCount ?? 0} tracked file(s), ${report.untrackedFileCount ?? 0} untracked path(s), ${report.secretFindings?.length ?? 0} secret finding(s), ${report.claimFindings?.length ?? 0} unsafe claim finding(s).`,
+    evidence: `${report.commitCount ?? 0} commit(s), ${report.trackedFileCount ?? 0} tracked file(s), ${report.untrackedFileCount ?? 0} untracked path(s), ${report.unpublishedChangeCount ?? report.modifiedFileCount ?? 0} unpublished tracked change(s), ${report.secretFindings?.length ?? 0} secret finding(s), ${report.claimFindings?.length ?? 0} unsafe claim finding(s).`,
     blockers,
     nextActions:
       status === "passed"
@@ -917,6 +932,13 @@ function writeJson(path, value) {
   const absolutePath = resolve(path);
   mkdirSync(dirname(absolutePath), { recursive: true });
   writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function writeMarkdown(path, value) {
+  const absolutePath = resolve(path);
+  mkdirSync(dirname(absolutePath), { recursive: true });
+  writeFileSync(absolutePath, value, "utf8");
+  return absolutePath;
 }
 
 function writeManualInterventionPackets(path, report) {
@@ -1211,6 +1233,92 @@ function renderOwnerPacketMarkdown(packet, report) {
   ].join("\n");
 }
 
+function renderLocalSubmissionMarkdown(report) {
+  const gateRows = report.gates.map((gate) => [
+    gate.label,
+    gate.status,
+    gate.externalRequired ? "yes" : "no",
+    `${gate.priority}/5`,
+    gate.evidence,
+    gate.blockers[0] ?? gate.nextActions[0] ?? "No local blocker."
+  ]);
+  const phaseRows = report.phaseProgressChart.rows.map((row) => [
+    row.label,
+    row.bucket,
+    row.owner,
+    `${row.ratingOutOf5}/5`,
+    `${row.currentPhaseRemainingPercent}%`,
+    `${row.overallGoalRemainingPercent}%`,
+    row.done.length ? row.done.join("<br>") : "None",
+    row.pending.length ? row.pending.join("<br>") : "None",
+    row.stopConditions[0] ?? "Stop until evidence exists."
+  ]);
+  const ownerRows = report.manualInterventionPlan.ownerPackets.map((packet) => [
+    packet.owner,
+    `${packet.highestPriority}/5`,
+    String(packet.openActionCount),
+    Object.entries(packet.buckets)
+      .map(([bucket, count]) => `${bucket}: ${count}`)
+      .join(", "),
+    packet.nextAction,
+    packet.privateArtifactPaths.join("<br>")
+  ]);
+
+  return [
+    "# Local Submission Readiness Summary",
+    "",
+    `Generated: ${report.generatedAt}`,
+    `Overall status: ${report.overallStatus}`,
+    `Overall goal remaining: ${report.phaseProgressChart.overallGoalRemainingPercent}%`,
+    "",
+    "## Proof Boundary",
+    "",
+    report.disclaimer,
+    "",
+    report.phasePlan.confidenceBoundary,
+    "",
+    "This summary is a private execution aid only. It does not prove hosted Cloud Run, live Gemini API usage, Workspace OAuth, revenue, active users, judge access, legal review, or human attestation. Do not use it to set proof flags without matching private artifacts.",
+    "",
+    "## Rule Sources",
+    "",
+    markdownList(report.sourceUrls),
+    "",
+    "## Gate Summary",
+    "",
+    markdownTable(["Gate", "Status", "External", "Priority", "Evidence", "Next blocker/action"], gateRows),
+    "",
+    "## Phase Progress Chart",
+    "",
+    markdownTable(["Phase", "Bucket", "Owner", "Rating", "Phase remaining", "Overall remaining", "Done", "Pending", "Stop condition"], phaseRows),
+    "",
+    "## Manual Intervention Owners",
+    "",
+    markdownTable(["Owner", "Priority", "Open actions", "Buckets", "Next action", "Private artifacts"], ownerRows),
+    "",
+    "## Remaining Blockers",
+    "",
+    markdownList(report.remainingBlockers),
+    "",
+    "## Required Next Commands",
+    "",
+    markdownList([
+      "`npm run verify:local-submission -- --out /secure/local/local-submission-readiness.json`",
+      "`npm run prepare:submission-summary -- /secure/local/local-submission-summary.md`",
+      "`npm run prepare:manual-intervention -- /secure/local/manual-intervention-packets`",
+      "`npm run verify:manual-intervention -- /secure/local/manual-intervention-packets/manual-intervention-manifest.json --strict`"
+    ]),
+    "",
+    "## Stop Conditions",
+    "",
+    markdownList([...report.stopConditions, ...report.manualInterventionPlan.stopConditions]),
+    "",
+    "## Private Handling",
+    "",
+    markdownList(report.manualInterventionPlan.privateHandling),
+    ""
+  ].join("\n");
+}
+
 function markdownList(values) {
   if (!values || values.length === 0) {
     return "- None";
@@ -1256,6 +1364,10 @@ try {
 
     if (args.manualPacketsDir) {
       report.manualInterventionPlan.packetFiles = writeManualInterventionPackets(args.manualPacketsDir, report);
+    }
+
+    if (args.markdownOutPath) {
+      report.markdownSummaryPath = writeMarkdown(args.markdownOutPath, renderLocalSubmissionMarkdown(report));
     }
 
     if (args.outPath) {

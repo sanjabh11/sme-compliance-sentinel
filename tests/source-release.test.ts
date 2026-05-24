@@ -118,6 +118,29 @@ describe("source release guard", () => {
     expect(guard.blockers.join(" ")).toContain("Public-facing source copy");
   });
 
+  it("does not treat modified tracked files as a published source release", () => {
+    const guard = buildSourceReleaseGuard({
+      git: {
+        ...cleanGit,
+        commitCount: 12,
+        trackedFileCount: releaseFiles.length,
+        untrackedPaths: []
+      },
+      files: releaseFiles.map((releaseFile) =>
+        releaseFile.path === "README.md" ? { ...releaseFile, gitStatus: "modified" } : { ...releaseFile, gitStatus: "tracked" }
+      ),
+      gitignoreText,
+      secretFindings: []
+    });
+
+    expect(guard.overallStatus).toBe("ready-to-commit");
+    expect(guard.modifiedFileCount).toBe(1);
+    expect(guard.checks.find((check) => check.id === "source-worktree-clean-for-publish")).toMatchObject({
+      status: "warning"
+    });
+    expect(guard.nextActions.join(" ")).toContain("Commit and push the intended source changes");
+  });
+
   it("keeps release guidance inside claim guard boundaries", () => {
     const guard = buildSourceReleaseGuard({
       git: cleanGit,

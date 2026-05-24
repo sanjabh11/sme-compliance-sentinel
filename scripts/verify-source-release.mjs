@@ -46,7 +46,7 @@ function runGit(args) {
     cwd: process.cwd(),
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
-  }).trim();
+  }).trimEnd();
 }
 
 function parseStatus() {
@@ -131,6 +131,7 @@ function buildReport() {
   const tracked = listTracked();
   const commitCount = countCommits();
   const untracked = status.filter((item) => item.code === "??").map((item) => item.path);
+  const unpublished = status.filter((item) => item.code !== "??");
   const candidateFiles = [...new Set([...tracked, ...untracked])].filter(
     (path) => !forbiddenTrackedPatterns.some((pattern) => pattern.test(path))
   );
@@ -164,10 +165,23 @@ function buildReport() {
       claimFindings.length
         ? `${claimFindings.length} unsafe claim finding(s).`
         : "No unsafe certification, legal, audit, guarantee, or absolute-win claims found in public-facing source copy."
-    )
+    ),
+    {
+      id: "source-worktree-clean-for-publish",
+      status: unpublished.length === 0 && untracked.length === 0 ? "passed" : "warning",
+      evidence:
+        unpublished.length || untracked.length
+          ? `${unpublished.length} modified/staged/deleted tracked path(s), ${untracked.length} untracked path(s).`
+          : "No unpublished worktree changes.",
+      fix: "Commit and push the intended source changes before treating source release as published."
+    }
   ];
   const blocked = checks.filter((item) => item.status === "blocked");
-  const overallStatus = blocked.length ? "blocked" : commitCount > 0 && untracked.length === 0 ? "published" : "ready-to-commit";
+  const overallStatus = blocked.length
+    ? "blocked"
+    : commitCount > 0 && untracked.length === 0 && unpublished.length === 0
+      ? "published"
+      : "ready-to-commit";
 
   return {
     generatedAt: new Date().toISOString(),
@@ -175,6 +189,8 @@ function buildReport() {
     commitCount,
     trackedFileCount: tracked.length,
     untrackedFileCount: untracked.length,
+    unpublishedChangeCount: unpublished.length,
+    unpublishedChanges: unpublished,
     candidateFileCount: candidateFiles.length,
     checks,
     secretFindings,
@@ -183,7 +199,7 @@ function buildReport() {
       ? blocked.map((item) => item.fix)
       : overallStatus === "published"
         ? ["Rerun npm run verify:provenance and keep the repository URL in the deployment environment."]
-        : ["Run full verification, stage intended source files, create the first commit, and rerun npm run verify:provenance."]
+        : ["Run full verification, stage intended source files, commit and push them, then rerun npm run verify:provenance."]
   };
 }
 
@@ -231,6 +247,9 @@ function check(id, passed, evidence) {
 const report = buildReport();
 console.log(JSON.stringify(report, null, 2));
 
-if (report.overallStatus === "blocked" || process.argv.includes("--strict") && report.untrackedFileCount > 0) {
+if (
+  report.overallStatus === "blocked" ||
+  (process.argv.includes("--strict") && (report.untrackedFileCount > 0 || report.unpublishedChangeCount > 0))
+) {
   process.exitCode = 1;
 }

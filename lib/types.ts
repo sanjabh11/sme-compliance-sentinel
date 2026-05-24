@@ -1568,6 +1568,7 @@ export interface SourceReleaseGuard {
   overallStatus: SourceReleaseStatus;
   trackedFileCount: number;
   untrackedFileCount: number;
+  modifiedFileCount: number;
   releasableFileCount: number;
   files: SourceReleaseFilePlan[];
   checks: SourceReleaseCheck[];

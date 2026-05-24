@@ -141,6 +141,7 @@ type LocalSubmissionReport = {
   stopConditions: string[];
   sourceUrls: string[];
   disclaimer: string;
+  markdownSummaryPath?: string;
 };
 
 type ManualManifestVerificationReport = {
@@ -337,6 +338,39 @@ describe("local XPRIZE submission verifier", () => {
     }
   });
 
+  it("writes a concise private Markdown readiness summary with phase ratings and owner actions", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-summary-"));
+    const markdownPath = join(tempDir, "local-submission-summary.md");
+
+    try {
+      const report = runVerifier(["--markdown-out", markdownPath]);
+      const markdown = readFileSync(markdownPath, "utf8");
+
+      expect(report.markdownSummaryPath).toBe(markdownPath);
+      expect(markdown).toContain("# Local Submission Readiness Summary");
+      expect(markdown).toContain("Overall goal remaining:");
+      expect(markdown).toContain("## Gate Summary");
+      expect(markdown).toContain("## Phase Progress Chart");
+      expect(markdown).toContain("## Manual Intervention Owners");
+      expect(markdown).toContain("Rating");
+      expect(markdown).toContain("Phase remaining");
+      expect(markdown).toContain("Overall remaining");
+      expect(markdown).toContain("Human attestation and disclosure review");
+      expect(markdown).toContain("Cloud Run render and dry-run preflight");
+      expect(markdown).toContain("Hosted Cloud Run and Gemini proof capture");
+      expect(markdown).toContain("Paid pilot, user, revenue, and judge-access proof");
+      expect(markdown).toContain("not a win-probability estimate");
+      expect(markdown).toContain("private execution aid only");
+      expect(markdown).toContain("prepare:submission-summary");
+      expect(markdown).toContain("prepare:manual-intervention");
+      expect(markdown).toContain("verify:manual-intervention");
+      expect(markdown).not.toContain("Bearer ");
+      expect(markdown).not.toContain("password:");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("verifies manual-intervention packet manifest integrity and blocks tampered packets", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-manual-manifest-"));
     const manifestPath = join(tempDir, "manual-intervention-manifest.json");
@@ -436,7 +470,9 @@ describe("local XPRIZE submission verifier", () => {
 
     expect(report.phaseProgressChart.overallGoalRemainingPercent).toBeGreaterThan(0);
     expect(report.phaseProgressChart.overallGoalRemainingPercent).toBeLessThanOrEqual(100);
-    expect(rowsById["human-attestation-review"].done.join(" ")).toContain("Source release guard: passed");
+    expect([...rowsById["human-attestation-review"].done, ...rowsById["human-attestation-review"].pending].join(" ")).toContain(
+      "Source release guard:"
+    );
     expect(rowsById["human-attestation-review"].pending.join(" ")).toContain("project-created-after-start");
     expect(rowsById["human-attestation-review"].successCheckpoints.join(" ")).toContain("prepare:xprize-attestation");
     expect(rowsById["cloudrun-render-dry-run"].done.join(" ")).toContain("Cloud Run deployment evidence template: partial/scaffolded");
