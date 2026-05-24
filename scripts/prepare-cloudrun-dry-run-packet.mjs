@@ -187,11 +187,13 @@ export function buildDryRunPacket({ renderSummary, verifier, valuesPath, evidenc
     : verifier.overallStatus === "ready-to-dry-run"
       ? "ready-to-dry-run"
       : "needs-values";
+  const operatorHandoff = buildOperatorHandoff({ status, renderSummary, replacementFindings, blockers });
 
   return {
     generatedAt: new Date().toISOString(),
     status,
     readyForDryRun: status === "ready-to-dry-run",
+    bucket: "code-controllable",
     releaseId: renderSummary.releaseId,
     outputDirectory: renderSummary.outputDirectory,
     valuesPath,
@@ -208,6 +210,8 @@ export function buildDryRunPacket({ renderSummary, verifier, valuesPath, evidenc
       manualReviewCount: manualReviewFlags.length,
       secretRefCount: verifier.secretRefs?.length ?? 0
     },
+    phaseProgress: buildPhaseProgress({ status, replacementFindings, blockers }),
+    operatorHandoff,
     stopConditions: buildStopConditions({ status, blockers, replacementFindings }),
     manualReviewFlags,
     redactionChecklist: [
@@ -238,9 +242,135 @@ export function buildDryRunPacket({ renderSummary, verifier, valuesPath, evidenc
       "Run the dry-run command only from a private operator shell with approved Google Cloud credentials."
     ],
     nextActions: buildNextActions({ status, replacementFindings, blockers, dryRunCommand: renderSummary.dryRunCommand }),
+    proofBoundary:
+      "This packet completes the local render/digest preflight only. Cloud Run dry-run, deployment, hosted Gemini evidence, judge access, users, and revenue remain external proof until private artifacts are captured.",
     disclaimer:
       "This packet validates local deployment evidence readiness before Cloud Run dry-run. External proof remains pending until real Cloud Run, Gemini, GCP, Workspace, revenue, user, cost, CAC, judge-access, demo-video, and license/IP evidence is captured."
   };
+}
+
+function buildPhaseProgress({ status, replacementFindings, blockers }) {
+  return {
+    phaseId: "cloudrun-render-dry-run",
+    label: "Cloud Run dry-run preflight",
+    ratingOutOf5: preflightRating({ status, replacementFindings, blockers }),
+    currentSliceRemainingPercent: preflightRemainingPercent({ status, replacementFindings, blockers }),
+    nextPhaseId: "hosted-proof-capture",
+    nextPhaseBucket: "external-proof",
+    overallGoalRemainingPercentSource: "Run npm run verify:local-submission for the aggregate goal percentage.",
+    basis:
+      "This measures the local manifest render, digest preflight, and operator handoff only. It is not hosted Cloud Run, Gemini, revenue, user, or judging proof."
+  };
+}
+
+function preflightRating({ status, replacementFindings, blockers }) {
+  if (status === "ready-to-dry-run") {
+    return 4;
+  }
+
+  if (status === "blocked" || blockers.length) {
+    return 1;
+  }
+
+  if (replacementFindings.length) {
+    return 2;
+  }
+
+  return 2;
+}
+
+function preflightRemainingPercent({ status, replacementFindings, blockers }) {
+  if (status === "ready-to-dry-run") {
+    return 0;
+  }
+
+  if (status === "blocked" || blockers.length) {
+    return 90;
+  }
+
+  if (replacementFindings.length) {
+    return Math.min(85, 45 + replacementFindings.length * 2);
+  }
+
+  return 60;
+}
+
+function buildOperatorHandoff({ status, renderSummary, replacementFindings, blockers }) {
+  const releaseId = renderSummary.releaseId || "$SENTINEL_RELEASE_ID";
+  const privateBasePath = `/secure/local/cloudrun/${releaseId}`;
+  const readyForGcloudDryRun = status === "ready-to-dry-run";
+
+  return {
+    status: readyForGcloudDryRun ? "ready-for-private-gcloud-dry-run" : "blocked-before-gcloud",
+    nextPhaseId: "hosted-proof-capture",
+    nextPhaseBucket: "external-proof",
+    readyForPrivateGcloudDryRun: readyForGcloudDryRun,
+    privateArtifactPaths: [
+      `${privateBasePath}/cloudrun-dry-run.log`,
+      `${privateBasePath}/cloudrun-deploy.log`,
+      `${privateBasePath}/cloudrun-describe.json`,
+      `${privateBasePath}/cloudrun-deployment-transcript-packet.json`
+    ],
+    commandSequence: buildOperatorCommandSequence({ renderSummary, releaseId, privateBasePath }),
+    stopConditions: buildOperatorStopConditions({ readyForGcloudDryRun, replacementFindings, blockers }),
+    proofBoundary:
+      "This handoff lists the next private operator actions. It does not run gcloud, mutate Cloud Run, prove hosted availability, call Gemini, or create business traction evidence."
+  };
+}
+
+function buildOperatorCommandSequence({ renderSummary, releaseId, privateBasePath }) {
+  return [
+    {
+      id: "cloudrun-dry-run",
+      owner: "engineering",
+      command: renderSummary.dryRunCommand,
+      mutatesCloudRun: false,
+      expectedPrivateArtifact: `${privateBasePath}/cloudrun-dry-run.log`,
+      stopCondition: "Do not continue if dry-run output references the wrong project, region, image tag, service account, or secret versions."
+    },
+    {
+      id: "cloudrun-deploy",
+      owner: "engineering",
+      command: renderSummary.deployCommand,
+      mutatesCloudRun: true,
+      expectedPrivateArtifact: `${privateBasePath}/cloudrun-deploy.log`,
+      stopCondition: "Do not deploy unless the reviewed dry-run output is clean and preserved in the private evidence store."
+    },
+    {
+      id: "cloudrun-describe",
+      owner: "engineering",
+      command:
+        "gcloud run services describe $SENTINEL_CLOUD_RUN_SERVICE_NAME --region $SENTINEL_CLOUD_RUN_REGION --project $GOOGLE_CLOUD_PROJECT --format=json",
+      mutatesCloudRun: false,
+      expectedPrivateArtifact: `${privateBasePath}/cloudrun-describe.json`,
+      stopCondition: "Do not collect hosted proof until the describe JSON includes the expected release id, revision, service URL, and service account."
+    },
+    {
+      id: "collect-cloudrun-deployment",
+      owner: "engineering",
+      command:
+        `npm run collect:cloudrun-deployment -- --release-id ${releaseId} --dry-run-log ${privateBasePath}/cloudrun-dry-run.log --deploy-log ${privateBasePath}/cloudrun-deploy.log --describe-json ${privateBasePath}/cloudrun-describe.json --out-dir artifacts/deployment --strict`,
+      mutatesCloudRun: false,
+      expectedPrivateArtifact: `${privateBasePath}/cloudrun-deployment-transcript-packet.json`,
+      stopCondition: "Do not run hosted verification until the transcript packet is ready-for-hosted-verification."
+    }
+  ];
+}
+
+function buildOperatorStopConditions({ readyForGcloudDryRun, replacementFindings, blockers }) {
+  if (!readyForGcloudDryRun) {
+    return [
+      "Do not run gcloud dry-run from this packet.",
+      ...blockers.slice(0, 4),
+      ...replacementFindings.slice(0, 4).map((finding) => `${finding.target}: ${finding.fix}`)
+    ];
+  }
+
+  return [
+    "Run these commands only from a private operator shell with approved Google Cloud credentials.",
+    "Do not paste admin tokens, OAuth client secrets, API keys, refresh tokens, customer findings, invoices, or judge credentials into shell commands or logs.",
+    "Preserve redacted and original command outputs in the private evidence store before hosted verification."
+  ];
 }
 
 function buildStopConditions({ status, blockers, replacementFindings }) {
@@ -298,6 +428,13 @@ function renderMarkdown(packet) {
     `Release: ${packet.releaseId}`,
     `Ready for dry-run: ${packet.readyForDryRun ? "yes" : "no"}`,
     "",
+    "## Phase Progress",
+    `- Phase: ${packet.phaseProgress.phaseId}`,
+    `- Rating: ${packet.phaseProgress.ratingOutOf5}/5`,
+    `- Current slice remaining: ${packet.phaseProgress.currentSliceRemainingPercent}%`,
+    `- Next phase: ${packet.phaseProgress.nextPhaseId} (${packet.phaseProgress.nextPhaseBucket})`,
+    `- Basis: ${packet.phaseProgress.basis}`,
+    "",
     "## Verification",
     `- Overall manifest status: ${packet.verification.overallStatus}`,
     `- Blockers: ${packet.verification.blockerCount}`,
@@ -317,12 +454,30 @@ function renderMarkdown(packet) {
     "## Evidence File Digests",
     ...packet.evidenceFileDigests.map((item) => `- ${item.role}: ${item.sha256} (${item.byteLength} bytes) ${item.path}`),
     "",
+    "## Operator Handoff",
+    `- Status: ${packet.operatorHandoff.status}`,
+    `- Next phase: ${packet.operatorHandoff.nextPhaseId} (${packet.operatorHandoff.nextPhaseBucket})`,
+    `- Proof boundary: ${packet.operatorHandoff.proofBoundary}`,
+    "",
+    "| ID | Mutates Cloud Run | Expected Private Artifact | Stop Condition |",
+    "|---|---:|---|---|",
+    ...packet.operatorHandoff.commandSequence.map(
+      (command) =>
+        `| ${escapeTable(command.id)} | ${command.mutatesCloudRun ? "yes" : "no"} | ${escapeTable(command.expectedPrivateArtifact)} | ${escapeTable(command.stopCondition)} |`
+    ),
+    "",
     "## Next Actions",
     ...packet.nextActions.map((item) => `- ${item}`),
+    "",
+    `Proof boundary: ${packet.proofBoundary}`,
     "",
     `Disclaimer: ${packet.disclaimer}`,
     ""
   ].join("\n");
+}
+
+function escapeTable(value) {
+  return String(value ?? "").replace(/\|/gu, "\\|").replace(/\n/gu, " ");
 }
 
 async function buildEvidenceFileDigests(renderSummary) {

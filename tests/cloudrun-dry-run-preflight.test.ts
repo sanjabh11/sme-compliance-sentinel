@@ -31,6 +31,32 @@ interface CloudRunDryRunPreflightModule {
       replacementCount: number;
       manualReviewCount: number;
     };
+    bucket: string;
+    phaseProgress: {
+      phaseId: string;
+      ratingOutOf5: number;
+      currentSliceRemainingPercent: number;
+      nextPhaseId: string;
+      nextPhaseBucket: string;
+      basis: string;
+    };
+    operatorHandoff: {
+      status: string;
+      nextPhaseId: string;
+      nextPhaseBucket: string;
+      readyForPrivateGcloudDryRun: boolean;
+      privateArtifactPaths: string[];
+      commandSequence: Array<{
+        id: string;
+        owner: string;
+        command: string;
+        mutatesCloudRun: boolean;
+        expectedPrivateArtifact: string;
+        stopCondition: string;
+      }>;
+      stopConditions: string[];
+      proofBoundary: string;
+    };
     redactionChecklist: string[];
     evidenceFilesToPreserve: string[];
     evidenceFileDigests: Array<{
@@ -119,11 +145,43 @@ describe("Cloud Run dry-run preflight packet", () => {
 
     expect(packet.status).toBe("ready-to-dry-run");
     expect(packet.readyForDryRun).toBe(true);
+    expect(packet.bucket).toBe("code-controllable");
     expect(packet.verification).toMatchObject({
       overallStatus: "ready-to-dry-run",
       blockerCount: 0,
       replacementCount: 0
     });
+    expect(packet.phaseProgress).toMatchObject({
+      phaseId: "cloudrun-render-dry-run",
+      ratingOutOf5: 4,
+      currentSliceRemainingPercent: 0,
+      nextPhaseId: "hosted-proof-capture",
+      nextPhaseBucket: "external-proof"
+    });
+    expect(packet.phaseProgress.basis).toContain("local manifest render");
+    expect(packet.operatorHandoff).toMatchObject({
+      status: "ready-for-private-gcloud-dry-run",
+      nextPhaseId: "hosted-proof-capture",
+      nextPhaseBucket: "external-proof",
+      readyForPrivateGcloudDryRun: true
+    });
+    expect(packet.operatorHandoff.commandSequence.map((command) => command.id)).toEqual([
+      "cloudrun-dry-run",
+      "cloudrun-deploy",
+      "cloudrun-describe",
+      "collect-cloudrun-deployment"
+    ]);
+    expect(packet.operatorHandoff.commandSequence.find((command) => command.id === "cloudrun-deploy")).toMatchObject({
+      mutatesCloudRun: true,
+      expectedPrivateArtifact: expect.stringContaining("cloudrun-deploy.log")
+    });
+    expect(packet.operatorHandoff.privateArtifactPaths).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("cloudrun-dry-run.log"),
+        expect.stringContaining("cloudrun-deployment-transcript-packet.json")
+      ])
+    );
+    expect(packet.operatorHandoff.proofBoundary).toContain("does not run gcloud");
     expect(packet.verification.manualReviewCount).toBeGreaterThan(0);
     expect(packet.dryRunCommand).toContain("--dry-run");
     expect(packet.redactionChecklist.join(" ")).toContain("filled render-values file");
@@ -160,6 +218,10 @@ describe("Cloud Run dry-run preflight packet", () => {
     expect(packetJson.status).toBe("ready-to-dry-run");
     expect(packetJson.evidenceFileDigests[0].sha256).toMatch(/^[a-f0-9]{64}$/u);
     expect(packetMarkdown).toContain("Status: ready-to-dry-run");
+    expect(packetMarkdown).toContain("## Phase Progress");
+    expect(packetMarkdown).toContain("Rating: 4/5");
+    expect(packetMarkdown).toContain("## Operator Handoff");
+    expect(packetMarkdown).toContain("collect-cloudrun-deployment");
     expect(packetMarkdown).toContain("## Evidence File Digests");
     expect(JSON.stringify(packet)).not.toContain("AIza");
     expect(JSON.stringify(packet)).not.toContain("private-admin-token");
@@ -242,6 +304,18 @@ describe("Cloud Run dry-run preflight packet", () => {
 
     expect(packet.status).toBe("needs-values");
     expect(packet.readyForDryRun).toBe(false);
+    expect(packet.phaseProgress).toMatchObject({
+      phaseId: "cloudrun-render-dry-run",
+      ratingOutOf5: 2,
+      nextPhaseId: "hosted-proof-capture",
+      nextPhaseBucket: "external-proof"
+    });
+    expect(packet.phaseProgress.currentSliceRemainingPercent).toBeGreaterThan(45);
+    expect(packet.operatorHandoff).toMatchObject({
+      status: "blocked-before-gcloud",
+      readyForPrivateGcloudDryRun: false
+    });
+    expect(packet.operatorHandoff.stopConditions.join(" ")).toContain("Do not run gcloud dry-run");
     expect(packet.verification.replacementCount).toBeGreaterThan(0);
     expect(packet.nextActions.join(" ")).toContain("Fill the remaining non-secret render values");
     expect(packet.evidenceFilesToPreserve).toEqual(
