@@ -3,6 +3,7 @@ import { demoVideoClearanceSummary, hasDemoVideoClearance, sentinelConfig } from
 import { buildDevpostSubmissionPack } from "@/lib/devpost-submission";
 import type {
   DashboardSnapshot,
+  DemoVideoReleaseProofItem,
   DemoScriptScene,
   DemoVideoCompliancePack,
   DemoVideoRuleCheck,
@@ -35,7 +36,12 @@ export function buildDemoVideoCompliancePack(snapshot: DemoVideoSnapshot): DemoV
   const scenes = buildScenePlan(devpostPack.demoVideoScript);
   const plannedDurationSeconds = Math.max(...scenes.map((scene) => scene.endSecond), 0);
   const checks = buildChecks(snapshot, scenes, devpostPack.screenshotChecklist);
-  const blockers = checks.filter((check) => check.status === "blocked").map((check) => `${check.label}: ${check.fix}`);
+  const releaseProofChecklist = buildReleaseProofChecklist(snapshot);
+  const checkBlockers = checks.filter((check) => check.status === "blocked").map((check) => `${check.label}: ${check.fix}`);
+  const releaseBlockers = releaseProofChecklist
+    .filter((item) => item.status === "blocked" && item.requiredBeforePublicUpload)
+    .map((item) => `${item.label}: ${item.fix}`);
+  const blockers = [...checkBlockers, ...releaseBlockers];
   const warnings = checks.filter((check) => check.status === "warning");
   const overallStatus = hasDemoVideoClearance() && blockers.length === 0 ? "cleared" : blockers.length === 0 ? "ready-to-record" : "blocked";
 
@@ -49,6 +55,7 @@ export function buildDemoVideoCompliancePack(snapshot: DemoVideoSnapshot): DemoV
     allowedPlatforms,
     scenes,
     checks,
+    releaseProofChecklist,
     screenshotChecklist: devpostPack.screenshotChecklist,
     blockers,
     nextActions: buildNextActions(blockers, warnings),
@@ -60,6 +67,13 @@ export function buildDemoVideoCompliancePack(snapshot: DemoVideoSnapshot): DemoV
       "Blur customer names, invoices, security findings, OAuth tokens, and Workspace resource IDs before upload.",
       "Use only owned UI footage, permitted screenshots, and music/sound assets with documented rights."
     ],
+    narrationGuardrails: [
+      "Say SOC2 readiness evidence, risk detection, and staged remediation; do not imply certification, legal advice, or audit assurance.",
+      "State whether a screen is mock, local, or hosted production before showing it.",
+      "Do not say live Gemini API unless the visible run uses provider=gemini-api and the deployed Gemini evidence flag is cleared.",
+      "Do not say real revenue, active customer, or testimonial unless the corresponding consent and revenue proof are in the private Evidence Vault.",
+      "Do not present Antigravity as a submission requirement; the required deployed LLM proof is at least one Gemini API call."
+    ],
     privateHandling: [
       "Keep raw customer footage, unredacted invoices, credentials, and detailed security findings in the private Evidence Vault only.",
       "Store the public video URL and human clearance notes as demo-video-proof artifacts after review.",
@@ -69,6 +83,112 @@ export function buildDemoVideoCompliancePack(snapshot: DemoVideoSnapshot): DemoV
     disclaimer:
       "This pack validates the demo-video plan and clearance gates. It does not prove the final public video exists until the URL, platform, duration, language/subtitle, asset, and redaction checks are human-confirmed."
   };
+}
+
+function buildReleaseProofChecklist(snapshot: DemoVideoSnapshot): DemoVideoReleaseProofItem[] {
+  const hasProductUrl = Boolean(sentinelConfig.productUrl);
+  const hasHttpsProductUrl = hasProductUrl && isHttpsUrl(sentinelConfig.productUrl);
+  const hasRepositoryUrl = Boolean(sentinelConfig.repositoryUrl);
+  const hasLiveGeminiRun = snapshot.agentRuns.some((run) => run.provider === "gemini-api");
+  const hasProductionAgentEvidence = sentinelConfig.xprizeProductRunningEvidenceConfigured && sentinelConfig.xprizeAgentExecutionLogsConfigured;
+  const hasUserAndConsentEvidence = sentinelConfig.xprizeRealUserEvidenceConfigured && sentinelConfig.xprizeTestimonialConsentConfirmed;
+  const hasRevenueCostEvidence =
+    sentinelConfig.xprizeTotalRevenueEvidenceConfigured &&
+    sentinelConfig.xprizeRevenueByMonthEvidenceConfigured &&
+    sentinelConfig.xprizeTotalCostsEvidenceConfigured &&
+    sentinelConfig.xprizeCacSpendEvidenceConfigured &&
+    sentinelConfig.xprizeRelatedPartyRevenueReviewed;
+
+  return [
+    {
+      id: "hosted-product-footage",
+      label: "Hosted product footage source",
+      ruleArea: "Submission Requirements",
+      status: hasHttpsProductUrl && sentinelConfig.evidenceMode === "production" ? "passed" : "blocked",
+      evidence: `Product URL ${hasProductUrl ? sentinelConfig.productUrl : "missing"}; evidence mode ${sentinelConfig.evidenceMode}.`,
+      publicSafeEvidence: hasHttpsProductUrl ? "Hosted HTTPS product URL is configured." : "Hosted HTTPS product URL is not yet configured.",
+      privateProofNeeded: ["Signed-out product URL smoke result.", "Cloud Run revision and release id for the footage shown."],
+      fix: "Record final footage from the hosted HTTPS product in production evidence mode, not only from local mock mode.",
+      requiredBeforePublicUpload: true
+    },
+    {
+      id: "repository-source-access",
+      label: "Repository access proof",
+      ruleArea: "Submission Requirements",
+      status: hasRepositoryUrl && sentinelConfig.xprizeRepositoryAccessConfigured ? "passed" : "blocked",
+      evidence: `Repository URL ${hasRepositoryUrl ? "configured" : "missing"}; access flag ${sentinelConfig.xprizeRepositoryAccessConfigured ? "confirmed" : "missing"}.`,
+      publicSafeEvidence: hasRepositoryUrl ? "Repository URL is configured." : "Repository URL is missing.",
+      privateProofNeeded: ["Public repository URL or private sharing proof for testing@devpost.com and judging@hacker.fund."],
+      fix: "Set the final repository URL and confirm judge/testing access before treating the video as submission-ready.",
+      requiredBeforePublicUpload: true
+    },
+    {
+      id: "google-cloud-product-proof",
+      label: "Google Cloud product proof",
+      ruleArea: "Project Requirements",
+      status: sentinelConfig.xprizeGoogleCloudProductEvidenceConfigured ? "passed" : "blocked",
+      evidence: `Google Cloud evidence flag ${sentinelConfig.xprizeGoogleCloudProductEvidenceConfigured ? "confirmed" : "missing"}.`,
+      publicSafeEvidence: sentinelConfig.xprizeGoogleCloudProductEvidenceConfigured
+        ? "Google Cloud product evidence is configured."
+        : "Google Cloud product evidence is missing.",
+      privateProofNeeded: ["Cloud Run service URL/revision.", "GCP persistence or logging proof tied to the release."],
+      fix: "Attach Cloud Run and GCP proof before the final recording claims deployed Google Cloud functionality.",
+      requiredBeforePublicUpload: true
+    },
+    {
+      id: "deployed-gemini-api-proof",
+      label: "Deployed Gemini API proof",
+      ruleArea: "Project Requirements",
+      status: hasLiveGeminiRun && sentinelConfig.xprizeGeminiApiCallEvidenceConfigured ? "passed" : "blocked",
+      evidence: `${hasLiveGeminiRun ? "Current snapshot contains provider=gemini-api." : "Current snapshot does not contain provider=gemini-api."} Gemini API evidence flag ${sentinelConfig.xprizeGeminiApiCallEvidenceConfigured ? "confirmed" : "missing"}.`,
+      publicSafeEvidence: hasLiveGeminiRun ? "A Gemini API run is visible in the product state." : "Only mock or missing Gemini proof is visible.",
+      privateProofNeeded: ["Hosted Gemini smoke result.", "API usage record or agent run row showing provider=gemini-api and model id."],
+      fix: "Run and capture a hosted Gemini API scan before saying the deployed app satisfies the Gemini API call requirement.",
+      requiredBeforePublicUpload: true
+    },
+    {
+      id: "production-agent-logs",
+      label: "Running-product and agent-log proof",
+      ruleArea: "AI-Native Operations",
+      status: hasProductionAgentEvidence ? "passed" : "blocked",
+      evidence: `Product-running flag ${sentinelConfig.xprizeProductRunningEvidenceConfigured ? "confirmed" : "missing"}; agent-log flag ${sentinelConfig.xprizeAgentExecutionLogsConfigured ? "confirmed" : "missing"}.`,
+      publicSafeEvidence: hasProductionAgentEvidence
+        ? "Production operation proof is configured."
+        : "Production operation proof is not yet configured.",
+      privateProofNeeded: ["Agent execution logs.", "API usage records.", "Dashboard screenshots from the hosted release."],
+      fix: "Capture production agent logs and dashboard proof before using the video as the final operating-business artifact.",
+      requiredBeforePublicUpload: true
+    },
+    {
+      id: "judge-access-window",
+      label: "Free judge access proof",
+      ruleArea: "Submission Requirements",
+      status:
+        hasHttpsProductUrl && sentinelConfig.judgeAccessConfigured && sentinelConfig.xprizeFreeJudgeAccessThroughJudgingConfirmed
+          ? "passed"
+          : "blocked",
+      evidence: `Judge access ${sentinelConfig.judgeAccessConfigured ? "configured" : "missing"}; free judging-period access ${sentinelConfig.xprizeFreeJudgeAccessThroughJudgingConfirmed ? "confirmed" : "missing"}.`,
+      publicSafeEvidence: sentinelConfig.judgeAccessConfigured ? "Judge access is configured." : "Judge access is missing.",
+      privateProofNeeded: ["Private Devpost testing instructions.", "Credential handling note with no secrets in source or public video."],
+      fix: "Prepare free judging-period access and private testing instructions before final upload.",
+      requiredBeforePublicUpload: true
+    },
+    {
+      id: "business-evidence-boundary",
+      label: "Revenue, user, and consent boundary",
+      ruleArea: "Business Viability",
+      status: hasRevenueCostEvidence && hasUserAndConsentEvidence ? "passed" : "warning",
+      evidence: `Revenue/cost/CAC flags ${hasRevenueCostEvidence ? "complete" : "incomplete"}; user/testimonial consent flags ${hasUserAndConsentEvidence ? "complete" : "incomplete"}.`,
+      publicSafeEvidence: "Business metrics may be shown only as aggregated, consented figures.",
+      privateProofNeeded: [
+        "Arms-length revenue by month.",
+        "Total costs and customer-acquisition spend.",
+        "Real-user evidence and testimonial consent."
+      ],
+      fix: "Use placeholders or aggregated private-proof language until revenue, cost, CAC, real-user, related-party, and consent evidence is complete.",
+      requiredBeforePublicUpload: false
+    }
+  ];
 }
 
 function buildScenePlan(scenes: DemoScriptScene[]): DemoVideoScenePlan[] {
@@ -237,6 +357,15 @@ function isAllowedPlatform(rawUrl: string) {
   try {
     const host = new URL(rawUrl).hostname.toLowerCase();
     return ["youtube.com", "youtu.be", "vimeo.com", "youku.com"].some((domain) => host === domain || host.endsWith(`.${domain}`));
+  } catch {
+    return false;
+  }
+}
+
+function isHttpsUrl(rawUrl: string) {
+  try {
+    const url = new URL(rawUrl);
+    return url.protocol === "https:";
   } catch {
     return false;
   }

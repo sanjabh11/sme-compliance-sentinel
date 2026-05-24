@@ -1458,6 +1458,24 @@ export interface DemoVideoRuleCheck {
   requiredBeforeSubmit: boolean;
 }
 
+export interface DemoVideoReleaseProofItem {
+  id: string;
+  label: string;
+  ruleArea:
+    | "Project Requirements"
+    | "Submission Requirements"
+    | "Business Viability"
+    | "AI-Native Operations"
+    | "Category Impact"
+    | "IP and Safety";
+  status: "passed" | "warning" | "blocked";
+  evidence: string;
+  publicSafeEvidence: string;
+  privateProofNeeded: string[];
+  fix: string;
+  requiredBeforePublicUpload: boolean;
+}
+
 export interface DemoVideoCompliancePack {
   generatedAt: string;
   overallStatus: DemoVideoComplianceStatus;
@@ -1468,10 +1486,12 @@ export interface DemoVideoCompliancePack {
   allowedPlatforms: string[];
   scenes: DemoVideoScenePlan[];
   checks: DemoVideoRuleCheck[];
+  releaseProofChecklist: DemoVideoReleaseProofItem[];
   screenshotChecklist: SubmissionScreenshotItem[];
   blockers: string[];
   nextActions: string[];
   recordingChecklist: string[];
+  narrationGuardrails: string[];
   privateHandling: string[];
   sourceUrls: string[];
   disclaimer: string;

@@ -88,6 +88,7 @@
 - [ ] Demo video is in English or includes English subtitles.
 - [ ] Demo video uses only owned or permitted assets, no copyrighted music, and no customer-identifying security data.
 - [x] Local submission gates block demo-video readiness until URL, under-three-minute duration, public visibility, English/subtitle confirmation, asset clearance, and customer-data redaction are all confirmed.
+- [x] Local demo-video pack includes a release-proof checklist for hosted product footage, repository access, Google Cloud proof, deployed Gemini API proof, production agent logs, free judge access, and revenue/user/consent claim boundaries.
 - [ ] Pre-existing frameworks, templates, boilerplate, open-source dependencies, and third-party API/SDK authorization are disclosed in the final submission.
 - [ ] Human owner reviews `/api/xprize/license-manifest` and sets `XPRIZE_THIRD_PARTY_REVIEW_APPROVED=true` only after dependency and API-use clearance.
 - [x] Local proof gates keep license/IP clearance blocked while the generated manifest still has restricted-license review items.
@@ -231,7 +232,7 @@
 - [ ] Run `/api/market/positioning` before final pitch copy and verify the story remains a focused Workspace risk-scan wedge, not a broad GRC replacement claim.
 - [ ] Run `/api/pilots/conversion-kit` before each outreach sprint and before final submission so paid-pilot revenue, active-user proof, and customer-consent gaps are visible.
 - [ ] Generate and human-review `/api/xprize/devpost-pack` before pasting final Devpost text, recording the demo video, or uploading screenshots; use `evidenceReadinessExport` as the public-safe checklist for product access, repository access, demo video, revenue/cost/CAC, real-user proof, AI-operation proof, category impact, and IP/safety evidence.
-- [ ] Generate and human-review `/api/xprize/demo-video-pack` before recording, uploading, or pasting the final public demo video URL.
+- [ ] Generate and human-review `/api/xprize/demo-video-pack` before recording, uploading, or pasting the final public demo video URL; clear its release-proof checklist before using the video as final submission evidence.
 - [ ] Generate the private XPRIZE Submission Binder before final Devpost submission and attach every required artifact or private-response owner.
 
 ## Optional

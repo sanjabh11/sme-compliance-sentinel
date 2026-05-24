@@ -384,7 +384,7 @@ Approved answers are added to the Answer Library with an owner, source pack, seg
 
 ## Demo Video Compliance Pack
 
-`GET /api/xprize/demo-video-pack` returns the rule-specific video readiness pack. It parses the Devpost script into timed scenes, enforces a 180-second maximum, checks the public YouTube/Vimeo/Youku URL, blocks readiness until English/subtitle, duration, visibility, asset, redaction, and live-Gemini proof gates are cleared, and gives a recording checklist for the final public upload.
+`GET /api/xprize/demo-video-pack` returns the rule-specific video readiness pack. It parses the Devpost script into timed scenes, enforces a 180-second maximum, checks the public YouTube/Vimeo/Youku URL, blocks readiness until English/subtitle, duration, visibility, asset, redaction, and live-Gemini proof gates are cleared, and gives a recording checklist for the final public upload. The pack also includes a release-proof checklist for hosted product footage, repository access, Google Cloud proof, deployed Gemini API proof, production agent logs, free judge access, and revenue/user/consent boundaries so the public video cannot be treated as submission-ready while the broader rule evidence is still missing.
 
 ## XPRIZE Rule Notes
 

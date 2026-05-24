@@ -18,6 +18,7 @@ describe("Demo video compliance pack", () => {
     expect(pack.allowedPlatforms).toEqual(["YouTube", "Vimeo", "Youku"]);
     expect(pack.sourceUrls).toContain("https://www.geminixprize.com/rules");
     expect(pack.scenes).toHaveLength(6);
+    expect(pack.releaseProofChecklist).toHaveLength(7);
     expect(pack.scenes[0]).toMatchObject({
       startSecond: 0,
       endSecond: 20,
@@ -36,7 +37,17 @@ describe("Demo video compliance pack", () => {
     expect(checksById["live-gemini-proof-scene"].status).toBe("blocked");
     expect(checksById["claim-safe-script"].status).toBe("passed");
     expect(pack.blockers.join(" ")).toContain("Public demo-video URL");
+    expect(pack.blockers.join(" ")).toContain("Hosted product footage source");
+    expect(pack.releaseProofChecklist.find((item) => item.id === "deployed-gemini-api-proof")).toMatchObject({
+      status: "blocked",
+      requiredBeforePublicUpload: true
+    });
+    expect(pack.releaseProofChecklist.find((item) => item.id === "business-evidence-boundary")).toMatchObject({
+      status: "warning",
+      requiredBeforePublicUpload: false
+    });
     expect(pack.recordingChecklist.join(" ")).toContain("English narration");
+    expect(pack.narrationGuardrails.join(" ")).toContain("do not imply certification");
 
     const violations = scanClaimText({
       artifact: "demo-video-pack",
