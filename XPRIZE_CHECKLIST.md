@@ -147,7 +147,7 @@
 - [x] Local MVP captures pilot proof and consent status.
 - [x] Local MVP separates pilot data-access consent from testimonial consent.
 - [x] Local MVP exposes a financial evidence ledger that labels revenue, invoices, costs, CAC, users, testimonials, and related-party review as mock-only, missing, private-on-request, or verified.
-- [x] Local repo includes `npm run verify:business-evidence -- --write-template /secure/local/business-evidence-template.json` to create a private business-evidence template and fail strict mode until May-August revenue, invoice/payment proof, cost/CAC proof, active-user logs, related-party review, and testimonial consent boundaries are verified.
+- [x] Local repo includes `npm run verify:business-evidence -- --write-template /secure/local/business-evidence-template.json` to create a private business-evidence template and fail strict mode until May-August revenue, invoice/payment proof, cost/CAC proof, active-user logs, related-party review, and testimonial consent boundaries are verified; testimonial-consent artifact slots are listed as conditional private evidence, and testimonial-consent flags stay blocked until explicit consent proof exists.
 - [x] Local MVP exposes a private Evidence Vault for invoices, user logs, cost/CAC proof, consent records, Gemini/GCP/Workspace logs, hosted URL, repository URL, demo video, reviewed trust policies, redaction state, owner routing, and checksums.
 - [x] Local MVP exposes an Evidence Intake Queue that prioritizes paid-pilot proof artifacts, accepted proof types, redaction checks, rejection triggers, and safe registration payloads.
 - [x] Local MVP keeps seeded financial proof blocked from production submission evidence.

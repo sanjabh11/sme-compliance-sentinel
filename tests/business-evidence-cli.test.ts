@@ -21,6 +21,8 @@ type BusinessEvidenceReport = {
   }>;
   blockers: string[];
   requiredPrivateArtifacts: string[];
+  conditionalPrivateArtifacts: Array<{ bucket: string; requiredWhen: string }>;
+  privateArtifactInventory: string[];
   stopConditions: string[];
   sourceUrls: string[];
   disclaimer: string;
@@ -50,6 +52,11 @@ describe("business evidence CLI verifier", () => {
     expect(report.requiredPrivateArtifacts).toEqual(
       expect.arrayContaining(["invoices", "paymentRecords", "activeUserLogs", "costRecords", "cacReceipts", "relatedPartyReview"])
     );
+    expect(report.requiredPrivateArtifacts).not.toContain("testimonialConsents");
+    expect(report.conditionalPrivateArtifacts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ bucket: "testimonialConsents" })])
+    );
+    expect(report.privateArtifactInventory).toEqual(expect.arrayContaining(["testimonialConsents"]));
     expect(report.stopConditions.join(" ")).toContain("does not create customers");
     expect(report.disclaimer).toContain("not financial advice");
     expect(report.sourceUrls).toEqual(
@@ -65,7 +72,10 @@ describe("business evidence CLI verifier", () => {
     try {
       const report = runVerifier(baseEnv, ["--write-template", templatePath, "--out", outPath]);
 
-      expect(readFileSync(templatePath, "utf8")).toContain('"schema": "sme-sentinel-business-evidence-v1"');
+      const template = JSON.parse(readFileSync(templatePath, "utf8")) as { artifacts: Record<string, unknown> };
+
+      expect(template).toMatchObject({ schema: "sme-sentinel-business-evidence-v1" });
+      expect(Object.keys(template.artifacts)).toEqual(expect.arrayContaining(["testimonialConsents"]));
       expect(readFileSync(outPath, "utf8")).toContain('"overallStatus": "blocked"');
       expect(report.overallStatus).toBe("blocked");
       expect(() => runVerifier(baseEnv, ["--strict"])).toThrow();
@@ -86,7 +96,8 @@ describe("business evidence CLI verifier", () => {
       expect(report.overallStatus).toBe("ready");
       expect(report.summary.totalRevenueUsd).toBe(398);
       expect(report.summary.activeUsers).toBe(4);
-      expect(report.summary.artifactBucketsReady).toBe(6);
+      expect(report.summary.artifactBucketsReady).toBe(7);
+      expect(report.requiredPrivateArtifacts).toContain("testimonialConsents");
       expect(checksById["arms-length-revenue"]).toMatchObject({ status: "ready" });
       expect(checksById["monthly-revenue-breakdown"]).toMatchObject({ status: "ready" });
       expect(checksById["costs-and-cac"]).toMatchObject({ status: "ready" });
@@ -117,6 +128,64 @@ describe("business evidence CLI verifier", () => {
       expect(report.checks.find((check) => check.id === "business-evidence-flag-boundary")).toMatchObject({
         status: "blocked"
       });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks testimonial evidence flags when no consented testimonial proof exists", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-business-testimonial-flag-"));
+    const evidencePath = join(tempDir, "business-evidence.json");
+    const evidence = readyEvidence();
+
+    evidence.testimonials = [];
+    evidence.artifacts.testimonialConsents = [];
+
+    try {
+      writeFileSync(evidencePath, JSON.stringify(evidence, null, 2), "utf8");
+      const report = runVerifier(
+        {
+          ...baseEnv,
+          XPRIZE_TESTIMONIAL_CONSENT_CONFIRMED: "true"
+        },
+        ["--evidence", evidencePath]
+      );
+
+      expect(report.overallStatus).toBe("blocked");
+      expect(report.checks.find((check) => check.id === "business-evidence-flag-boundary")).toMatchObject({
+        status: "ready"
+      });
+      expect(report.checks.find((check) => check.id === "business-evidence-flag-dependencies")).toMatchObject({
+        status: "blocked",
+        evidence: expect.stringContaining("XPRIZE_TESTIMONIAL_CONSENT_CONFIRMED")
+      });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("passes without testimonial consent proof when no testimonials are claimed", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-business-no-testimonials-"));
+    const evidencePath = join(tempDir, "business-evidence.json");
+    const evidence = readyEvidence();
+
+    evidence.testimonials = [];
+    evidence.artifacts.testimonialConsents = [];
+
+    try {
+      writeFileSync(evidencePath, JSON.stringify(evidence, null, 2), "utf8");
+      const report = runVerifier(baseEnv, ["--evidence", evidencePath]);
+      const checksById = Object.fromEntries(report.checks.map((check) => [check.id, check]));
+
+      expect(report.overallStatus).toBe("needs-review");
+      expect(report.summary.artifactBucketsReady).toBe(6);
+      expect(report.requiredPrivateArtifacts).not.toContain("testimonialConsents");
+      expect(report.privateArtifactInventory).toContain("testimonialConsents");
+      expect(checksById["testimonial-consent"]).toMatchObject({
+        status: "needs-review",
+        requiredBeforeSubmit: false
+      });
+      expect(checksById["business-evidence-flag-dependencies"]).toMatchObject({ status: "ready" });
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

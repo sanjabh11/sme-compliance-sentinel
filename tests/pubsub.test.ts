@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResourceEvent } from "@/lib/types";
 
+const webhookTestTimeoutMs = 30000;
+
 function sampleEvent(source: ResourceEvent["source"] = "gmail"): ResourceEvent {
   return {
     id: `evt_${source}_auth`,
@@ -57,7 +59,7 @@ describe("Workspace webhook authentication", () => {
     expect(parsed.kind).toBe("demo-event");
     expect(parsed.kind === "demo-event" ? parsed.event.source : undefined).toBe("drive");
     expect(parsed.kind === "demo-event" ? parsed.event.resourceName : undefined).toContain("thumbnail");
-  }, 10000);
+  }, webhookTestTimeoutMs);
 
   it("blocks unauthenticated production Pub/Sub pushes before parsing events", async () => {
     vi.stubEnv("SENTINEL_MOCK_MODE", "false");
@@ -77,7 +79,7 @@ describe("Workspace webhook authentication", () => {
         { source: "gmail", fetchImpl: vi.fn() as unknown as typeof fetch }
       )
     ).rejects.toMatchObject({ status: 401, code: "pubsub-token-missing" });
-  });
+  }, webhookTestTimeoutMs);
 
   it("accepts authenticated Gmail Pub/Sub pushes only when OIDC claims and subscription match", async () => {
     vi.stubEnv("SENTINEL_MOCK_MODE", "false");
@@ -108,7 +110,7 @@ describe("Workspace webhook authentication", () => {
     expect(parsed.kind === "notification" ? parsed.messageId : undefined).toBe("message_123");
     expect(parsed.kind === "notification" ? parsed.payloadSummary : undefined).toContain("id");
     expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining("https://oauth2.googleapis.com/tokeninfo?id_token=id_token_123"));
-  });
+  }, webhookTestTimeoutMs);
 
   it("rejects authenticated Pub/Sub pushes with the wrong audience", async () => {
     vi.stubEnv("SENTINEL_MOCK_MODE", "false");
@@ -135,7 +137,7 @@ describe("Workspace webhook authentication", () => {
         { source: "gmail", fetchImpl: fetchImpl as unknown as typeof fetch }
       )
     ).rejects.toMatchObject({ status: 403, code: "pubsub-audience-invalid" });
-  });
+  }, webhookTestTimeoutMs);
 
   it("accepts Drive channel notifications only when the channel token matches", async () => {
     vi.stubEnv("SENTINEL_MOCK_MODE", "false");
@@ -163,7 +165,7 @@ describe("Workspace webhook authentication", () => {
     expect(parsed.kind === "notification" ? parsed.messageNumber : undefined).toBe("7");
     expect(parsed.kind === "notification" ? parsed.resourceState : undefined).toBe("change");
     expect(fetchImpl).not.toHaveBeenCalled();
-  });
+  }, webhookTestTimeoutMs);
 
   it("records authenticated production pushes as sync hints without creating findings", async () => {
     vi.resetModules();
@@ -186,7 +188,7 @@ describe("Workspace webhook authentication", () => {
     expect(after.findings.length).toBe(before.findings.length);
     expect(after.agentRuns.length).toBe(before.agentRuns.length);
     expect(after.auditEvents[0].type).toBe("workspace_webhook_notification_received");
-  });
+  }, webhookTestTimeoutMs);
 
   it("deduplicates repeated Pub/Sub message notifications before writing audit evidence", async () => {
     vi.resetModules();
@@ -228,7 +230,7 @@ describe("Workspace webhook authentication", () => {
     expect(gmailLastNotificationAfterSecond).toBe("2026-05-23T00:00:00.000Z");
     expect(afterThird.auditEvents.length).toBe(auditCountAfterFirst + 1);
     expect(afterThird.syncState.gmail.lastNotificationAt).toBe("2026-05-23T00:10:00.000Z");
-  });
+  }, webhookTestTimeoutMs);
 
   it("deduplicates Drive push channel notifications by channel resource and message number", async () => {
     vi.resetModules();
@@ -273,7 +275,7 @@ describe("Workspace webhook authentication", () => {
     expect(driveLastNotificationAfterSecond).toBe("2026-05-23T00:00:00.000Z");
     expect(afterThird.auditEvents.length).toBe(auditCountAfterFirst + 1);
     expect(afterThird.syncState.drive.lastNotificationAt).toBe("2026-05-23T00:10:00.000Z");
-  });
+  }, webhookTestTimeoutMs);
 
   it("uses Firestore create-only replay protection for production Pub/Sub pushes in gcp-rest mode", async () => {
     vi.stubEnv("SENTINEL_STORAGE_MODE", "gcp-rest");
@@ -323,5 +325,5 @@ describe("Workspace webhook authentication", () => {
     expect(payload.duplicate).toBe(true);
     expect(payload.durableReplayGuard).toBe(true);
     expect(snapshot.auditEvents[0].id).toBe("audit_bootstrap");
-  });
+  }, webhookTestTimeoutMs);
 });

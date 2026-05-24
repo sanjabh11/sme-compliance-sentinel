@@ -6,7 +6,7 @@ import { dirname, resolve } from "node:path";
 
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
 const months = ["May", "June", "July", "August"];
-const requiredArtifactBuckets = [
+const coreBusinessArtifactBuckets = [
   "invoices",
   "paymentRecords",
   "activeUserLogs",
@@ -14,6 +14,8 @@ const requiredArtifactBuckets = [
   "cacReceipts",
   "relatedPartyReview"
 ];
+const conditionalBusinessArtifactBuckets = ["testimonialConsents"];
+const privateArtifactBuckets = [...coreBusinessArtifactBuckets, ...conditionalBusinessArtifactBuckets];
 const prohibitedCliPatterns = [
   /(^|-)token($|=)/iu,
   /(^|-)password($|=)/iu,
@@ -117,7 +119,12 @@ function buildReport(evidencePath) {
     checks,
     blockers,
     nextActions: buildNextActions(checks, blockers),
-    requiredPrivateArtifacts: requiredArtifactBuckets,
+    requiredPrivateArtifacts: evidence ? requiredArtifactBucketsForEvidence(evidence) : coreBusinessArtifactBuckets,
+    conditionalPrivateArtifacts: conditionalBusinessArtifactBuckets.map((bucket) => ({
+      bucket,
+      requiredWhen: bucket === "testimonialConsents" ? "Testimonials or customer quotes are included in the judge packet." : "Condition applies."
+    })),
+    privateArtifactInventory: privateArtifactBuckets,
     stopConditions: [
       "This verifier does not create customers, revenue, invoices, payments, users, testimonials, or cost proof.",
       "Do not set revenue, cost, CAC, real-user, testimonial, related-party, or business-model flags until private evidence exists.",
@@ -146,29 +153,15 @@ function buildChecks(evidence, evidencePath) {
     ];
   }
 
-  const revenueByMonth = evidence.revenueByMonth ?? {};
-  const monthValues = months.map((month) => Number(revenueByMonth[month]));
-  const monthValuesValid = monthValues.every((value) => Number.isFinite(value) && value >= 0);
-  const totalRevenueUsd = Number(evidence.totalRevenueUsd);
-  const totalRevenueFromMonths = monthValues.reduce((total, value) => total + (Number.isFinite(value) ? value : 0), 0);
-  const invoiceProof = verifiedArtifacts(evidence, "invoices");
-  const paymentProof = verifiedArtifacts(evidence, "paymentRecords");
-  const activeUserProof = verifiedArtifacts(evidence, "activeUserLogs");
-  const costProof = verifiedArtifacts(evidence, "costRecords");
-  const cacProof = verifiedArtifacts(evidence, "cacReceipts");
-  const relatedPartyProof = verifiedArtifacts(evidence, "relatedPartyReview");
-  const testimonialProof = verifiedArtifacts(evidence, "testimonialConsents");
-  const testimonials = Array.isArray(evidence.testimonials) ? evidence.testimonials : [];
-  const testimonialConsentOk = testimonials.length === 0 || testimonials.every((item) => item?.consentConfirmed === true);
-  const secretFinding = secretTextPatterns.some((pattern) => pattern.test(JSON.stringify(evidence)));
+  const analysis = analyzeBusinessEvidence(evidence);
 
   return [
     check({
       id: "business-evidence-file",
       label: "Private business evidence file",
-      status: secretFinding ? "blocked" : "ready",
-      evidence: secretFinding ? "Secret-shaped text was detected in the private evidence JSON." : `Loaded ${evidencePath}.`,
-      fix: secretFinding
+      status: analysis.secretFinding ? "blocked" : "ready",
+      evidence: analysis.secretFinding ? "Secret-shaped text was detected in the private evidence JSON." : `Loaded ${evidencePath}.`,
+      fix: analysis.secretFinding
         ? "Remove raw credentials, tokens, and unredacted secrets from the evidence JSON before using it as a judge packet source."
         : "No action.",
       ownerRole: "founder",
@@ -178,15 +171,8 @@ function buildChecks(evidence, evidencePath) {
     check({
       id: "arms-length-revenue",
       label: "Arms-length revenue and payment proof",
-      status:
-        totalRevenueUsd > 0 &&
-        Number(evidence.armsLengthCustomerCount) > 0 &&
-        Number(evidence.paidPilotCount) > 0 &&
-        invoiceProof.ready &&
-        paymentProof.ready
-          ? "ready"
-          : "missing",
-      evidence: `Revenue $${numberOrZero(totalRevenueUsd)}; arms-length customers ${numberOrZero(evidence.armsLengthCustomerCount)}; paid pilots ${numberOrZero(evidence.paidPilotCount)}; invoice proof ${invoiceProof.readyCount}; payment proof ${paymentProof.readyCount}.`,
+      status: analysis.readiness.armsLengthRevenue ? "ready" : "missing",
+      evidence: `Revenue $${numberOrZero(analysis.totalRevenueUsd)}; arms-length customers ${numberOrZero(evidence.armsLengthCustomerCount)}; paid pilots ${numberOrZero(evidence.paidPilotCount)}; invoice proof ${analysis.invoiceProof.readyCount}; payment proof ${analysis.paymentProof.readyCount}.`,
       fix: "Attach arms-length invoice and payment proof before counting revenue.",
       ownerRole: "founder",
       requiredBeforeSubmit: true,
@@ -195,11 +181,8 @@ function buildChecks(evidence, evidencePath) {
     check({
       id: "monthly-revenue-breakdown",
       label: "May-August revenue by month",
-      status:
-        monthValuesValid && totalRevenueUsd === totalRevenueFromMonths && totalRevenueUsd > 0
-          ? "ready"
-          : "missing",
-      evidence: `Monthly values valid ${monthValuesValid ? "yes" : "no"}; monthly sum $${totalRevenueFromMonths}; total revenue $${numberOrZero(totalRevenueUsd)}.`,
+      status: analysis.readiness.monthlyRevenue ? "ready" : "missing",
+      evidence: `Monthly values valid ${analysis.monthValuesValid ? "yes" : "no"}; monthly sum $${analysis.totalRevenueFromMonths}; total revenue $${numberOrZero(analysis.totalRevenueUsd)}.`,
       fix: "Fill May, June, July, and August 2026 revenue values and make the month sum match total revenue.",
       ownerRole: "founder",
       requiredBeforeSubmit: true,
@@ -208,17 +191,8 @@ function buildChecks(evidence, evidencePath) {
     check({
       id: "costs-and-cac",
       label: "Costs and customer acquisition spend",
-      status:
-        Number.isFinite(Number(evidence.totalCostsUsd)) &&
-        Number(evidence.totalCostsUsd) >= 0 &&
-        Number.isFinite(Number(evidence.customerAcquisitionSpendUsd)) &&
-        Number(evidence.customerAcquisitionSpendUsd) >= 0 &&
-        Boolean(String(evidence.costDescription ?? "").trim()) &&
-        costProof.ready &&
-        cacProof.ready
-          ? "ready"
-          : "missing",
-      evidence: `Costs $${numberOrZero(evidence.totalCostsUsd)}; CAC $${numberOrZero(evidence.customerAcquisitionSpendUsd)}; cost proof ${costProof.readyCount}; CAC proof ${cacProof.readyCount}.`,
+      status: analysis.readiness.totalCosts && analysis.readiness.cacSpend ? "ready" : "missing",
+      evidence: `Costs $${numberOrZero(evidence.totalCostsUsd)}; CAC $${numberOrZero(evidence.customerAcquisitionSpendUsd)}; cost proof ${analysis.costProof.readyCount}; CAC proof ${analysis.cacProof.readyCount}.`,
       fix: "Attach hosting/AI/API/contractor cost proof and CAC proof or zero-spend attestation.",
       ownerRole: "founder",
       requiredBeforeSubmit: true,
@@ -227,8 +201,8 @@ function buildChecks(evidence, evidencePath) {
     check({
       id: "real-user-evidence",
       label: "Real user evidence and breakdown",
-      status: Number(evidence.activeUsers) > 0 && Array.isArray(evidence.userBreakdown) && evidence.userBreakdown.length > 0 && activeUserProof.ready ? "ready" : "missing",
-      evidence: `Active users ${numberOrZero(evidence.activeUsers)}; user segments ${Array.isArray(evidence.userBreakdown) ? evidence.userBreakdown.length : 0}; user-log proof ${activeUserProof.readyCount}.`,
+      status: analysis.readiness.realUsers ? "ready" : "missing",
+      evidence: `Active users ${numberOrZero(evidence.activeUsers)}; user segments ${Array.isArray(evidence.userBreakdown) ? evidence.userBreakdown.length : 0}; user-log proof ${analysis.activeUserProof.readyCount}.`,
       fix: "Attach production analytics, Workspace install logs, or other active-user proof with a high-level user breakdown.",
       ownerRole: "sales",
       requiredBeforeSubmit: true,
@@ -238,30 +212,25 @@ function buildChecks(evidence, evidencePath) {
       id: "testimonial-consent",
       label: "Testimonials and feedback consent",
       status:
-        testimonials.length > 0 && testimonialConsentOk && testimonialProof.ready
+        analysis.testimonials.length > 0 && analysis.readiness.testimonialClaim
           ? "ready"
-          : testimonials.length === 0
+          : analysis.testimonials.length === 0
             ? "needs-review"
             : "blocked",
-      evidence: `Testimonials ${testimonials.length}; consent clean ${testimonialConsentOk ? "yes" : "no"}; consent proof ${testimonialProof.readyCount}.`,
+      evidence: `Testimonials ${analysis.testimonials.length}; consent clean ${analysis.testimonialConsentOk ? "yes" : "no"}; consent proof ${analysis.testimonialProof.readyCount}.`,
       fix:
-        testimonials.length === 0
+        analysis.testimonials.length === 0
           ? "If customer feedback exists, add only consented and redacted testimonials; otherwise record why no testimonials are included."
           : "Remove unconsented quotes or attach explicit consent proof before sharing testimonials.",
       ownerRole: "sales",
-      requiredBeforeSubmit: testimonials.length > 0,
+      requiredBeforeSubmit: analysis.testimonials.length > 0,
       privateHandling: "Never expose customer names, quotes, or contact details without explicit consent."
     }),
     check({
       id: "related-party-revenue",
       label: "Related-party revenue separation",
-      status:
-        Number.isFinite(Number(evidence.relatedPartyRevenueUsd)) &&
-        String(evidence.relatedPartyNotes ?? "").trim() &&
-        relatedPartyProof.ready
-          ? "ready"
-          : "missing",
-      evidence: `Related-party revenue $${numberOrZero(evidence.relatedPartyRevenueUsd)}; review proof ${relatedPartyProof.readyCount}.`,
+      status: analysis.readiness.relatedParty ? "ready" : "missing",
+      evidence: `Related-party revenue $${numberOrZero(evidence.relatedPartyRevenueUsd)}; review proof ${analysis.relatedPartyProof.readyCount}.`,
       fix: "Record related-party revenue separately, even if zero, and attach relationship review proof.",
       ownerRole: "founder",
       requiredBeforeSubmit: true,
@@ -272,7 +241,9 @@ function buildChecks(evidence, evidencePath) {
 }
 
 function flagConsistencyChecks(evidence) {
-  const evidenceReady = evidence ? hasMinimumBusinessEvidence(evidence) : false;
+  const analysis = analyzeBusinessEvidence(evidence);
+  const evidenceReady = analysis.readiness.minimumBusinessEvidence;
+  const dependencyGaps = evidenceFlagDependencyGaps(analysis);
 
   return [
     check({
@@ -286,25 +257,161 @@ function flagConsistencyChecks(evidence) {
       ownerRole: "founder",
       requiredBeforeSubmit: true,
       privateHandling: "Flags are deployment claims; the private evidence file and artifacts are the proof."
+    }),
+    check({
+      id: "business-evidence-flag-dependencies",
+      label: "Business evidence flag dependency review",
+      status: dependencyGaps.length > 0 ? "blocked" : "ready",
+      evidence:
+        dependencyGaps.length > 0
+          ? `Claimed flags with missing dependencies: ${dependencyGaps.map((gap) => gap.name).join(", ")}.`
+          : "No claimed business-evidence flag is missing its specific private proof dependency.",
+      fix:
+        dependencyGaps.length > 0
+          ? unique(dependencyGaps.map((gap) => gap.fix)).join(" ")
+          : "No action.",
+      ownerRole: "founder",
+      requiredBeforeSubmit: dependencyGaps.length > 0,
+      privateHandling: "Review each flag independently; do not let a broad business-model claim substitute for consent, cost, user, or revenue proof."
     })
   ];
 }
 
-function hasMinimumBusinessEvidence(evidence) {
-  const revenueByMonth = evidence.revenueByMonth ?? {};
+function analyzeBusinessEvidence(evidence) {
+  const revenueByMonth = evidence?.revenueByMonth ?? {};
   const monthValues = months.map((month) => Number(revenueByMonth[month]));
-  const totalRevenueUsd = Number(evidence.totalRevenueUsd);
-
-  return (
+  const totalRevenueUsd = Number(evidence?.totalRevenueUsd);
+  const monthValuesValid = monthValues.every((value) => Number.isFinite(value) && value >= 0);
+  const totalRevenueFromMonths = monthValues.reduce((total, value) => total + (Number.isFinite(value) ? value : 0), 0);
+  const invoiceProof = verifiedArtifacts(evidence, "invoices");
+  const paymentProof = verifiedArtifacts(evidence, "paymentRecords");
+  const activeUserProof = verifiedArtifacts(evidence, "activeUserLogs");
+  const costProof = verifiedArtifacts(evidence, "costRecords");
+  const cacProof = verifiedArtifacts(evidence, "cacReceipts");
+  const relatedPartyProof = verifiedArtifacts(evidence, "relatedPartyReview");
+  const testimonialProof = verifiedArtifacts(evidence, "testimonialConsents");
+  const testimonials = Array.isArray(evidence?.testimonials) ? evidence.testimonials : [];
+  const testimonialConsentOk = testimonials.length === 0 || testimonials.every((item) => item?.consentConfirmed === true);
+  const requiredBuckets = requiredArtifactBucketsForEvidence(evidence);
+  const secretFinding = evidence ? secretTextPatterns.some((pattern) => pattern.test(JSON.stringify(evidence))) : false;
+  const armsLengthRevenue =
     totalRevenueUsd > 0 &&
-    monthValues.every((value) => Number.isFinite(value) && value >= 0) &&
-    monthValues.reduce((total, value) => total + value, 0) === totalRevenueUsd &&
-    Number(evidence.armsLengthCustomerCount) > 0 &&
-    Number(evidence.paidPilotCount) > 0 &&
-    Number(evidence.activeUsers) > 0 &&
-    Boolean(String(evidence.relatedPartyNotes ?? "").trim()) &&
-    requiredArtifactBuckets.every((bucket) => verifiedArtifacts(evidence, bucket).ready)
-  );
+    Number(evidence?.armsLengthCustomerCount) > 0 &&
+    Number(evidence?.paidPilotCount) > 0 &&
+    invoiceProof.ready &&
+    paymentProof.ready;
+  const monthlyRevenue = monthValuesValid && totalRevenueUsd === totalRevenueFromMonths && totalRevenueUsd > 0;
+  const totalCosts =
+    Number.isFinite(Number(evidence?.totalCostsUsd)) &&
+    Number(evidence?.totalCostsUsd) >= 0 &&
+    Boolean(String(evidence?.costDescription ?? "").trim()) &&
+    costProof.ready;
+  const cacSpend =
+    Number.isFinite(Number(evidence?.customerAcquisitionSpendUsd)) &&
+    Number(evidence?.customerAcquisitionSpendUsd) >= 0 &&
+    cacProof.ready;
+  const realUsers =
+    Number(evidence?.activeUsers) > 0 &&
+    Array.isArray(evidence?.userBreakdown) &&
+    evidence.userBreakdown.length > 0 &&
+    activeUserProof.ready;
+  const testimonialClaim = testimonials.length > 0 && testimonialConsentOk && testimonialProof.ready;
+  const testimonialBoundary = testimonials.length === 0 || testimonialClaim;
+  const relatedParty =
+    Number.isFinite(Number(evidence?.relatedPartyRevenueUsd)) &&
+    Boolean(String(evidence?.relatedPartyNotes ?? "").trim()) &&
+    relatedPartyProof.ready;
+  const artifactBucketsReady = requiredBuckets.every((bucket) => verifiedArtifacts(evidence, bucket).ready);
+  const minimumBusinessEvidence =
+    armsLengthRevenue &&
+    monthlyRevenue &&
+    totalCosts &&
+    cacSpend &&
+    realUsers &&
+    relatedParty &&
+    testimonialBoundary &&
+    artifactBucketsReady;
+
+  return {
+    totalRevenueUsd,
+    totalRevenueFromMonths,
+    monthValuesValid,
+    invoiceProof,
+    paymentProof,
+    activeUserProof,
+    costProof,
+    cacProof,
+    relatedPartyProof,
+    testimonialProof,
+    testimonials,
+    testimonialConsentOk,
+    requiredBuckets,
+    secretFinding,
+    readiness: {
+      armsLengthRevenue,
+      monthlyRevenue,
+      totalCosts,
+      cacSpend,
+      realUsers,
+      testimonialBoundary,
+      testimonialClaim,
+      relatedParty,
+      artifactBucketsReady,
+      minimumBusinessEvidence
+    }
+  };
+}
+
+function evidenceFlagDependencyGaps(analysis) {
+  const rules = [
+    {
+      name: "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
+      ready: analysis.readiness.armsLengthRevenue,
+      fix: "Attach arms-length invoice and payment proof before setting total-revenue evidence."
+    },
+    {
+      name: "XPRIZE_REVENUE_BY_MONTH_EVIDENCE_CONFIGURED",
+      ready: analysis.readiness.monthlyRevenue,
+      fix: "Fill a matching May-August revenue breakdown before setting month-by-month revenue evidence."
+    },
+    {
+      name: "XPRIZE_TOTAL_COSTS_EVIDENCE_CONFIGURED",
+      ready: analysis.readiness.totalCosts,
+      fix: "Attach cost records and cost description before setting total-cost evidence."
+    },
+    {
+      name: "XPRIZE_CAC_SPEND_EVIDENCE_CONFIGURED",
+      ready: analysis.readiness.cacSpend,
+      fix: "Attach CAC receipts or a zero-spend attestation before setting CAC evidence."
+    },
+    {
+      name: "XPRIZE_REAL_USER_EVIDENCE_CONFIGURED",
+      ready: analysis.readiness.realUsers,
+      fix: "Attach active-user logs and user breakdown before setting real-user evidence."
+    },
+    {
+      name: "XPRIZE_TESTIMONIAL_CONSENT_CONFIRMED",
+      ready: analysis.readiness.testimonialClaim,
+      fix: "Attach explicit testimonial consent proof before setting testimonial-consent evidence."
+    },
+    {
+      name: "XPRIZE_RELATED_PARTY_REVENUE_REVIEWED",
+      ready: analysis.readiness.relatedParty,
+      fix: "Attach related-party review proof before setting related-party evidence."
+    },
+    {
+      name: "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED",
+      ready: analysis.readiness.minimumBusinessEvidence,
+      fix: "Keep the business-model flag false until revenue, cost, CAC, user, related-party, and testimonial boundaries are all proven."
+    }
+  ];
+
+  return rules.filter((rule) => process.env[rule.name] === "true" && !rule.ready);
+}
+
+function requiredArtifactBucketsForEvidence(evidence) {
+  const testimonials = Array.isArray(evidence?.testimonials) ? evidence.testimonials : [];
+  return testimonials.length > 0 ? privateArtifactBuckets : coreBusinessArtifactBuckets;
 }
 
 function summarizeEvidence(evidence) {
@@ -329,7 +436,8 @@ function summarizeEvidence(evidence) {
     paidPilotCount: numberOrZero(evidence.paidPilotCount),
     armsLengthCustomerCount: numberOrZero(evidence.armsLengthCustomerCount),
     relatedPartyRevenueUsd: numberOrZero(evidence.relatedPartyRevenueUsd),
-    artifactBucketsReady: requiredArtifactBuckets.filter((bucket) => verifiedArtifacts(evidence, bucket).ready).length
+    artifactBucketsReady: requiredArtifactBucketsForEvidence(evidence).filter((bucket) => verifiedArtifacts(evidence, bucket).ready).length,
+    artifactBucketsTracked: privateArtifactBuckets.length
   };
 }
 
@@ -381,7 +489,7 @@ function buildTemplate() {
     relatedPartyNotes: "",
     testimonials: [{ customerAlias: "", quoteRedacted: "", consentConfirmed: false }],
     artifacts: Object.fromEntries(
-      [...requiredArtifactBuckets, "testimonialConsents"].map((bucket) => [
+      privateArtifactBuckets.map((bucket) => [
         bucket,
         [{ id: "", status: "missing", redacted: false, sha256: "", privatePath: "", owner: "", reviewedAt: "" }]
       ])
@@ -413,6 +521,10 @@ function buildNextActions(checks, blockers) {
 function numberOrZero(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function unique(values) {
+  return Array.from(new Set(values));
 }
 
 function check(input) {

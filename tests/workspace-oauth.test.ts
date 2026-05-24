@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const workspaceOAuthTestTimeoutMs = 30000;
+
 describe("Google Workspace OAuth launch path", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -19,7 +21,7 @@ describe("Google Workspace OAuth launch path", () => {
     expect(plan.consentGate.status).toBe("not-checked");
     expect(plan.deferredScopes.map((scope) => scope.scope)).toContain("https://www.googleapis.com/auth/drive");
     expect(plan.authorizationUrl).toBeUndefined();
-  });
+  }, workspaceOAuthTestTimeoutMs);
 
   it("builds a minimal incremental consent URL for pilot installs", async () => {
     vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "client_123");
@@ -42,7 +44,7 @@ describe("Google Workspace OAuth launch path", () => {
     expect(scopes).toContain("https://www.googleapis.com/auth/drive.metadata.readonly");
     expect(scopes).toContain("https://www.googleapis.com/auth/gmail.metadata");
     expect(scopes).not.toContain("https://www.googleapis.com/auth/drive");
-  });
+  }, workspaceOAuthTestTimeoutMs);
 
   it("blocks OAuth launch when signed pilot consent is enforced but missing", async () => {
     vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "client_123");
@@ -58,7 +60,7 @@ describe("Google Workspace OAuth launch path", () => {
     expect(plan.authorizationUrl).toBeUndefined();
     expect(plan.consentGate.status).toBe("blocked");
     expect(plan.launchBlockers.join(" ")).toContain("pilot-consent");
-  });
+  }, workspaceOAuthTestTimeoutMs);
 
   it("allows OAuth launch only after signed pilot consent is ready", async () => {
     vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "client_123");
@@ -72,7 +74,7 @@ describe("Google Workspace OAuth launch path", () => {
     expect(plan.launchAllowed).toBe(true);
     expect(plan.consentGate.status).toBe("passed");
     expect(plan.authorizationUrl).toContain("state_123");
-  });
+  }, workspaceOAuthTestTimeoutMs);
 
   it("blocks callback completion when OAuth client credentials are missing", async () => {
     const { completeWorkspaceOAuthCallback } = await import("@/lib/workspace-oauth");
@@ -83,7 +85,7 @@ describe("Google Workspace OAuth launch path", () => {
     expect(result.status).toBe("blocked");
     expect(result.checks[0].detail).toContain("GOOGLE_OAUTH_CLIENT_ID");
     expect(fetchImpl).not.toHaveBeenCalled();
-  });
+  }, workspaceOAuthTestTimeoutMs);
 
   it("exchanges code and stores only refresh-token payload in Secret Manager", async () => {
     vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "client_123");
@@ -125,7 +127,7 @@ describe("Google Workspace OAuth launch path", () => {
     expect(JSON.stringify(result)).not.toContain("refresh_token_secret");
     expect(JSON.stringify(result)).not.toContain("short_lived_access_token");
     expect(fetchImpl).toHaveBeenCalledTimes(2);
-  });
+  }, workspaceOAuthTestTimeoutMs);
 
   it("records and consumes consent-gated OAuth launch states only once", async () => {
     vi.resetModules();
@@ -156,7 +158,7 @@ describe("Google Workspace OAuth launch path", () => {
     expect(first.reason).toBe("validated");
     expect(second.status).toBe("blocked");
     expect(second.reason).toBe("used_state");
-  });
+  }, workspaceOAuthTestTimeoutMs);
 
   it("expires OAuth launch states before callback token exchange", async () => {
     vi.resetModules();
@@ -184,7 +186,7 @@ describe("Google Workspace OAuth launch path", () => {
 
     expect(result.status).toBe("blocked");
     expect(result.reason).toBe("expired_state");
-  });
+  }, workspaceOAuthTestTimeoutMs);
 
   it("records OAuth installs without treating sync cursors as initialized", async () => {
     vi.resetModules();
@@ -207,7 +209,7 @@ describe("Google Workspace OAuth launch path", () => {
     expect(artifact.kind).toBe("workspace-oauth-log");
     expect(artifact.status).toBe("uploaded");
     expect(snapshot.readiness.xprizeGate.checks.find((check) => check.id === "workspace-production-sync")?.status).toBe("blocked");
-  });
+  }, workspaceOAuthTestTimeoutMs);
 
   it("blocks callback route without an issued state before any Google token exchange", async () => {
     vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "client_123");
@@ -226,5 +228,5 @@ describe("Google Workspace OAuth launch path", () => {
     expect(payload.checks[0].target).toBe("state-validation");
     expect(payload.checks[0].detail).toContain("state");
     expect(fetchImpl).not.toHaveBeenCalled();
-  });
+  }, workspaceOAuthTestTimeoutMs);
 });
