@@ -75,7 +75,10 @@ describe("production provisioning pack", () => {
       ])
     );
     expect(pack.verificationSequence.find((command) => command.id === "write-release-render-values")?.command).toContain(
-      "npm run write:cloudrun-release-values"
+      "npm run prepare:cloudrun-render-handoff"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "write-release-render-values")?.expectedProof).toContain(
+      "cloudrun-render-handoff.json"
     );
     expect(pack.verificationSequence.find((command) => command.id === "write-release-render-values")?.expectedProof).toContain(
       "SENTINEL_RELEASE_ID"

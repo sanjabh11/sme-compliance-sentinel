@@ -31,6 +31,7 @@
     "write:cloudrun-release-values": "node scripts/render-cloudrun-manifest.mjs --write-release-values",
     "audit:cloudrun-values": "node scripts/audit-cloudrun-render-values.mjs",
     "verify:cloudrun-render-evidence": "node scripts/audit-cloudrun-render-values.mjs --verify-packet",
+    "prepare:cloudrun-render-handoff": "node scripts/prepare-cloudrun-render-handoff.mjs",
     "render:cloudrun-manifest": "node scripts/render-cloudrun-manifest.mjs",
     "prepare:cloudrun-dry-run": "node scripts/prepare-cloudrun-dry-run-packet.mjs",
     "verify:cloudrun-dry-run-packet": "node scripts/prepare-cloudrun-dry-run-packet.mjs --verify-packet",

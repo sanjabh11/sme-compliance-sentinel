@@ -14,7 +14,8 @@ const placeholderProductUrl = "https://YOUR-CLOUD-RUN-URL";
 const placeholderReleaseId = "RELEASE_ID";
 const placeholderPrivateBucket = "gs://PROJECT_ID-sentinel-private-evidence";
 const privateRenderValuesPath = "/secure/local/cloudrun-render-values.json";
-const writeReleaseCandidateValuesCommand = `npm run write:cloudrun-release-values -- ${privateRenderValuesPath}`;
+const prepareCloudRunRenderHandoffCommand =
+  `npm run prepare:cloudrun-render-handoff -- --values ${privateRenderValuesPath} --out-dir artifacts/deployment --strict`;
 const cloudRunTranscriptDir = "/secure/local/cloudrun/$SENTINEL_RELEASE_ID";
 const collectCloudRunDeploymentTranscriptCommand =
   `npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log ${cloudRunTranscriptDir}/cloudrun-dry-run.log --deploy-log ${cloudRunTranscriptDir}/cloudrun-deploy.log --describe-json ${cloudRunTranscriptDir}/cloudrun-describe.json --out-dir artifacts/deployment --strict`;
@@ -114,6 +115,7 @@ function buildRunbook(input: {
       ),
       requiredArtifactIds: [
         "cloudrun-release-values-json",
+        "cloudrun-render-handoff-json",
         "cloudrun-render-values-audit-json",
         "cloudrun-render-evidence-packet-json",
         "cloudrun-render-evidence-packet-verifier-json",
@@ -124,6 +126,7 @@ function buildRunbook(input: {
       ],
       proofFiles: proofFiles(
         "cloudrun-release-values-json",
+        "cloudrun-render-handoff-json",
         "cloudrun-render-values-audit-json",
         "cloudrun-render-evidence-packet-json",
         "cloudrun-render-evidence-packet-verifier-json",
@@ -262,7 +265,7 @@ function buildArtifactManifest(input: {
       label: "Release-prefilled private Cloud Run render values",
       ownerRole: "engineering",
       status: localVerifierStatus,
-      sourceCommand: writeReleaseCandidateValuesCommand,
+      sourceCommand: prepareCloudRunRenderHandoffCommand,
       privateStorePath: privateRenderValuesPath,
       evidenceVaultTarget: "operator-only Cloud Run input",
       redactionRules: [
@@ -270,7 +273,22 @@ function buildArtifactManifest(input: {
         "Treat project ids, billing ids, URLs, static egress IPs, and manual evidence flags as private operator context even though they are non-secret."
       ],
       nextAction:
-        "Use this Git-prefilled starter, fill remaining non-secret production values privately, and audit it before rendering."
+        "Use the handoff command to create this Git-prefilled starter, fill remaining non-secret production values privately, and audit it before rendering."
+    }),
+    artifact({
+      id: "cloudrun-render-handoff-json",
+      label: "Cloud Run render handoff packet",
+      ownerRole: "engineering",
+      status: localVerifierStatus,
+      sourceCommand: prepareCloudRunRenderHandoffCommand,
+      privateStorePath: `${basePath}/cloudrun-render-handoff.json`,
+      evidenceVaultTarget: "cloud-run-proof",
+      redactionRules: [
+        "This handoff is operator evidence only; redact valuesPath, project ids, URLs, and owner notes before judge sharing.",
+        "Do not treat the handoff as hosted Cloud Run, Gemini, revenue, user, or judge-access proof."
+      ],
+      nextAction:
+        "Use the handoff packet to assign private value owners, then rerun the strict audit after production values are filled."
     }),
     artifact({
       id: "cloudrun-render-values-audit-json",
@@ -591,12 +609,12 @@ function buildCommandSequence(input: {
     ),
     command(
       "cloudrun-release-values",
-      "Write release-prefilled private Cloud Run values",
-      writeReleaseCandidateValuesCommand,
+      "Prepare Cloud Run render handoff",
+      prepareCloudRunRenderHandoffCommand,
       false,
       false,
-      "cloudrun-release-values-json",
-      "Prefills release id, source commit, commit timestamp, branch, and repository URL from Git; keep the private values file out of source."
+      "cloudrun-render-handoff-json",
+      "Prefills release id, source commit, commit timestamp, branch, and repository URL from Git, writes the non-strict audit and owner packet, then verifies the packet before private production values are filled."
     ),
     command(
       "cloudrun-render-values-audit",

@@ -365,15 +365,16 @@ export async function writeRenderValuesTemplate(outputPath = defaultValuesTempla
 export function buildReleaseCandidateValues(options = {}) {
   const gitRunner = options.gitRunner ?? runGit;
   const headCommit = gitRunner(["rev-parse", "HEAD"]);
-  const sourceCommitAt = gitRunner(["log", "-1", "--format=%cI"]);
+  const rawSourceCommitAt = gitRunner(["log", "-1", "--format=%cI"]);
   const upstreamBranch = runOptionalGit(gitRunner, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
   const currentBranch = runOptionalGit(gitRunner, ["rev-parse", "--abbrev-ref", "HEAD"]);
   const remoteUrl = normalizeRepositoryUrl(runOptionalGit(gitRunner, ["remote", "get-url", "origin"]));
 
-  if (!/^[a-f0-9]{40}$/iu.test(headCommit) || !isIsoLikeTimestamp(sourceCommitAt)) {
+  if (!/^[a-f0-9]{40}$/iu.test(headCommit) || !isIsoLikeTimestamp(rawSourceCommitAt)) {
     throw new Error("Release candidate values require Git HEAD and commit timestamp metadata.");
   }
 
+  const sourceCommitAt = new Date(Date.parse(rawSourceCommitAt)).toISOString();
   const commitDate = sourceCommitAt.slice(0, 10).replace(/-/gu, "");
 
   return {

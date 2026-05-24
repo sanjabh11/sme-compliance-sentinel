@@ -275,10 +275,21 @@ describe("local XPRIZE submission verifier", () => {
     expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("remaining non-secret production values");
     expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("verify the render-evidence owner packet");
     expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("operator handoff");
-    expect(report.phasePlan.recommendedNextCodeControllableAction.commands.join(" ")).toContain("write:cloudrun-release-values");
+    expect(report.phasePlan.recommendedNextCodeControllableAction.commands.join(" ")).toContain(
+      "prepare:cloudrun-render-handoff"
+    );
     expect(report.phasePlan.recommendedNextCodeControllableAction.commands.join(" ")).toContain("audit:cloudrun-values");
     expect(report.phasePlan.recommendedNextCodeControllableAction.commands.join(" ")).toContain(
       "verify:cloudrun-render-evidence"
+    );
+    expect(
+      report.phasePlan.recommendedNextCodeControllableAction.commands.findIndex((command) =>
+        command.includes("prepare:cloudrun-render-handoff")
+      )
+    ).toBeLessThan(
+      report.phasePlan.recommendedNextCodeControllableAction.commands.findIndex((command) =>
+        command.includes("audit:cloudrun-values")
+      )
     );
     expect(
       report.phasePlan.recommendedNextCodeControllableAction.commands.findIndex((command) =>
@@ -441,7 +452,7 @@ describe("local XPRIZE submission verifier", () => {
       expect(markdown).toContain("## Gate Summary");
       expect(markdown).toContain("## Phase Progress Chart");
       expect(markdown).toContain("## Next Code-Controllable Action");
-      expect(markdown).toContain("Generate the release-prefilled private Cloud Run render-values file");
+      expect(markdown).toContain("Prepare the Cloud Run render handoff");
       expect(markdown).toContain("## Manual Intervention Owners");
       expect(markdown).toContain("Rating");
       expect(markdown).toContain("Phase remaining");
@@ -537,7 +548,7 @@ describe("local XPRIZE submission verifier", () => {
         "release-prefilled private Cloud Run render-values file"
       );
       expect(bundleManifest.phaseProgress?.recommendedNextCodeControllableAction?.commands.join(" ")).toContain(
-        "write:cloudrun-release-values"
+        "prepare:cloudrun-render-handoff"
       );
       expect(bundleManifest.phaseProgress?.recommendedNextCodeControllableAction?.action).toContain("operator handoff");
       expect(bundleManifest.phaseProgress?.recommendedNextCodeControllableAction?.commands.join(" ")).toContain(
@@ -637,6 +648,7 @@ describe("local XPRIZE submission verifier", () => {
     expect(phasesById["human-attestation-review"].stopConditions.join(" ")).toContain(
       "Do not set XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED=true"
     );
+    expect(phasesById["cloudrun-render-dry-run"].commands.join(" ")).toContain("prepare:cloudrun-render-handoff");
     expect(phasesById["cloudrun-render-dry-run"].commands.join(" ")).toContain("audit:cloudrun-values");
     expect(phasesById["cloudrun-render-dry-run"].commands.join(" ")).toContain("verify:cloudrun-render-evidence");
     expect(phasesById["cloudrun-render-dry-run"].commands.join(" ")).toContain("verify:cloudrun-dry-run-packet");

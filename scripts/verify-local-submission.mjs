@@ -687,7 +687,7 @@ function buildPhasePlan(gateReports) {
       relatedGateIds: ["cloudrun-deployment-template", "gemini-model-readiness"],
       commands: [
         "npm run verify:gemini-model -- --out /secure/local/gemini-model-readiness.json --strict",
-        "npm run write:cloudrun-release-values -- /secure/local/cloudrun-render-values.json",
+        "npm run prepare:cloudrun-render-handoff -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --strict",
         "npm run audit:cloudrun-values -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
         "npm run verify:cloudrun-render-evidence -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json --strict",
         "npm run render:cloudrun-manifest -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
@@ -695,6 +695,7 @@ function buildPhasePlan(gateReports) {
         "npm run verify:cloudrun-dry-run-packet -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json --strict"
       ],
       evidenceNeeded: [
+        "cloudrun-render-handoff JSON/Markdown with release-prefilled values and a verified owner packet before private values are filled",
         "release-prefilled private render-values file with source metadata and no raw secrets",
         "render-values audit JSON/Markdown plus verified owner-routed render evidence packet",
         "dry-run preflight packet and digest verifier"
@@ -821,7 +822,7 @@ function buildRecommendedNextCodeControllableAction(phases) {
 
 function codeControllableActionForPhase(phase) {
   if (phase.id === "cloudrun-render-dry-run") {
-    return "Generate the release-prefilled private Cloud Run render-values file, fill the remaining non-secret production values privately, run the render-values audit, verify the render-evidence owner packet, render the ignored manifest, produce and verify the dry-run preflight packet, and review its operator handoff. Stop before gcloud dry-run/deploy until private production values and owner approvals exist.";
+    return "Prepare the Cloud Run render handoff to generate the release-prefilled private Cloud Run render-values file and verified owner packet, fill the remaining non-secret production values privately, run the render-values audit, verify the render-evidence owner packet, render the ignored manifest, produce and verify the dry-run preflight packet, and review its operator handoff. Stop before gcloud dry-run/deploy until private production values and owner approvals exist.";
   }
 
   return `Advance ${phase.label} with local code or generated private handoff artifacts only; stop before claiming hosted, revenue, user, legal, or human-attestation proof.`;

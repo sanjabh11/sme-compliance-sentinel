@@ -100,12 +100,12 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
       ),
       command(
         "write-release-render-values",
-        "Write release-prefilled private render values",
-        `npm run write:cloudrun-release-values -- ${privateRenderValuesPath}`,
+        "Prepare Cloud Run render handoff",
+        `npm run prepare:cloudrun-render-handoff -- --values ${privateRenderValuesPath} --out-dir ${deploymentArtifactsDir} --strict`,
         "engineering",
         false,
         false,
-        "Private non-secret values file prefilled with SENTINEL_RELEASE_ID, source commit, source timestamp, branch, and repository URL; project ids, hosted URLs, secret versions, and reviewed XPRIZE flags still need operator values."
+        "Private non-secret values file prefilled with SENTINEL_RELEASE_ID, source commit, source timestamp, branch, and repository URL plus cloudrun-render-handoff.json/.md, non-strict audit, owner evidence packet, and packet verifier; project ids, hosted URLs, secret versions, and reviewed XPRIZE flags still need operator values."
       ),
       command(
         "audit-render-values",

@@ -109,7 +109,7 @@ describe("Cloud Run manifest renderer", () => {
     expect(values).toMatchObject({
       SENTINEL_RELEASE_ID: "release-20260524-0123456",
       SENTINEL_SOURCE_COMMIT: "0123456789abcdef0123456789abcdef01234567",
-      SENTINEL_SOURCE_COMMIT_AT: "2026-05-24T10:48:19+05:30",
+      SENTINEL_SOURCE_COMMIT_AT: "2026-05-24T05:18:19.000Z",
       SENTINEL_SOURCE_BRANCH: "origin/main",
       XPRIZE_REPOSITORY_URL: "https://github.com/sanjabh11/sme-compliance-sentinel"
     });
