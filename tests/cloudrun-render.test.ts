@@ -159,6 +159,8 @@ describe("Cloud Run manifest renderer", () => {
       XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED: "false",
       XPRIZE_JUDGE_ACCESS_CONFIGURED: "false",
       XPRIZE_JUDGING_PERIOD_END_AT: "2026-09-15T17:00:00-07:00",
+      SENTINEL_CLOUD_RUN_VPC_CONNECTOR: "sentinel-egress",
+      SENTINEL_CLOUD_RUN_VPC_EGRESS: "all-traffic",
       XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED: "false",
       XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED: "false",
       XPRIZE_THIRD_PARTY_REVIEW_APPROVED: "false",
@@ -203,6 +205,8 @@ describe("Cloud Run manifest renderer", () => {
     });
     expect(renderedManifest).toContain("us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:release-20260523-001");
     expect(renderedManifest).toContain("sentinel-runtime@sentinel-prod.iam.gserviceaccount.com");
+    expect(renderedManifest).toContain("run.googleapis.com/vpc-access-connector: sentinel-egress");
+    expect(renderedManifest).toContain("run.googleapis.com/vpc-access-egress: all-traffic");
     expect(renderedManifest).toContain("sentinel-admin-action-token:projects/123456789012/secrets/sentinel-admin-action-token");
     expect(renderedManifest).toContain('value: "0123456789abcdef0123456789abcdef01234567"');
     expect(renderedManifest).toContain('value: "2026-05-23T17:24:17.894Z"');
@@ -322,6 +326,8 @@ function safeRenderValues() {
     GOOGLE_CLOUD_PROJECT: "sentinel-prod",
     GOOGLE_CLOUD_PROJECT_NUMBER: "123456789012",
     SENTINEL_CLOUD_RUN_REGION: "us-central1",
+    SENTINEL_CLOUD_RUN_VPC_CONNECTOR: "sentinel-egress",
+    SENTINEL_CLOUD_RUN_VPC_EGRESS: "all-traffic",
     SENTINEL_RELEASE_ID: "release-20260523-001",
     SENTINEL_SOURCE_COMMIT: "0123456789abcdef0123456789abcdef01234567",
     SENTINEL_SOURCE_COMMIT_AT: "2026-05-23T17:24:17.894Z",

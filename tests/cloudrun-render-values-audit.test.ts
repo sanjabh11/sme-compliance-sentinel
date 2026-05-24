@@ -94,6 +94,7 @@ describe("Cloud Run render-values audit", () => {
       expect.arrayContaining([
         expect.objectContaining({ id: "source-commit-shape", status: "passed" }),
         expect.objectContaining({ id: "hosted-product-url", status: "passed" }),
+        expect.objectContaining({ id: "cloud-run-vpc-egress", status: "passed" }),
         expect.objectContaining({ id: "oauth-redirect-product-url", status: "passed" }),
         expect.objectContaining({ id: "budget-resource-billing-account", status: "passed" }),
         expect.objectContaining({ id: "gemini-ip-allowlist", status: "passed" })
@@ -188,6 +189,7 @@ describe("Cloud Run render-values audit", () => {
     const valuesPath = await writeValues(tempDir, {
       ...safeRenderValues(),
       SENTINEL_SOURCE_COMMIT: "short-sha",
+      SENTINEL_CLOUD_RUN_VPC_EGRESS: "private-ranges-only",
       NEXT_PUBLIC_PRODUCT_URL: "http://127.0.0.1:3000",
       XPRIZE_DEMO_VIDEO_URL: "https://example.com/sentinel-demo",
       XPRIZE_SUBMISSION_CLOSE_AT: "2026-08-18T13:00:00-07:00",
@@ -212,6 +214,7 @@ describe("Cloud Run render-values audit", () => {
     expect(packet.valueConsistencyBlockers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "source-commit-shape", key: "SENTINEL_SOURCE_COMMIT" }),
+        expect.objectContaining({ id: "cloud-run-vpc-egress", key: "SENTINEL_CLOUD_RUN_VPC_EGRESS" }),
         expect.objectContaining({ id: "hosted-product-url", key: "NEXT_PUBLIC_PRODUCT_URL" }),
         expect.objectContaining({ id: "demo-video-host", key: "XPRIZE_DEMO_VIDEO_URL" }),
         expect.objectContaining({ id: "submission-close", key: "XPRIZE_SUBMISSION_CLOSE_AT" }),
@@ -272,6 +275,8 @@ function safeRenderValues() {
     GOOGLE_CLOUD_PROJECT: "sentinel-prod",
     GOOGLE_CLOUD_PROJECT_NUMBER: "123456789012",
     SENTINEL_CLOUD_RUN_REGION: "us-central1",
+    SENTINEL_CLOUD_RUN_VPC_CONNECTOR: "sentinel-egress",
+    SENTINEL_CLOUD_RUN_VPC_EGRESS: "all-traffic",
     SENTINEL_RELEASE_ID: "release-20260523-001",
     SENTINEL_SOURCE_COMMIT: "0123456789abcdef0123456789abcdef01234567",
     SENTINEL_SOURCE_COMMIT_AT: "2026-05-23T17:24:17.894Z",

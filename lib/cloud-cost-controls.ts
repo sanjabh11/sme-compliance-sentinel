@@ -111,7 +111,8 @@ export function buildApiKeyRestrictionPlan(): ApiKeyRestrictionPlan {
   const keyId = sentinelConfig.geminiApiKeyId || "GEMINI_API_KEY_ID";
   const keyResource = normalizeApiKeyResource(projectNumber, keyId);
   const allowedServerIps = sentinelConfig.geminiApiAllowedServerIps;
-  const clientRestrictionMode = allowedServerIps.length ? "server-ip" : "pending-static-egress";
+  const staticEgressReady = Boolean(sentinelConfig.cloudRunVpcConnector && sentinelConfig.cloudRunVpcEgress === "all-traffic");
+  const clientRestrictionMode = allowedServerIps.length && staticEgressReady ? "server-ip" : "pending-static-egress";
 
   return {
     projectNumber,
@@ -132,11 +133,18 @@ export function buildApiKeyRestrictionPlan(): ApiKeyRestrictionPlan {
           : {})
       }
     },
-    warnings: allowedServerIps.length
-      ? []
-      : [
-          "No server IP restriction is configured. Use static Cloud Run egress or move Gemini access to a service-account-backed path before public launch."
-        ]
+    warnings: [
+      ...(allowedServerIps.length
+        ? []
+        : [
+            "No server IP restriction is configured. Use static Cloud Run egress or move Gemini access to a service-account-backed path before public launch."
+          ]),
+      ...(allowedServerIps.length && !staticEgressReady
+        ? [
+            "Gemini server IP restrictions are configured, but SENTINEL_CLOUD_RUN_VPC_CONNECTOR and SENTINEL_CLOUD_RUN_VPC_EGRESS=all-traffic are not both configured."
+          ]
+        : [])
+    ]
   };
 }
 
@@ -164,6 +172,8 @@ export async function verifyCloudCostControls(fetchImpl: typeof fetch = fetch): 
     ["SENTINEL_GCP_BUDGET_ID", sentinelConfig.googleCloudBudgetId],
     ["GOOGLE_CLOUD_PROJECT_NUMBER", sentinelConfig.googleCloudProjectNumber],
     ["SENTINEL_GEMINI_API_KEY_ID", sentinelConfig.geminiApiKeyId],
+    ["SENTINEL_CLOUD_RUN_VPC_CONNECTOR", sentinelConfig.cloudRunVpcConnector],
+    ["SENTINEL_CLOUD_RUN_VPC_EGRESS", sentinelConfig.cloudRunVpcEgress === "all-traffic" ? "configured" : ""],
     ["SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS", sentinelConfig.geminiApiAllowedServerIps.length ? "configured" : ""]
   ]
     .filter(([, value]) => !value)

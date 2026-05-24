@@ -595,6 +595,20 @@ function buildEnvMatrix(): ProductionLaunchEnvItem[] {
     envItem("GOOGLE_CLOUD_BILLING_ACCOUNT_ID", sentinelConfig.googleCloudBillingAccountId, "Cloud Billing budget verification.", false, "Attach the production billing account id."),
     envItem("SENTINEL_GCP_BUDGET_ID", sentinelConfig.googleCloudBudgetId, "Cloud Billing budget verification.", false, "Create a Cloud Billing budget and record the budget id."),
     envItem("SENTINEL_BUDGET_PUBSUB_TOPIC", sentinelConfig.budgetPubSubTopic, "Cloud Billing alert Pub/Sub notifications.", false, "Create the budget alert topic and wire it into the cost-control runbook."),
+    envItem(
+      "SENTINEL_CLOUD_RUN_VPC_CONNECTOR",
+      sentinelConfig.cloudRunVpcConnector,
+      "Cloud Run static-egress VPC connector.",
+      false,
+      "Create the Serverless VPC Access connector before rendering the production manifest."
+    ),
+    envItem(
+      "SENTINEL_CLOUD_RUN_VPC_EGRESS",
+      sentinelConfig.cloudRunVpcEgress,
+      "Cloud Run VPC egress routing mode.",
+      false,
+      "Use all-traffic when the Gemini API key is restricted to static server egress IPs."
+    ),
     envItem("GOOGLE_CLOUD_PROJECT_NUMBER", sentinelConfig.googleCloudProjectNumber, "API key restriction verification.", false, "Record the numeric Google Cloud project id."),
     envItem("SENTINEL_GEMINI_API_KEY_ID", sentinelConfig.geminiApiKeyId, "Gemini API key restriction verification.", false, "Record the API key resource id, not the secret key value."),
     envItem(

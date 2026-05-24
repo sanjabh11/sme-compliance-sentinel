@@ -66,6 +66,8 @@ const requiredDeploymentCapabilityGroups = [
     env: [
       "GOOGLE_CLOUD_PROJECT",
       "GOOGLE_CLOUD_PROJECT_NUMBER",
+      "SENTINEL_CLOUD_RUN_VPC_CONNECTOR",
+      "SENTINEL_CLOUD_RUN_VPC_EGRESS",
       "SENTINEL_STORAGE_MODE",
       "SENTINEL_EVIDENCE_MODE",
       "SENTINEL_PRIVATE_EVIDENCE_BUCKET",
@@ -135,6 +137,8 @@ const requiredDeploymentCapabilityGroups = [
 describe("Cloud Run deployment manifest", () => {
   it("keeps production mode, XPRIZE, Google Cloud, Workspace, and Gemini env placeholders in one deployable manifest", () => {
     expect(manifest).toContain("run.googleapis.com/execution-environment: gen2");
+    expect(manifest).toContain("run.googleapis.com/vpc-access-connector: sentinel-egress");
+    expect(manifest).toContain("run.googleapis.com/vpc-access-egress: all-traffic");
     expect(manifest).toContain("run.googleapis.com/secrets:");
     expect(manifest).toContain("serviceAccountName: sentinel-runtime@PROJECT_ID.iam.gserviceaccount.com");
     expect(manifest).toContain("REGION-docker.pkg.dev/PROJECT_ID/sentinel/web:RELEASE_ID");
@@ -149,6 +153,8 @@ describe("Cloud Run deployment manifest", () => {
       "SENTINEL_CLOUD_COST_CONTROLS_MODE",
       "SENTINEL_CLOUD_RUN_SERVICE_NAME",
       "SENTINEL_CLOUD_RUN_REGION",
+      "SENTINEL_CLOUD_RUN_VPC_CONNECTOR",
+      "SENTINEL_CLOUD_RUN_VPC_EGRESS",
       "SENTINEL_RELEASE_ID",
       "SENTINEL_SOURCE_COMMIT",
       "SENTINEL_SOURCE_COMMIT_AT",
@@ -240,6 +246,8 @@ describe("Cloud Run deployment manifest", () => {
     expectEnvValue("SENTINEL_CLOUD_COST_CONTROLS_MODE", "production");
     expectEnvValue("SENTINEL_CLOUD_RUN_SERVICE_NAME", "sme-workspace-sentinel");
     expectEnvValue("SENTINEL_CLOUD_RUN_REGION", "us-central1");
+    expectEnvValue("SENTINEL_CLOUD_RUN_VPC_CONNECTOR", "sentinel-egress");
+    expectEnvValue("SENTINEL_CLOUD_RUN_VPC_EGRESS", "all-traffic");
     expectEnvValue("SENTINEL_RELEASE_ID", "RELEASE_ID");
     expectEnvValue("SENTINEL_SOURCE_COMMIT", "SOURCE_COMMIT");
     expectEnvValue("SENTINEL_SOURCE_COMMIT_AT", "SOURCE_COMMIT_AT");

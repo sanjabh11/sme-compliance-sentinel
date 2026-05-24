@@ -20,6 +20,10 @@ const runtimeServiceAccount = `sentinel-runtime@${projectId}.iam.gserviceaccount
 const workspacePushServiceAccount = `workspace-push@${projectId}.iam.gserviceaccount.com`;
 const pubSubServiceAgent = `service-${projectNumber}@gcp-sa-pubsub.iam.gserviceaccount.com`;
 const imageUrl = `${recommendedRegion}-docker.pkg.dev/${projectId}/sentinel/web:${imageTag}`;
+const vpcConnectorName = sentinelConfig.cloudRunVpcConnector || "sentinel-egress";
+const staticEgressIpName = "sentinel-gemini-egress-ip";
+const cloudRouterName = "sentinel-egress-router";
+const cloudNatName = "sentinel-egress-nat";
 
 const requiredApis = [
   "run.googleapis.com",
@@ -35,6 +39,8 @@ const requiredApis = [
   "dlp.googleapis.com",
   "apikeys.googleapis.com",
   "billingbudgets.googleapis.com",
+  "compute.googleapis.com",
+  "vpcaccess.googleapis.com",
   "generativelanguage.googleapis.com"
 ];
 
@@ -55,7 +61,8 @@ const requiredIamRoles = [
   "roles/secretmanager.secretAccessor",
   "roles/secretmanager.secretVersionAdder",
   "roles/pubsub.publisher",
-  "roles/pubsub.subscriber"
+  "roles/pubsub.subscriber",
+  "roles/vpcaccess.user"
 ];
 
 export function buildProductionProvisioningPack(): ProductionProvisioningPack {
@@ -226,6 +233,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
       "Run npm run collect:cloudrun-deployment after Cloud Run dry-run, deploy, and describe; keep raw gcloud logs private and share only the redacted transcript packet.",
       "Run npm run collect:hosted-proof, npm run import:hosted-proof --dry-run, npm run prepare:deployment-execution-checklist -- --write-results-template, and npm run prepare:deployment-execution-checklist -- --results before the final hosted Evidence Vault import; do not bypass release-integrity checks with raw curl.",
       "Use Secret Manager for the runtime secrets and grant access only to the Cloud Run runtime service account.",
+      "Use the Serverless VPC Access connector and Cloud NAT static IP path before relying on Gemini API key server-IP restrictions.",
       "Use Devpost private testing instructions for judge credentials; keep public README and video free of login secrets.",
       "Use the admin action token only from private operator tooling when importing hosted proof JSON.",
       "Capture Cloud Run, Firestore, BigQuery, Secret Manager, Pub/Sub, Gemini, and Workspace proof as redacted screenshots or JSON logs for the private binder.",
@@ -234,6 +242,8 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
     sourceUrls: [
       "https://docs.cloud.google.com/run/docs/configuring/services/secrets",
       "https://docs.cloud.google.com/run/docs/configuring/services/environment-variables",
+      "https://cloud.google.com/run/docs/configuring/vpc-connectors",
+      "https://cloud.google.com/run/docs/configuring/static-outbound-ip",
       "https://cloud.google.com/sdk/gcloud/reference/run/services/replace",
       "https://ai.google.dev/api/all-methods"
     ],
@@ -306,6 +316,19 @@ function buildChecklist(): ProductionProvisioningChecklistItem[] {
       "API-key restriction and quota proof.",
       "Set SENTINEL_GEMINI_API_KEY_ID to the API Keys API resource name, not the secret key value.",
       "Never include the API key value in screenshots or logs."
+    ),
+    item(
+      "static-egress",
+      "Static egress path configured",
+      Boolean(
+        sentinelConfig.cloudRunVpcConnector &&
+          sentinelConfig.cloudRunVpcEgress === "all-traffic" &&
+          sentinelConfig.geminiApiAllowedServerIps.length
+      ),
+      "security",
+      "Gemini API key server-IP restrictions and public-launch cost/security control.",
+      "Create the Serverless VPC Access connector, Cloud Router, Cloud NAT, static IP, and set SENTINEL_CLOUD_RUN_VPC_CONNECTOR, SENTINEL_CLOUD_RUN_VPC_EGRESS, and SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS before production render.",
+      "Static egress IPs and network names are non-secret but should stay in private deployment proof until launch."
     ),
     item(
       "oauth-client",
@@ -485,6 +508,42 @@ function buildCommands(dryRunCommand: string, deployCommand: string): Production
       false,
       true,
       "Private bucket exists for redacted hosted verification JSON, screenshots, and judge packet artifacts."
+    ),
+    command(
+      "reserve-static-egress-ip",
+      "Reserve static egress IP",
+      `gcloud compute addresses create ${staticEgressIpName} --region ${recommendedRegion} --project ${projectId}`,
+      "security",
+      false,
+      true,
+      "Regional static IP exists for Gemini API key server restrictions."
+    ),
+    command(
+      "create-egress-router",
+      "Create Cloud Router",
+      `gcloud compute routers create ${cloudRouterName} --network default --region ${recommendedRegion} --project ${projectId}`,
+      "security",
+      false,
+      true,
+      "Cloud Router exists for NAT-backed serverless egress."
+    ),
+    command(
+      "create-egress-nat",
+      "Create Cloud NAT with static IP",
+      `gcloud compute routers nats create ${cloudNatName} --router ${cloudRouterName} --region ${recommendedRegion} --nat-all-subnet-ip-ranges --nat-external-ip-pool ${staticEgressIpName} --enable-logging --project ${projectId}`,
+      "security",
+      false,
+      true,
+      "Cloud NAT routes connector egress through the reserved static IP."
+    ),
+    command(
+      "create-vpc-connector",
+      "Create Serverless VPC Access connector",
+      `gcloud compute networks vpc-access connectors create ${vpcConnectorName} --region ${recommendedRegion} --network default --range 10.8.0.0/28 --project ${projectId}`,
+      "security",
+      false,
+      true,
+      "Serverless VPC Access connector exists for Cloud Run all-traffic egress."
     ),
     command(
       "build-container",

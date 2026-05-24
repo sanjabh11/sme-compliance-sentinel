@@ -29,6 +29,8 @@ const productionCostControlEnv = {
   SENTINEL_GCP_BUDGET_ID: "billingAccounts/000000-111111-222222/budgets/budget-123",
   GOOGLE_CLOUD_PROJECT_NUMBER: "123456789012",
   SENTINEL_GEMINI_API_KEY_ID: "projects/123456789012/locations/global/keys/gemini-key-123",
+  SENTINEL_CLOUD_RUN_VPC_CONNECTOR: "sentinel-egress",
+  SENTINEL_CLOUD_RUN_VPC_EGRESS: "all-traffic",
   SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS: "34.10.10.10",
   SENTINEL_GEMINI_QUOTA_EVIDENCE_CONFIRMED: "true",
   GOOGLE_CLOUD_ACCESS_TOKEN: "test-access-token"
@@ -59,6 +61,7 @@ describe("cloud cost controls", () => {
     expect(restrictionPlan.requiredApiTargets).toEqual(["generativelanguage.googleapis.com"]);
     expect(JSON.stringify(restrictionPlan.requestBody)).toContain("apiTargets");
     expect(restrictionPlan.clientRestrictionMode).toBe("pending-static-egress");
+    expect(restrictionPlan.warnings.join(" ")).toContain("static Cloud Run egress");
   });
 
   it("normalizes full production resource names for budget and API key verification endpoints", async () => {

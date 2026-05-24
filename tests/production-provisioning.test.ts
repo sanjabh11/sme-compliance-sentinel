@@ -19,6 +19,8 @@ describe("production provisioning pack", () => {
         "pubsub.googleapis.com",
         "storage.googleapis.com",
         "dlp.googleapis.com",
+        "compute.googleapis.com",
+        "vpcaccess.googleapis.com",
         "generativelanguage.googleapis.com"
       ])
     );
@@ -36,6 +38,9 @@ describe("production provisioning pack", () => {
         "enable-apis",
         "create-runtime-service-account",
         "grant-pubsub-token-creator",
+        "reserve-static-egress-ip",
+        "create-egress-nat",
+        "create-vpc-connector",
         "create-private-evidence-bucket",
         "dry-run-cloudrun",
         "deploy-cloudrun",
@@ -176,6 +181,7 @@ describe("production provisioning pack", () => {
       "manual-review"
     );
     expect(pack.checklist.find((item) => item.id === "admin-action-token")?.status).toBe("missing");
+    expect(pack.checklist.find((item) => item.id === "static-egress")?.status).toBe("missing");
     expect(pack.checklist.find((item) => item.id === "source-revision-metadata")?.status).toBe("missing");
     expect(pack.privateHandlingRules.join(" ")).toContain("Secret Manager");
     expect(pack.privateHandlingRules.join(" ")).toContain("cloudrun-render-values.template.json");
@@ -186,6 +192,7 @@ describe("production provisioning pack", () => {
     expect(pack.privateHandlingRules.join(" ")).toContain("prepare:deployment-execution-checklist");
     expect(pack.privateHandlingRules.join(" ")).toContain("write-results-template");
     expect(pack.privateHandlingRules.join(" ")).toContain("release-integrity");
+    expect(pack.privateHandlingRules.join(" ")).toContain("static IP");
 
     const violations = scanClaimText({
       artifact: "production-provisioning",

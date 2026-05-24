@@ -330,6 +330,8 @@ describe("Cloud Run deployment evidence verifier", () => {
       .replace('name: XPRIZE_ENTRANT_TYPE\n              value: "team"', 'name: XPRIZE_ENTRANT_TYPE\n              value: "vendor"')
       .replace('name: XPRIZE_SUBMISSION_CLOSE_AT\n              value: "2026-08-17T13:00:00-07:00"', 'name: XPRIZE_SUBMISSION_CLOSE_AT\n              value: "2026-08-18T13:00:00-07:00"')
       .replace('name: XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS\n              value: "2"', 'name: XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS\n              value: "3"')
+      .replace("run.googleapis.com/vpc-access-egress: all-traffic", "run.googleapis.com/vpc-access-egress: private-ranges-only")
+      .replace('name: SENTINEL_CLOUD_RUN_VPC_EGRESS\n              value: "all-traffic"', 'name: SENTINEL_CLOUD_RUN_VPC_EGRESS\n              value: "private-ranges-only"')
       .replace("123456789012-abcdef.apps.googleusercontent.com", "client-id")
       .replace('name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS\n              value: "34.10.10.10"', 'name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS\n              value: "0.0.0.0/0"')
       .replace('name: SENTINEL_GEMINI_MONTHLY_BUDGET_USD\n              value: "50"', 'name: SENTINEL_GEMINI_MONTHLY_BUDGET_USD\n              value: "0"')
@@ -372,6 +374,8 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(checksByName.INVALID_XPRIZE_ENTRANT_TYPE).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_XPRIZE_SUBMISSION_CLOSE_AT).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_VALUE_SENTINEL_CLOUD_RUN_VPC_EGRESS).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_CLOUD_RUN_VPC_EGRESS_ANNOTATION).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_GOOGLE_OAUTH_CLIENT_ID).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_NUMBER_SENTINEL_GEMINI_MONTHLY_BUDGET_USD).toMatchObject({ status: "blocked" });

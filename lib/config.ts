@@ -27,6 +27,8 @@ export const sentinelConfig = {
   googleCloudBillingAccountId: process.env.GOOGLE_CLOUD_BILLING_ACCOUNT_ID ?? "",
   googleCloudBudgetId: process.env.SENTINEL_GCP_BUDGET_ID ?? "",
   budgetPubSubTopic: process.env.SENTINEL_BUDGET_PUBSUB_TOPIC ?? "",
+  cloudRunVpcConnector: process.env.SENTINEL_CLOUD_RUN_VPC_CONNECTOR ?? "",
+  cloudRunVpcEgress: process.env.SENTINEL_CLOUD_RUN_VPC_EGRESS ?? "",
   geminiApiKeyId: process.env.SENTINEL_GEMINI_API_KEY_ID ?? "",
   geminiApiAllowedServerIps: parseCsv(process.env.SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS ?? ""),
   geminiDailyRequestQuota: Math.round(parsePositiveNumber(process.env.SENTINEL_GEMINI_DAILY_REQUEST_QUOTA, 1000)),

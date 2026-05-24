@@ -60,6 +60,8 @@ const strictRequiredValueKeys = [
   "SENTINEL_SOURCE_BRANCH",
   "SENTINEL_CLOUD_RUN_IMAGE",
   "SENTINEL_CLOUD_RUN_SERVICE_ACCOUNT_EMAIL",
+  "SENTINEL_CLOUD_RUN_VPC_CONNECTOR",
+  "SENTINEL_CLOUD_RUN_VPC_EGRESS",
   "SENTINEL_PRIVATE_EVIDENCE_BUCKET",
   "NEXT_PUBLIC_PRODUCT_URL",
   "XPRIZE_REPOSITORY_URL",
@@ -89,6 +91,8 @@ const renderValuesTemplate = {
   GOOGLE_CLOUD_PROJECT: "PROJECT_ID",
   GOOGLE_CLOUD_PROJECT_NUMBER: "PROJECT_NUMBER",
   SENTINEL_CLOUD_RUN_REGION: "us-central1",
+  SENTINEL_CLOUD_RUN_VPC_CONNECTOR: "sentinel-egress",
+  SENTINEL_CLOUD_RUN_VPC_EGRESS: "all-traffic",
   SENTINEL_RELEASE_ID: "RELEASE_ID",
   SENTINEL_SOURCE_COMMIT: "SOURCE_COMMIT",
   SENTINEL_SOURCE_COMMIT_AT: "SOURCE_COMMIT_AT",
@@ -518,6 +522,8 @@ function buildRenderValues(fileValues) {
   const billingAccountId = values.GOOGLE_CLOUD_BILLING_ACCOUNT_ID;
 
   values.SENTINEL_CLOUD_RUN_REGION ||= region;
+  values.SENTINEL_CLOUD_RUN_VPC_CONNECTOR ||= "sentinel-egress";
+  values.SENTINEL_CLOUD_RUN_VPC_EGRESS ||= "all-traffic";
   if (projectId) {
     values.SENTINEL_PRIVATE_EVIDENCE_BUCKET ||= `gs://${projectId}-sentinel-private-evidence`;
     values.SENTINEL_BUDGET_PUBSUB_TOPIC ||= `projects/${projectId}/topics/sentinel-budget-alerts`;
@@ -660,6 +666,18 @@ function buildValueConsistencyChecks(values, releaseIdConsistency) {
       "Use the dedicated sentinel-runtime service account in the production project."
     ),
     valueCheck(
+      "cloud-run-vpc-connector",
+      "SENTINEL_CLOUD_RUN_VPC_CONNECTOR",
+      isCloudRunVpcConnector(values.SENTINEL_CLOUD_RUN_VPC_CONNECTOR),
+      "Use the reviewed Serverless VPC Access connector name for static egress."
+    ),
+    valueCheck(
+      "cloud-run-vpc-egress",
+      "SENTINEL_CLOUD_RUN_VPC_EGRESS",
+      values.SENTINEL_CLOUD_RUN_VPC_EGRESS === "all-traffic",
+      "Set SENTINEL_CLOUD_RUN_VPC_EGRESS to all-traffic so Gemini API key IP restrictions use the static egress path."
+    ),
+    valueCheck(
       "private-evidence-bucket-project",
       "SENTINEL_PRIVATE_EVIDENCE_BUCKET",
       String(values.SENTINEL_PRIVATE_EVIDENCE_BUCKET ?? "") === `gs://${projectId}-sentinel-private-evidence`,
@@ -716,7 +734,7 @@ function buildValueConsistencyChecks(values, releaseIdConsistency) {
     valueCheck(
       "gemini-ip-allowlist",
       "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
-      parseCsv(values.SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS).every(isIpv4Address),
+      parseCsv(values.SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS).every(isValidIpv4OrCidr),
       "Use a comma-separated allowlist of concrete server IPv4 addresses; do not use wildcards or placeholders."
     ),
     ...secretVersionKeys.map((key) =>
@@ -760,6 +778,18 @@ function renderManifest(template, values) {
     );
   }
 
+  if (values.SENTINEL_CLOUD_RUN_VPC_CONNECTOR) {
+    rendered = replaceAnnotation(
+      rendered,
+      "run.googleapis.com/vpc-access-connector",
+      values.SENTINEL_CLOUD_RUN_VPC_CONNECTOR
+    );
+  }
+
+  if (values.SENTINEL_CLOUD_RUN_VPC_EGRESS) {
+    rendered = replaceAnnotation(rendered, "run.googleapis.com/vpc-access-egress", values.SENTINEL_CLOUD_RUN_VPC_EGRESS);
+  }
+
   for (const key of renderValueKeys) {
     if (values[key] !== undefined) {
       rendered = replaceEnvValue(rendered, key, values[key]);
@@ -801,6 +831,11 @@ function replaceSecretVersion(manifest, envName, version) {
 
     return `${prefix}${body.replace(/\n(\s+)key:\s*"[^"]*"/u, `\n$1key: ${JSON.stringify(String(version))}`)}`;
   });
+}
+
+function replaceAnnotation(manifest, name, value) {
+  const pattern = new RegExp(`(\\n\\s+${escapeRegExp(name)}:\\s*)[^\\n]+`, "u");
+  return manifest.replace(pattern, `$1${String(value)}`);
 }
 
 async function runManifestVerifier(renderedManifestPath) {
@@ -1147,12 +1182,34 @@ function parseCsv(value) {
     .filter(Boolean);
 }
 
-function isIpv4Address(value) {
-  const parts = String(value).split(".");
-  return (
+function isValidIpv4OrCidr(value) {
+  if (value === "0.0.0.0/0") {
+    return false;
+  }
+
+  const [address, prefix] = String(value).split("/");
+  const parts = address.split(".");
+  const validAddress =
     parts.length === 4 &&
     parts.every((part) => /^\d{1,3}$/u.test(part) && Number(part) >= 0 && Number(part) <= 255) &&
-    value !== "0.0.0.0"
+    address !== "0.0.0.0";
+
+  if (!validAddress) {
+    return false;
+  }
+
+  if (prefix === undefined) {
+    return true;
+  }
+
+  return /^[0-9]{1,2}$/u.test(prefix) && Number(prefix) >= 1 && Number(prefix) <= 32;
+}
+
+function isCloudRunVpcConnector(value) {
+  const text = String(value ?? "");
+  return (
+    /^[a-z][a-z0-9-]{0,23}[a-z0-9]$/u.test(text) ||
+    /^projects\/[a-z][a-z0-9-]{4,28}[a-z0-9]\/locations\/[a-z0-9-]+\/connectors\/[a-z][a-z0-9-]{0,23}[a-z0-9]$/u.test(text)
   );
 }
 

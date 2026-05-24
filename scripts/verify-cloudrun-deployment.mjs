@@ -64,6 +64,7 @@ const fixedProductionEnvValues = {
   SENTINEL_STORAGE_MODE: "gcp-rest",
   SENTINEL_EVIDENCE_MODE: "production",
   SENTINEL_CLOUD_COST_CONTROLS_MODE: "production",
+  SENTINEL_CLOUD_RUN_VPC_EGRESS: "all-traffic",
   XPRIZE_CATEGORY: "Small Business Services",
   SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE: "oidc",
   SENSITIVE_DATA_PROTECTION_ENABLED: "true"
@@ -119,6 +120,7 @@ try {
 function buildReport(manifest) {
   const envEntries = parseEnvEntries(manifest);
   const envByName = new Map(envEntries.map((entry) => [entry.name, entry]));
+  const annotations = parseAnnotations(manifest);
   const secretAnnotations = parseSecretAnnotations(manifest);
   const image = extractScalar(manifest, "image") || "missing";
   const runtimeServiceAccount = extractScalar(manifest, "serviceAccountName") || "missing";
@@ -129,7 +131,7 @@ function buildReport(manifest) {
       checkSecretAnnotation(name, envByName.get(name), secretAnnotations, envByName.get("GOOGLE_CLOUD_PROJECT_NUMBER")?.value)
     ]),
     ...prohibitedCredentialEnv.flatMap((item) => checkProhibitedCredentialEnv(item, envByName.get(item.name))),
-    ...checkProductionValueInvariants(envByName, image, runtimeServiceAccount),
+    ...checkProductionValueInvariants(envByName, annotations, image, runtimeServiceAccount),
     ...checkDuplicateEnvEntries(envEntries),
     ...checkUnsafeRawEnvValues(envEntries)
   ];
@@ -208,6 +210,20 @@ function parseSecretAnnotations(manifest) {
 
     if (lookupName && target) {
       annotations.set(lookupName.trim(), target);
+    }
+  }
+
+  return annotations;
+}
+
+function parseAnnotations(manifest) {
+  const annotations = new Map();
+  const pattern = /\n\s+([A-Za-z0-9_./-]+):\s*(?:"([^"]*)"|'([^']*)'|([^\n]*))/gu;
+
+  for (const match of manifest.matchAll(pattern)) {
+    const name = match[1];
+    if (name.includes("/")) {
+      annotations.set(name, (match[2] ?? match[3] ?? match[4] ?? "").trim());
     }
   }
 
@@ -336,7 +352,7 @@ function checkProhibitedCredentialEnv(item, entry) {
   ];
 }
 
-function checkProductionValueInvariants(envByName, image, runtimeServiceAccount) {
+function checkProductionValueInvariants(envByName, annotations, image, runtimeServiceAccount) {
   const checks = [];
   const projectId = cleanEnvValue(envByName, "GOOGLE_CLOUD_PROJECT");
   const projectNumber = cleanEnvValue(envByName, "GOOGLE_CLOUD_PROJECT_NUMBER");
@@ -358,6 +374,10 @@ function checkProductionValueInvariants(envByName, image, runtimeServiceAccount)
   const submissionCloseAt = cleanEnvValue(envByName, "XPRIZE_SUBMISSION_CLOSE_AT");
   const judgingPeriodEndAt = cleanEnvValue(envByName, "XPRIZE_JUDGING_PERIOD_END_AT");
   const evidenceResponseSlaBusinessDays = cleanEnvValue(envByName, "XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS");
+  const cloudRunVpcConnector = cleanEnvValue(envByName, "SENTINEL_CLOUD_RUN_VPC_CONNECTOR");
+  const cloudRunVpcEgress = cleanEnvValue(envByName, "SENTINEL_CLOUD_RUN_VPC_EGRESS");
+  const vpcConnectorAnnotation = annotations.get("run.googleapis.com/vpc-access-connector") ?? "";
+  const vpcEgressAnnotation = annotations.get("run.googleapis.com/vpc-access-egress") ?? "";
 
   for (const [name, expectedValue] of Object.entries(fixedProductionEnvValues)) {
     const value = cleanEnvValue(envByName, name);
@@ -536,6 +556,76 @@ function checkProductionValueInvariants(envByName, image, runtimeServiceAccount)
     if (runtimeServiceAccount !== "missing" && !hasPlaceholder(runtimeServiceAccount) && runtimeServiceAccount !== `sentinel-runtime@${projectId}.iam.gserviceaccount.com`) {
       checks.push(check("INVALID_CLOUD_RUN_SERVICE_ACCOUNT", "blocked", runtimeServiceAccount, "Cloud Run runtime service account does not match GOOGLE_CLOUD_PROJECT.", `Use sentinel-runtime@${projectId}.iam.gserviceaccount.com or update the verifier only with reviewed policy.`));
     }
+  }
+
+  if (!vpcConnectorAnnotation) {
+    checks.push(
+      check(
+        "MISSING_CLOUD_RUN_VPC_CONNECTOR_ANNOTATION",
+        "blocked",
+        "missing",
+        "Cloud Run manifest is missing the Serverless VPC Access connector annotation needed for static egress.",
+        "Add run.googleapis.com/vpc-access-connector to the service template annotations before dry-run."
+      )
+    );
+  } else if (!hasPlaceholder(vpcConnectorAnnotation) && !isCloudRunVpcConnector(vpcConnectorAnnotation)) {
+    checks.push(
+      check(
+        "INVALID_CLOUD_RUN_VPC_CONNECTOR_ANNOTATION",
+        "blocked",
+        vpcConnectorAnnotation,
+        "Cloud Run VPC connector annotation does not look like a reviewed connector name or resource path.",
+        "Use a reviewed Serverless VPC Access connector name such as sentinel-egress."
+      )
+    );
+  }
+
+  if (cloudRunVpcConnector && !isCloudRunVpcConnector(cloudRunVpcConnector)) {
+    checks.push(
+      check(
+        "INVALID_SENTINEL_CLOUD_RUN_VPC_CONNECTOR",
+        "blocked",
+        cloudRunVpcConnector,
+        "SENTINEL_CLOUD_RUN_VPC_CONNECTOR does not look like a reviewed connector name or resource path.",
+        "Set SENTINEL_CLOUD_RUN_VPC_CONNECTOR to the Serverless VPC Access connector used by Cloud Run."
+      )
+    );
+  }
+
+  if (cloudRunVpcConnector && vpcConnectorAnnotation && cloudRunVpcConnector !== vpcConnectorAnnotation) {
+    checks.push(
+      check(
+        "MISMATCHED_SENTINEL_CLOUD_RUN_VPC_CONNECTOR",
+        "blocked",
+        vpcConnectorAnnotation,
+        "Cloud Run VPC connector annotation does not match SENTINEL_CLOUD_RUN_VPC_CONNECTOR.",
+        "Keep the runtime env and Cloud Run annotation on the same Serverless VPC Access connector."
+      )
+    );
+  }
+
+  if (vpcEgressAnnotation !== "all-traffic") {
+    checks.push(
+      check(
+        "INVALID_CLOUD_RUN_VPC_EGRESS_ANNOTATION",
+        "blocked",
+        vpcEgressAnnotation || "missing",
+        "Cloud Run VPC egress must route all outbound traffic through the connector for static IP restrictions.",
+        "Set run.googleapis.com/vpc-access-egress to all-traffic."
+      )
+    );
+  }
+
+  if (cloudRunVpcEgress && vpcEgressAnnotation && cloudRunVpcEgress !== vpcEgressAnnotation) {
+    checks.push(
+      check(
+        "MISMATCHED_SENTINEL_CLOUD_RUN_VPC_EGRESS",
+        "blocked",
+        vpcEgressAnnotation,
+        "Cloud Run VPC egress annotation does not match SENTINEL_CLOUD_RUN_VPC_EGRESS.",
+        "Keep SENTINEL_CLOUD_RUN_VPC_EGRESS and the Cloud Run annotation set to all-traffic."
+      )
+    );
   }
 
   if (projectId && region && image !== "missing" && !hasPlaceholder(image) && !image.startsWith(`${region}-docker.pkg.dev/${projectId}/`)) {
@@ -849,6 +939,14 @@ function isValidIpv4OrCidr(value) {
 
   const parsedPrefix = Number(prefix);
   return parsedPrefix >= 1 && parsedPrefix <= 32;
+}
+
+function isCloudRunVpcConnector(value) {
+  const text = String(value ?? "");
+  return (
+    /^[a-z][a-z0-9-]{0,23}[a-z0-9]$/u.test(text) ||
+    /^projects\/[a-z][a-z0-9-]{4,28}[a-z0-9]\/locations\/[a-z0-9-]+\/connectors\/[a-z][a-z0-9-]{0,23}[a-z0-9]$/u.test(text)
+  );
 }
 
 function trimTrailingSlash(value) {

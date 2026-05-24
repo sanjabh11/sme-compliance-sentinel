@@ -11,6 +11,8 @@ spec:
         autoscaling.knative.dev/maxScale: "5"
         run.googleapis.com/execution-environment: gen2
         run.googleapis.com/startup-cpu-boost: "true"
+        run.googleapis.com/vpc-access-connector: sentinel-egress
+        run.googleapis.com/vpc-access-egress: all-traffic
         run.googleapis.com/secrets: "sentinel-admin-action-token:projects/PROJECT_NUMBER/secrets/sentinel-admin-action-token,gemini-api-key:projects/PROJECT_NUMBER/secrets/gemini-api-key,google-oauth-client-secret:projects/PROJECT_NUMBER/secrets/google-oauth-client-secret,sentinel-evidence-signing-secret:projects/PROJECT_NUMBER/secrets/sentinel-evidence-signing-secret,workspace-drive-channel-token:projects/PROJECT_NUMBER/secrets/workspace-drive-channel-token"
     spec:
       serviceAccountName: sentinel-runtime@PROJECT_ID.iam.gserviceaccount.com
@@ -41,6 +43,10 @@ spec:
               value: "sme-workspace-sentinel"
             - name: SENTINEL_CLOUD_RUN_REGION
               value: "us-central1"
+            - name: SENTINEL_CLOUD_RUN_VPC_CONNECTOR
+              value: "sentinel-egress"
+            - name: SENTINEL_CLOUD_RUN_VPC_EGRESS
+              value: "all-traffic"
             - name: SENTINEL_RELEASE_ID
               value: "RELEASE_ID"
             - name: SENTINEL_SOURCE_COMMIT

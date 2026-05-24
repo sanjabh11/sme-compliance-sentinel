@@ -29,6 +29,8 @@ describe("Production launch command center", () => {
     expect(envByName["SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE"].status).toBe("missing");
     expect(envByName["WORKSPACE_DRIVE_CHANNEL_TOKEN"].secret).toBe(true);
     expect(envByName["SENTINEL_BUDGET_PUBSUB_TOPIC"].status).toBe("missing");
+    expect(envByName["SENTINEL_CLOUD_RUN_VPC_CONNECTOR"].status).toBe("missing");
+    expect(envByName["SENTINEL_CLOUD_RUN_VPC_EGRESS"].status).toBe("missing");
     expect(envByName["SENSITIVE_DATA_PROTECTION_ENABLED"].status).toBe("missing");
     expect(envByName["XPRIZE_REPOSITORY_ACCESS_CONFIGURED"].status).toBe("missing");
     expect(envByName["XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED"].status).toBe("missing");
