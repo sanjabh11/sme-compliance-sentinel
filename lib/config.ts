@@ -61,6 +61,10 @@ export const sentinelConfig = {
   xprizeGoogleCloudProductEvidenceConfigured:
     process.env.XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED === "true",
   xprizeGeminiApiCallEvidenceConfigured: process.env.XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED === "true",
+  xprizeBusinessModelEvidenceConfigured: process.env.XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED === "true",
+  xprizeCategoryImpactEvidenceConfigured: process.env.XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED === "true",
+  xprizeAiNativeOperationsEvidenceConfigured:
+    process.env.XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED === "true",
   demoVideoUrl: process.env.XPRIZE_DEMO_VIDEO_URL ?? "",
   demoVideoUnderThreeMinutesConfirmed: process.env.XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED === "true",
   demoVideoPubliclyAccessibleConfirmed: process.env.XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED === "true",
@@ -69,6 +73,8 @@ export const sentinelConfig = {
   demoVideoEnglishOrSubtitledConfirmed: process.env.XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED === "true",
   judgeAccessConfigured: process.env.XPRIZE_JUDGE_ACCESS_CONFIGURED === "true",
   thirdPartyReviewApproved: process.env.XPRIZE_THIRD_PARTY_REVIEW_APPROVED === "true",
+  xprizeIpOwnershipReviewApproved: process.env.XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED === "true",
+  xprizeEvidenceResponseReady: process.env.XPRIZE_EVIDENCE_RESPONSE_READY === "true",
   projectCreatedAfterStartConfirmed: process.env.XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED === "true",
   xprizeEntrantType: parseXPrizeEntrantType(process.env.XPRIZE_ENTRANT_TYPE),
   xprizeCorporateIdConfigured: process.env.XPRIZE_CORPORATE_ID_CONFIGURED === "true",

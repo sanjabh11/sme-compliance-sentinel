@@ -288,6 +288,27 @@ function buildEnvMatrix(): ProductionLaunchEnvItem[] {
       false,
       "Set true only after a hosted Gemini API call log or agent-run proof is captured."
     ),
+    envItem(
+      "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED",
+      sentinelConfig.xprizeBusinessModelEvidenceConfigured ? "true" : "",
+      "Private proof of pricing, paid-pilot motion, and business-model viability.",
+      false,
+      "Attach pricing, pilot conversion, revenue, cost, and go-to-market evidence before setting this true."
+    ),
+    envItem(
+      "XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED",
+      sentinelConfig.xprizeCategoryImpactEvidenceConfigured ? "true" : "",
+      "Small Business Services category fit and customer-impact evidence.",
+      false,
+      "Attach category rationale, pilot problem statement, and customer impact evidence before setting this true."
+    ),
+    envItem(
+      "XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED",
+      sentinelConfig.xprizeAiNativeOperationsEvidenceConfigured ? "true" : "",
+      "AI-native workflow proof across scanning, recommendation, and agent-run operations.",
+      false,
+      "Attach hosted scanner, staged-recommendation, and redacted Gemini/agent-run proof before setting this true."
+    ),
     envItem("XPRIZE_DEMO_VIDEO_URL", sentinelConfig.demoVideoUrl, "Public under-three-minute demo video.", false, "Record and publish the final demo video."),
     envItem("SENTINEL_CLOUD_RUN_SERVICE_NAME", sentinelConfig.cloudRunServiceName, "Cloud Run service identity for hosted proof.", false, "Confirm the deployed service name before capturing Cloud Run evidence."),
     envItem("SENTINEL_CLOUD_RUN_REGION", sentinelConfig.cloudRunRegion, "Cloud Run region for deploy and describe commands.", false, "Confirm the deployed region matches the Cloud Run manifest and verification commands."),
@@ -376,6 +397,27 @@ function buildEnvMatrix(): ProductionLaunchEnvItem[] {
       "Eligibility conflict check for promotion entities and immediate family.",
       false,
       "Complete legal/founder conflict review before setting this true."
+    ),
+    envItem(
+      "XPRIZE_THIRD_PARTY_REVIEW_APPROVED",
+      sentinelConfig.thirdPartyReviewApproved ? "true" : "",
+      "Third-party code, API terms, media, and asset review.",
+      false,
+      "Complete dependency, API-terms, screenshot, and demo-asset review before setting this true."
+    ),
+    envItem(
+      "XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED",
+      sentinelConfig.xprizeIpOwnershipReviewApproved ? "true" : "",
+      "Human IP ownership and submission-rights review.",
+      false,
+      "Confirm owned code, permitted dependencies, and submitter rights before setting this true."
+    ),
+    envItem(
+      "XPRIZE_EVIDENCE_RESPONSE_READY",
+      sentinelConfig.xprizeEvidenceResponseReady ? "true" : "",
+      "Private evidence response process for judge follow-up.",
+      false,
+      "Prepare the private evidence owner list, response SLA, and redacted judge packet before setting this true."
     ),
     envItem(
       "XPRIZE_JUDGE_ACCESS_CONFIGURED",
@@ -682,16 +724,22 @@ function buildProofArtifacts(snapshot: ProductionLaunchSnapshot): ProductionLaun
     proofArtifact("financial-records", "Revenue, cost, CAC, and invoice proof", paidProofReady, "founder", "/api/financial-evidence/ledger", "Business Viability.", "Keep invoices/payment exports private and redacted.", "Attach real paid customer records and costs."),
     proofArtifact("user-consent", "Real user and testimonial consent proof", productionEvidence && snapshot.tenant.evidence.activeUsers > 0, "sales", "/api/evidence/vault", "Real user evidence.", "Share testimonials only when explicit consent is recorded.", "Register consent and active-user artifacts."),
     proofArtifact("repository-access", "Repository access proof", Boolean(sentinelConfig.repositoryUrl) && sentinelConfig.xprizeRepositoryAccessConfigured, "engineering", "XPRIZE_REPOSITORY_URL", "Submission testing.", "Keep secrets and private evidence out of source.", "Publish or privately share the complete source repository and verify judge/testing access."),
+    proofArtifact("business-model-proof", "Business model and pilot-traction proof", sentinelConfig.xprizeBusinessModelEvidenceConfigured, "founder", "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED", "Business Viability.", "Keep customer names, invoices, and payment identifiers private or redacted.", "Attach pricing, pilot conversion, revenue, cost, and go-to-market evidence before setting the business-model flag."),
+    proofArtifact("category-impact-proof", "Small Business Services category impact proof", sentinelConfig.xprizeCategoryImpactEvidenceConfigured, "founder", "XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED", "Category fit.", "Use aggregated impact metrics unless customer consent allows direct quotes.", "Attach the category rationale, customer problem statement, and pilot impact evidence before setting the category-impact flag."),
+    proofArtifact("ai-native-operations-proof", "AI-native operations evidence proof", sentinelConfig.xprizeAiNativeOperationsEvidenceConfigured, "engineering", "XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED", "AI-Native Operations.", "Redact prompts, raw document text, customer identifiers, and security findings.", "Attach hosted scanner, recommendation lifecycle, and Gemini/agent-run evidence before setting the AI-native operations flag."),
+    proofArtifact("evidence-response-readiness", "Judge evidence response readiness", sentinelConfig.xprizeEvidenceResponseReady, "founder", "XPRIZE_EVIDENCE_RESPONSE_READY", "Submission Logistics.", "Keep private evidence owner names and customer-specific material out of public screenshots.", "Prepare the private evidence owner list, response SLA, and redacted judge packet before setting the evidence-response flag."),
     proofArtifact("demo-video", "Public under-three-minute demo video", hasDemoVideoClearance(), "sales", "XPRIZE_DEMO_VIDEO_URL", "Submission media.", "Use only owned/permitted assets and redacted data.", "Record, publish, and human-review the final video for duration, visibility, assets, and customer-data redaction."),
     proofArtifact(
       "license-ip-review",
       "License and IP clearance review",
-      sentinelConfig.thirdPartyReviewApproved && manifest.summary.status === "passed",
+      sentinelConfig.thirdPartyReviewApproved &&
+        sentinelConfig.xprizeIpOwnershipReviewApproved &&
+        manifest.summary.status === "passed",
       "legal",
       "/api/xprize/license-manifest",
       "Third-party use and IP ownership.",
       "Keep private review notes out of public copy.",
-      "Review dependencies, Google API terms, screenshots, and video assets."
+      "Review dependencies, Google API terms, screenshots, video assets, and IP ownership before setting the review flags."
     )
   ];
 }
