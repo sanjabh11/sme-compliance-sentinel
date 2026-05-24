@@ -1,6 +1,6 @@
 /* global AbortController, URL, clearTimeout, console, fetch, process, setTimeout */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { lstat, mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 const defaultTimeoutMs = 15000;
@@ -759,8 +759,30 @@ function shouldFail(report) {
 async function writeJson(path, payload) {
   const absolutePath = resolve(path);
   await mkdir(dirname(absolutePath), { recursive: true });
+  await assertRegularFileIfExists(absolutePath, "Hosted production verification output file");
   await writeFile(absolutePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   return absolutePath;
+}
+
+async function assertRegularFileIfExists(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = await lstat(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private file path before hosted proof capture.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${path} is not a regular file; use a regular private file path before hosted proof capture.`);
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

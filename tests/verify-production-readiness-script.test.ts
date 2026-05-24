@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -219,6 +219,28 @@ describe("verify-production readiness script auth", () => {
           phaseId: "hosted-proof-capture"
         }
       });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when the hosted verification output path is a symlink", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-production-verifier-symlink-"));
+    const outPath = join(tempDir, "verify-production-missing-url.json");
+    const targetPath = join(tempDir, "reviewed-verify-production-missing-url.json");
+
+    try {
+      writeFileSync(targetPath, "{}", "utf8");
+      symlinkSync(targetPath, outPath);
+
+      expect(() =>
+        execFileSync(process.execPath, ["scripts/verify-production-readiness.mjs", "--out", outPath], {
+          cwd: process.cwd(),
+          env: { ...process.env, NEXT_PUBLIC_PRODUCT_URL: "" },
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"]
+        })
+      ).toThrow(/symbolic link/u);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
