@@ -56,6 +56,7 @@ const deploymentImportRequiredCommandIds = [
   "source-release",
   "provenance",
   "cloudrun-render-values-audit",
+  "cloudrun-render-evidence-verify",
   "cloudrun-render-manifest",
   "cloudrun-template-strict",
   "cloudrun-dry-run-preflight",
