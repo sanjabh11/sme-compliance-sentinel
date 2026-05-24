@@ -30,6 +30,7 @@ describe("deployment evidence packet", () => {
     expect(packet.artifactManifest.map((artifact) => artifact.id)).toEqual(
       expect.arrayContaining([
         "local-quality-gates-log",
+        "cloudrun-release-values-json",
         "cloudrun-render-values-audit-json",
         "cloudrun-render-evidence-packet-json",
         "cloudrun-render-summary-json",
@@ -55,6 +56,7 @@ describe("deployment evidence packet", () => {
     );
     expect(packet.commandSequence.map((command) => command.id)).toEqual(
       expect.arrayContaining([
+        "cloudrun-release-values",
         "cloudrun-render-values-audit",
         "cloudrun-render-manifest",
         "cloudrun-template-strict",
@@ -74,6 +76,15 @@ describe("deployment evidence packet", () => {
       ])
     );
     expect(packet.commandSequence.find((command) => command.id === "hosted-write-through")?.requiresAdminToken).toBe(true);
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-release-values")?.command).toContain(
+      "npm run write:cloudrun-release-values"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-release-values")?.expectedArtifactId).toBe(
+      "cloudrun-release-values-json"
+    );
+    expect(packet.commandSequence.findIndex((command) => command.id === "cloudrun-release-values")).toBeLessThan(
+      packet.commandSequence.findIndex((command) => command.id === "cloudrun-render-values-audit")
+    );
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-render-values-audit")?.command).toContain(
       "npm run audit:cloudrun-values"
     );
@@ -170,6 +181,7 @@ describe("deployment evidence packet", () => {
     expect(packet.runbook[1]).toMatchObject({
       phase: "manifest-render",
       requiredArtifactIds: [
+        "cloudrun-release-values-json",
         "cloudrun-render-values-audit-json",
         "cloudrun-render-evidence-packet-json",
         "cloudrun-render-summary-json",
@@ -180,6 +192,7 @@ describe("deployment evidence packet", () => {
     });
     expect(packet.runbook[1].proofFiles).toEqual(
       expect.arrayContaining([
+        "/secure/local/cloudrun-render-values.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-values-audit.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-evidence-packet.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-summary.json",

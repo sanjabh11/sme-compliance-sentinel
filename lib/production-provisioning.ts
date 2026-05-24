@@ -99,13 +99,13 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
         "Terminal output showing the submitted source passes before cloud deployment."
       ),
       command(
-        "write-render-values-template",
-        "Write private render values template",
-        `node scripts/render-cloudrun-manifest.mjs --write-values-template ${privateRenderValuesPath}`,
+        "write-release-render-values",
+        "Write release-prefilled private render values",
+        `npm run write:cloudrun-release-values -- ${privateRenderValuesPath}`,
         "engineering",
         false,
         false,
-        "Private non-secret values file template ready for project ids, source revision metadata, hosted URLs, secret versions, and reviewed XPRIZE flags."
+        "Private non-secret values file prefilled with SENTINEL_RELEASE_ID, source commit, source timestamp, branch, and repository URL; project ids, hosted URLs, secret versions, and reviewed XPRIZE flags still need operator values."
       ),
       command(
         "audit-render-values",

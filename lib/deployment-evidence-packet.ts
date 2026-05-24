@@ -13,6 +13,8 @@ import type {
 const placeholderProductUrl = "https://YOUR-CLOUD-RUN-URL";
 const placeholderReleaseId = "RELEASE_ID";
 const placeholderPrivateBucket = "gs://PROJECT_ID-sentinel-private-evidence";
+const privateRenderValuesPath = "/secure/local/cloudrun-render-values.json";
+const writeReleaseCandidateValuesCommand = `npm run write:cloudrun-release-values -- ${privateRenderValuesPath}`;
 const cloudRunTranscriptDir = "/secure/local/cloudrun/$SENTINEL_RELEASE_ID";
 const collectCloudRunDeploymentTranscriptCommand =
   `npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log ${cloudRunTranscriptDir}/cloudrun-dry-run.log --deploy-log ${cloudRunTranscriptDir}/cloudrun-deploy.log --describe-json ${cloudRunTranscriptDir}/cloudrun-describe.json --out-dir artifacts/deployment --strict`;
@@ -102,6 +104,7 @@ function buildRunbook(input: {
       label: "Render and verify private Cloud Run manifest",
       ownerRole: "engineering",
       commandIds: commandIds(
+        "cloudrun-release-values",
         "cloudrun-render-values-audit",
         "cloudrun-render-manifest",
         "cloudrun-template-strict",
@@ -109,6 +112,7 @@ function buildRunbook(input: {
         "cloudrun-dry-run-packet-verify"
       ),
       requiredArtifactIds: [
+        "cloudrun-release-values-json",
         "cloudrun-render-values-audit-json",
         "cloudrun-render-evidence-packet-json",
         "cloudrun-render-summary-json",
@@ -117,6 +121,7 @@ function buildRunbook(input: {
         "cloudrun-dry-run-packet-verifier-json"
       ],
       proofFiles: proofFiles(
+        "cloudrun-release-values-json",
         "cloudrun-render-values-audit-json",
         "cloudrun-render-evidence-packet-json",
         "cloudrun-render-summary-json",
@@ -248,6 +253,21 @@ function buildArtifactManifest(input: {
       evidenceVaultTarget: "release-readiness transcript",
       redactionRules: ["Do not include local env values or shell history."],
       nextAction: "Run all local checks and store the terminal transcript before deployment."
+    }),
+    artifact({
+      id: "cloudrun-release-values-json",
+      label: "Release-prefilled private Cloud Run render values",
+      ownerRole: "engineering",
+      status: localVerifierStatus,
+      sourceCommand: writeReleaseCandidateValuesCommand,
+      privateStorePath: privateRenderValuesPath,
+      evidenceVaultTarget: "operator-only Cloud Run input",
+      redactionRules: [
+        "Do not import the filled values file into public evidence or the hosted Evidence Vault.",
+        "Treat project ids, billing ids, URLs, static egress IPs, and manual evidence flags as private operator context even though they are non-secret."
+      ],
+      nextAction:
+        "Use this Git-prefilled starter, fill remaining non-secret production values privately, and audit it before rendering."
     }),
     artifact({
       id: "cloudrun-render-values-audit-json",
@@ -549,6 +569,15 @@ function buildCommandSequence(input: {
       false,
       "provenance-json",
       "Run after the final source commit is pushed."
+    ),
+    command(
+      "cloudrun-release-values",
+      "Write release-prefilled private Cloud Run values",
+      writeReleaseCandidateValuesCommand,
+      false,
+      false,
+      "cloudrun-release-values-json",
+      "Prefills release id, source commit, commit timestamp, branch, and repository URL from Git; keep the private values file out of source."
     ),
     command(
       "cloudrun-render-values-audit",

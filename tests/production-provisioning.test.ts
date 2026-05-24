@@ -58,7 +58,7 @@ describe("production provisioning pack", () => {
     expect(pack.verificationSequence.map((command) => command.id)).toEqual(
       expect.arrayContaining([
         "local-quality-gates",
-        "write-render-values-template",
+        "write-release-render-values",
         "audit-render-values",
         "render-cloudrun-manifest",
         "prepare-cloudrun-dry-run",
@@ -72,6 +72,15 @@ describe("production provisioning pack", () => {
         "write-deployment-results-template",
         "prepare-deployment-execution-checklist"
       ])
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "write-release-render-values")?.command).toContain(
+      "npm run write:cloudrun-release-values"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "write-release-render-values")?.expectedProof).toContain(
+      "SENTINEL_RELEASE_ID"
+    );
+    expect(pack.verificationSequence.findIndex((command) => command.id === "write-release-render-values")).toBeLessThan(
+      pack.verificationSequence.findIndex((command) => command.id === "audit-render-values")
     );
     expect(pack.verificationSequence.findIndex((command) => command.id === "audit-render-values")).toBeLessThan(
       pack.verificationSequence.findIndex((command) => command.id === "render-cloudrun-manifest")
