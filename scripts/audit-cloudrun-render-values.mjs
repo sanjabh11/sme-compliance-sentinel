@@ -343,7 +343,13 @@ function evidencePacketProofBoundaryIsExplicit(packet) {
 }
 
 function requiredCommandIds() {
-  return ["fill-private-render-values", "audit-render-values", "render-cloudrun-manifest", "prepare-dry-run-preflight"];
+  return [
+    "fill-private-render-values",
+    "verify-render-handoff",
+    "audit-render-values",
+    "render-cloudrun-manifest",
+    "prepare-dry-run-preflight"
+  ];
 }
 
 function evidenceStatusMatchesAudit(packet, audit) {
@@ -527,6 +533,13 @@ function buildEvidencePacket({ audit, outputDirectory, evidencePacketPath, evide
         command: "npm run write:cloudrun-release-values -- /secure/local/cloudrun-render-values.json",
         expectedArtifact: "/secure/local/cloudrun-render-values.json",
         stopCondition: "Do not commit or screenshot the filled private values file."
+      },
+      {
+        id: "verify-render-handoff",
+        owner: "engineering",
+        command: "npm run verify:cloudrun-render-handoff -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.json --strict",
+        expectedArtifact: join(outputDirectory, "cloudrun-render-handoff-verifier.json"),
+        stopCondition: "Do not audit, render, or run Cloud Run dry-run if the handoff verifier is blocked after transfer or owner edits."
       },
       {
         id: "audit-render-values",

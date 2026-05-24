@@ -256,10 +256,16 @@ describe("Cloud Run render-values audit", () => {
     expect(packet.evidencePacket.phaseProgress.currentSliceRemainingPercent).toBeGreaterThan(0);
     expect(packet.evidencePacket.commandSequence.map((command) => command.id)).toEqual([
       "fill-private-render-values",
+      "verify-render-handoff",
       "audit-render-values",
       "render-cloudrun-manifest",
       "prepare-dry-run-preflight"
     ]);
+    expect(packet.evidencePacket.commandSequence.find((command) => command.id === "verify-render-handoff")).toMatchObject({
+      command: expect.stringContaining("verify:cloudrun-render-handoff"),
+      expectedArtifact: expect.stringContaining("cloudrun-render-handoff-verifier.json"),
+      stopCondition: expect.stringContaining("handoff verifier")
+    });
     expect(packet.evidencePacket.requiredBeforeDryRun).toEqual([]);
     expect(packet.evidencePacket.publicClaimEvidenceQueue).toEqual(
       expect.arrayContaining([
