@@ -211,8 +211,21 @@ describe("hosted proof bundle Evidence Vault importer", () => {
         }
       ]
     });
+    const reviewProofFlagBundle = await makeBundle("https://sentinel.example.com", {}, {
+      proofFlagStatus: "needs-review",
+      proofFlagChecks: [
+        {
+          envName: "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED",
+          status: "needs-review",
+          detail: "launch-readiness.json did not include this env flag."
+        }
+      ]
+    });
 
     await expect(importHostedProofBundle({ bundleDir: blockedProofFlagBundle, dryRun: true })).rejects.toThrow(
+      /XPRIZE proof flag check failed/u
+    );
+    await expect(importHostedProofBundle({ bundleDir: reviewProofFlagBundle, dryRun: true })).rejects.toThrow(
       /XPRIZE proof flag check failed/u
     );
   });

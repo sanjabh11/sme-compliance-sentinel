@@ -613,7 +613,7 @@ function buildReleaseEvidenceManifest(input) {
     proofFlagBlockers,
     nextActions: [
       "Clear missing and mock-only slots with hosted Cloud Run, live Gemini, durable GCP, Workspace, financial, user, cost/CAC, demo, judge-access, repository, and license/IP proof.",
-      "Keep XPRIZE_REPOSITORY_ACCESS_CONFIGURED, XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED, and XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED false until these proof-flag checks pass.",
+      "Keep XPRIZE proof flags false until the matching repository, Google Cloud, Gemini, business, category-impact, AI-native, IP, and evidence-response checks pass.",
       "Keep customer names, security findings, OAuth artifacts, invoices, payment records, CAC receipts, raw logs, and credentials in the private evidence store.",
       "Rerun collect:hosted-proof after each deployment or proof import and keep the release evidence manifest with the private judge packet."
     ],
@@ -653,6 +653,51 @@ function buildProofFlagChecks(input) {
       passed: () => hasGeminiApiProof(input.rowsById),
       requiredEvidence:
         "gemini-proof-status or gemini-smoke-write-through row passed with provider=gemini-api in the hosted report."
+    },
+    {
+      envName: "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED",
+      label: "Business model evidence proof flag",
+      ruleBucket: "Business viability",
+      evidenceIds: ["business-viability"],
+      passed: () => slotVerified(slotsById, "business-viability"),
+      requiredEvidence:
+        "business-viability release slot verified from hosted evidence and evidence-intake artifacts."
+    },
+    {
+      envName: "XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED",
+      label: "Category impact evidence proof flag",
+      ruleBucket: "Category impact",
+      evidenceIds: ["business-viability", "devpost-submission"],
+      passed: () => slotsVerified(slotsById, ["business-viability", "devpost-submission"]),
+      requiredEvidence:
+        "business-viability and devpost-submission release slots verified with category rationale and customer-impact evidence."
+    },
+    {
+      envName: "XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED",
+      label: "AI-native operations evidence proof flag",
+      ruleBucket: "AI-Native Operations",
+      evidenceIds: ["live-gemini", "production-readiness", "workspace-sync"],
+      passed: () => hasGeminiApiProof(input.rowsById) && slotsVerified(slotsById, ["production-readiness", "workspace-sync"]),
+      requiredEvidence:
+        "live Gemini provider evidence plus production-readiness and workspace-sync release slots verified from hosted production."
+    },
+    {
+      envName: "XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED",
+      label: "IP ownership review proof flag",
+      ruleBucket: "IP ownership and third-party authorization",
+      evidenceIds: ["license-ip"],
+      passed: () => slotVerified(slotsById, "license-ip"),
+      requiredEvidence:
+        "license-ip release slot verified from license manifest and human IP/third-party review evidence."
+    },
+    {
+      envName: "XPRIZE_EVIDENCE_RESPONSE_READY",
+      label: "Evidence response readiness proof flag",
+      ruleBucket: "Judge follow-up evidence response",
+      evidenceIds: ["judge-access", "devpost-submission"],
+      passed: () => slotsVerified(slotsById, ["judge-access", "devpost-submission"]),
+      requiredEvidence:
+        "judge-access and devpost-submission release slots verified with private follow-up response materials ready."
     }
   ];
 
@@ -729,6 +774,10 @@ function buildProofFlagChecks(input) {
 
 function slotVerified(slotsById, id) {
   return slotsById.get(id)?.status === "verified";
+}
+
+function slotsVerified(slotsById, ids) {
+  return ids.every((id) => slotVerified(slotsById, id));
 }
 
 function hasGeminiApiProof(rowsById) {

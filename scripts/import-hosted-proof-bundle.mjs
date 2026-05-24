@@ -323,7 +323,7 @@ function assertProofFlagChecks(proofFlagChecks) {
     return;
   }
 
-  const blocked = proofFlagChecks.filter((check) => check?.status === "blocked");
+  const blocked = proofFlagChecks.filter((check) => check?.status === "blocked" || check?.status === "needs-review");
 
   if (!blocked.length) {
     return;
@@ -408,7 +408,7 @@ function buildSummary(input) {
     nextActions: [
       "Open evidence-vault-import-response.json and confirm every candidate artifact status before relying on it.",
       "Keep deployment-execution-checklist.json passed before running --confirm-import.",
-      "Confirm release-evidence-manifest.json proofFlagChecks passed before setting repository, Google Cloud, or Gemini proof flags true in production values.",
+      "Confirm release-evidence-manifest.json proofFlagChecks passed before setting any XPRIZE proof flag true in production values.",
       "Run /api/evidence/vault and /api/production/hosted-evidence after import to confirm checksummed artifact records are visible.",
       "Keep the source hosted proof bundle private; do not commit generated proof, credentials, invoices, customer findings, or raw cloud responses.",
       "Rerun Claim Guard and the XPRIZE Submission Gate before final Devpost submission."

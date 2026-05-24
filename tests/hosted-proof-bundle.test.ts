@@ -52,6 +52,17 @@ interface HostedProofBundleModule {
   }>;
 }
 
+const requiredProofFlagEnvNames = [
+  "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
+  "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
+  "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
+  "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED",
+  "XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED",
+  "XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED",
+  "XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED",
+  "XPRIZE_EVIDENCE_RESPONSE_READY"
+];
+
 describe("hosted proof bundle collector", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -148,8 +159,16 @@ describe("hosted proof bundle collector", () => {
         expect.arrayContaining([
           expect.objectContaining({ envName: "XPRIZE_REPOSITORY_ACCESS_CONFIGURED", status: "passed" }),
           expect.objectContaining({ envName: "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED", status: "passed" }),
-          expect.objectContaining({ envName: "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED", status: "passed" })
+          expect.objectContaining({ envName: "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED", status: "passed" }),
+          expect.objectContaining({ envName: "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED", status: "not-claimed" }),
+          expect.objectContaining({ envName: "XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED", status: "not-claimed" }),
+          expect.objectContaining({ envName: "XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED", status: "not-claimed" }),
+          expect.objectContaining({ envName: "XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED", status: "not-claimed" }),
+          expect.objectContaining({ envName: "XPRIZE_EVIDENCE_RESPONSE_READY", status: "not-claimed" })
         ])
+      );
+      expect(releaseEvidence.proofFlagChecks.map((check) => check.envName)).toEqual(
+        expect.arrayContaining(requiredProofFlagEnvNames)
       );
       expect(releaseEvidence.slots.map((slot) => slot.id)).toEqual(
         expect.arrayContaining(["cloud-run-deployment", "workspace-sync", "live-gemini", "judge-access", "business-viability"])
@@ -212,6 +231,47 @@ describe("hosted proof bundle collector", () => {
       await rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("blocks the release manifest when a claimed business evidence flag lacks hosted business proof", async () => {
+    const { collectHostedProofBundle } = await loadCollector();
+    const tempDir = await mkdtemp(join(tmpdir(), "sentinel-proof-"));
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      const method = init?.method ?? "GET";
+
+      return new Response(JSON.stringify(payloadForRequest(href, method, { claimBusinessEvidence: true })), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+
+    try {
+      const manifest = await collectHostedProofBundle({
+        url: "https://sentinel.example.com",
+        outDir: tempDir,
+        releaseId: "release-test",
+        includeWriteChecks: false,
+        timeoutMs: 1000
+      });
+      const releaseEvidenceJson = await readFile(join(manifest.outputDirectory, "release-evidence-manifest.json"), "utf8");
+      const releaseEvidence = JSON.parse(releaseEvidenceJson) as {
+        overallStatus: string;
+        proofFlagStatus: string;
+        proofFlagBlockers: string[];
+        proofFlagChecks: Array<{ envName: string; status: string }>;
+      };
+
+      expect(releaseEvidence.overallStatus).toBe("blocked");
+      expect(releaseEvidence.proofFlagStatus).toBe("blocked");
+      expect(releaseEvidence.proofFlagBlockers.join(" ")).toContain("XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED");
+      expect(releaseEvidence.proofFlagChecks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ envName: "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED", status: "blocked" })
+        ])
+      );
+      expect(manifest.blockers.join(" ")).toContain("XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 async function loadCollector() {
@@ -228,7 +288,11 @@ function headerValue(init: RequestInit | undefined, name: string) {
   return headers[name];
 }
 
-function payloadForRequest(url: string, method: string, options: { noGeminiProvider?: boolean } = {}) {
+function payloadForRequest(
+  url: string,
+  method: string,
+  options: { noGeminiProvider?: boolean; claimBusinessEvidence?: boolean } = {}
+) {
   if (method === "POST") {
     return {
       overallStatus: "passed",
@@ -266,6 +330,31 @@ function payloadForRequest(url: string, method: string, options: { noGeminiProvi
           name: "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
           status: "configured",
           currentValue: "true"
+        },
+        {
+          name: "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED",
+          status: options.claimBusinessEvidence ? "configured" : "missing",
+          currentValue: options.claimBusinessEvidence ? "true" : "missing"
+        },
+        {
+          name: "XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED",
+          status: "missing",
+          currentValue: "missing"
+        },
+        {
+          name: "XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED",
+          status: "missing",
+          currentValue: "missing"
+        },
+        {
+          name: "XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED",
+          status: "missing",
+          currentValue: "missing"
+        },
+        {
+          name: "XPRIZE_EVIDENCE_RESPONSE_READY",
+          status: "missing",
+          currentValue: "missing"
         }
       ],
       proofArtifacts: [
