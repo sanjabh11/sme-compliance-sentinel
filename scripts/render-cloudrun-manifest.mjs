@@ -1,6 +1,6 @@
 /* global console, process, URL */
 
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -153,7 +153,8 @@ export function parseArgs(argv) {
     outDir: process.env.SENTINEL_CLOUD_RUN_RENDER_OUT_DIR ?? defaultOutDir,
     releaseId: process.env.SENTINEL_RELEASE_ID ?? "",
     strict: false,
-    writeValuesTemplatePath: ""
+    writeValuesTemplatePath: "",
+    writeReleaseValuesPath: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -215,6 +216,17 @@ export function parseArgs(argv) {
 
     if (arg.startsWith("--write-values-template=")) {
       args.writeValuesTemplatePath = arg.slice("--write-values-template=".length) || defaultValuesTemplatePath;
+      continue;
+    }
+
+    if (arg === "--write-release-values") {
+      args.writeReleaseValuesPath = argv[index + 1] ?? "";
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--write-release-values=")) {
+      args.writeReleaseValuesPath = arg.slice("--write-release-values=".length);
       continue;
     }
 
@@ -332,6 +344,59 @@ export async function writeRenderValuesTemplate(outputPath = defaultValuesTempla
     keyCount: Object.keys(renderValuesTemplate).length,
     privateHandling:
       "This is a non-secret template. Copy it to a private path, replace placeholders with reviewed production values, and keep filled values out of Git."
+  };
+}
+
+export function buildReleaseCandidateValues(options = {}) {
+  const gitRunner = options.gitRunner ?? runGit;
+  const headCommit = gitRunner(["rev-parse", "HEAD"]);
+  const sourceCommitAt = gitRunner(["log", "-1", "--format=%cI"]);
+  const upstreamBranch = runOptionalGit(gitRunner, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
+  const currentBranch = runOptionalGit(gitRunner, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  const remoteUrl = normalizeRepositoryUrl(runOptionalGit(gitRunner, ["remote", "get-url", "origin"]));
+
+  if (!/^[a-f0-9]{40}$/iu.test(headCommit) || !isIsoLikeTimestamp(sourceCommitAt)) {
+    throw new Error("Release candidate values require Git HEAD and commit timestamp metadata.");
+  }
+
+  const commitDate = sourceCommitAt.slice(0, 10).replace(/-/gu, "");
+
+  return {
+    ...buildRenderValuesTemplate(),
+    SENTINEL_RELEASE_ID: `release-${commitDate}-${headCommit.slice(0, 7).toLowerCase()}`,
+    SENTINEL_SOURCE_COMMIT: headCommit,
+    SENTINEL_SOURCE_COMMIT_AT: sourceCommitAt,
+    SENTINEL_SOURCE_BRANCH: upstreamBranch || currentBranch || "main",
+    ...(remoteUrl ? { XPRIZE_REPOSITORY_URL: remoteUrl } : {})
+  };
+}
+
+export async function writeReleaseCandidateValues(outputPath, options = {}) {
+  if (!outputPath) {
+    throw new Error("--write-release-values requires a private output path.");
+  }
+
+  const absolutePath = resolve(outputPath);
+  const values = buildReleaseCandidateValues(options);
+  await mkdir(dirname(absolutePath), { recursive: true });
+  await writeJson(absolutePath, values);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    path: absolutePath,
+    keyCount: Object.keys(values).length,
+    releaseId: values.SENTINEL_RELEASE_ID,
+    sourceCommit: values.SENTINEL_SOURCE_COMMIT,
+    sourceCommitAt: values.SENTINEL_SOURCE_COMMIT_AT,
+    sourceBranch: values.SENTINEL_SOURCE_BRANCH,
+    repositoryUrl: values.XPRIZE_REPOSITORY_URL,
+    privateHandling:
+      "This release-candidate values file is a non-secret private starter. It fills source/release metadata from Git, but project ids, hosted URL, OAuth ids, billing ids, Gemini key resource ids, static egress IPs, Secret Manager versions, and evidence flags still require operator review.",
+    nextActions: [
+      "Fill the remaining non-secret production values in this private file.",
+      "Keep every XPRIZE evidence attestation false until the private proof exists.",
+      `Run npm run audit:cloudrun-values -- --values ${absolutePath} --out-dir artifacts/deployment --release-id ${values.SENTINEL_RELEASE_ID} --strict before rendering.`
+    ]
   };
 }
 
@@ -953,6 +1018,31 @@ function isRawSecretArg(arg) {
   ].some((name) => arg === name || arg.startsWith(`${name}=`));
 }
 
+function runGit(args) {
+  return execFileSync("git", args, { cwd: process.cwd(), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+}
+
+function runOptionalGit(gitRunner, args) {
+  try {
+    return gitRunner(args).trim();
+  } catch {
+    return "";
+  }
+}
+
+function normalizeRepositoryUrl(value) {
+  const url = String(value || "").trim();
+  if (url.startsWith("git@github.com:")) {
+    return `https://github.com/${url.slice("git@github.com:".length).replace(/\.git$/u, "")}`;
+  }
+
+  return url.replace(/\.git$/u, "");
+}
+
+function isIsoLikeTimestamp(value) {
+  return Number.isFinite(Date.parse(String(value || "")));
+}
+
 async function writeJson(path, payload) {
   await writeFile(path, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
@@ -1049,9 +1139,11 @@ function escapeRegExp(value) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     const options = parseArgs(process.argv.slice(2));
-    const summary = options.writeValuesTemplatePath
-      ? await writeRenderValuesTemplate(options.writeValuesTemplatePath)
-      : await renderCloudRunManifest(options);
+    const summary = options.writeReleaseValuesPath
+      ? await writeReleaseCandidateValues(options.writeReleaseValuesPath)
+      : options.writeValuesTemplatePath
+        ? await writeRenderValuesTemplate(options.writeValuesTemplatePath)
+        : await renderCloudRunManifest(options);
     console.log(JSON.stringify(summary, null, 2));
   } catch (error) {
     if (error?.summary) {

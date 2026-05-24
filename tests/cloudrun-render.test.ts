@@ -11,11 +11,31 @@ interface CloudRunRenderModule {
     releaseId: string;
     strict: boolean;
     writeValuesTemplatePath: string;
+    writeReleaseValuesPath: string;
   };
+  buildReleaseCandidateValues: (options?: {
+    gitRunner?: (args: string[]) => string;
+  }) => Record<string, string>;
   writeRenderValuesTemplate: (outputPath?: string) => Promise<{
     path: string;
     keyCount: number;
     privateHandling: string;
+  }>;
+  writeReleaseCandidateValues: (
+    outputPath: string,
+    options?: {
+      gitRunner?: (args: string[]) => string;
+    }
+  ) => Promise<{
+    path: string;
+    keyCount: number;
+    releaseId: string;
+    sourceCommit: string;
+    sourceCommitAt: string;
+    sourceBranch: string;
+    repositoryUrl: string;
+    privateHandling: string;
+    nextActions: string[];
   }>;
   renderCloudRunManifest: (options: {
     template?: string;
@@ -58,6 +78,8 @@ describe("Cloud Run manifest renderer", () => {
       "release-1",
       "--write-values-template",
       "/tmp/sentinel-render-values.json",
+      "--write-release-values",
+      "/tmp/sentinel-release-values.json",
       "--strict"
     ]);
 
@@ -67,10 +89,47 @@ describe("Cloud Run manifest renderer", () => {
       outDir: "/tmp/sentinel-render",
       releaseId: "release-1",
       writeValuesTemplatePath: "/tmp/sentinel-render-values.json",
+      writeReleaseValuesPath: "/tmp/sentinel-release-values.json",
       strict: true
     });
     expect(() => parseArgs(["--gemini-api-key", "secret"])).toThrow(/Raw secret CLI args/u);
     expect(() => parseArgs(["--token=secret"])).toThrow(/Raw secret CLI args/u);
+  });
+
+  it("writes a private release-candidate values starter from Git metadata only", async () => {
+    const { buildReleaseCandidateValues, writeReleaseCandidateValues } = await loadRenderer();
+    const tempDir = await makeTempDir();
+    const valuesPath = join(tempDir, "cloudrun-release-values.json");
+    const gitRunner = makeFakeGitRunner();
+
+    const values = buildReleaseCandidateValues({ gitRunner });
+    const summary = await writeReleaseCandidateValues(valuesPath, { gitRunner });
+    const writtenValues = JSON.parse(await readFile(valuesPath, "utf8")) as Record<string, string>;
+
+    expect(values).toMatchObject({
+      SENTINEL_RELEASE_ID: "release-20260524-0123456",
+      SENTINEL_SOURCE_COMMIT: "0123456789abcdef0123456789abcdef01234567",
+      SENTINEL_SOURCE_COMMIT_AT: "2026-05-24T10:48:19+05:30",
+      SENTINEL_SOURCE_BRANCH: "origin/main",
+      XPRIZE_REPOSITORY_URL: "https://github.com/sanjabh11/sme-compliance-sentinel"
+    });
+    expect(values.GOOGLE_CLOUD_PROJECT).toBe("PROJECT_ID");
+    expect(values.NEXT_PUBLIC_PRODUCT_URL).toBe("https://YOUR-SERVICE-URL");
+    expect(values.XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED).toBe("false");
+    expect(writtenValues).toEqual(values);
+    expect(summary).toMatchObject({
+      path: valuesPath,
+      releaseId: "release-20260524-0123456",
+      sourceCommit: "0123456789abcdef0123456789abcdef01234567",
+      repositoryUrl: "https://github.com/sanjabh11/sme-compliance-sentinel"
+    });
+    expect(summary.privateHandling).toContain("non-secret private starter");
+    expect(summary.nextActions.join(" ")).toContain("audit:cloudrun-values");
+    expect(JSON.stringify(writtenValues)).not.toContain("AIza");
+    expect(JSON.stringify(writtenValues)).not.toContain("GOCSPX");
+    expect(JSON.stringify(summary)).not.toContain("private-admin-token");
+
+    await expect(writeReleaseCandidateValues("", { gitRunner })).rejects.toThrow(/requires a private output path/u);
   });
 
   it("writes a non-secret render values template and rejects placeholders in strict mode", async () => {
@@ -227,6 +286,25 @@ async function writeValues(tempDir: string, values: Record<string, string>, file
   const path = join(tempDir, fileName);
   await writeFile(path, `${JSON.stringify(values, null, 2)}\n`, "utf8");
   return path;
+}
+
+function makeFakeGitRunner() {
+  return (args: string[]) => {
+    const command = args.join(" ");
+    const responses: Record<string, string> = {
+      "rev-parse HEAD": "0123456789abcdef0123456789abcdef01234567",
+      "log -1 --format=%cI": "2026-05-24T10:48:19+05:30",
+      "rev-parse --abbrev-ref --symbolic-full-name @{u}": "origin/main",
+      "rev-parse --abbrev-ref HEAD": "main",
+      "remote get-url origin": "https://github.com/sanjabh11/sme-compliance-sentinel.git"
+    };
+
+    if (responses[command]) {
+      return responses[command];
+    }
+
+    throw new Error(`Unexpected git command ${command}`);
+  };
 }
 
 function safeRenderValues() {

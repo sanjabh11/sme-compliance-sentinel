@@ -18,6 +18,7 @@
     "verify:provenance": "node scripts/verify-project-provenance.mjs",
     "verify:cloudrun-deployment": "node scripts/verify-cloudrun-deployment.mjs",
     "write:cloudrun-values-template": "node scripts/render-cloudrun-manifest.mjs --write-values-template",
+    "write:cloudrun-release-values": "node scripts/render-cloudrun-manifest.mjs --write-release-values",
     "audit:cloudrun-values": "node scripts/audit-cloudrun-render-values.mjs",
     "render:cloudrun-manifest": "node scripts/render-cloudrun-manifest.mjs",
     "prepare:cloudrun-dry-run": "node scripts/prepare-cloudrun-dry-run-packet.mjs",
