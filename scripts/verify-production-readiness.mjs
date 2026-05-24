@@ -357,8 +357,8 @@ export async function runProductionReadinessVerification(options) {
 function buildMissingHostedUrlReport(options) {
   const writeMode = Boolean(options.includeWriteChecks);
   const command = writeMode
-    ? "npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --strict --include-write-checks --out /secure/local/verify-production.json"
-    : "npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --strict --out /secure/local/verify-production.json";
+    ? "npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json"
+    : "npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json";
 
   return {
     generatedAt: new Date().toISOString(),
@@ -398,7 +398,8 @@ function buildMissingHostedUrlReport(options) {
         command
       ],
       privateArtifactPaths: [
-        "/secure/local/verify-production.json",
+        "/secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json",
+        "/secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json",
         "artifacts/hosted-proof/$SENTINEL_RELEASE_ID/verify-production.json"
       ],
       acceptedProof: [
@@ -420,7 +421,7 @@ function buildMissingHostedUrlReport(options) {
     recommendedNextActions: [
       "Complete the Cloud Run render and dry-run preflight with private values.",
       "Deploy the rendered Cloud Run service and preserve dry-run/deploy/describe logs in the private evidence store.",
-      "Export NEXT_PUBLIC_PRODUCT_URL to the hosted HTTPS service URL, then rerun this verifier with --out /secure/local/verify-production.json.",
+      "Export NEXT_PUBLIC_PRODUCT_URL and SENTINEL_RELEASE_ID in a private operator shell, then rerun the read-only verifier with the release-bound --out path.",
       "Run write-through checks only after the production admin token is available from Secret Manager or a private shell environment.",
       "Attach the hosted verification JSON to the private judge packet and hosted proof bundle after redaction review."
     ]

@@ -380,7 +380,8 @@ function buildArtifactManifest(input: {
       label: "Hosted read-only production verification JSON",
       ownerRole: "engineering",
       status: "external-required",
-      sourceCommand: "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --strict",
+      sourceCommand:
+        "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json",
       privateStorePath: `${basePath}/verify-production-readonly.json`,
       evidenceVaultTarget: "production-readiness-report",
       redactionRules: ["Keep route names and statuses; redact internal ids if present."],
@@ -391,7 +392,8 @@ function buildArtifactManifest(input: {
       label: "Hosted write-through production verification JSON",
       ownerRole: "engineering",
       status: "external-required",
-      sourceCommand: "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --strict --include-write-checks",
+      sourceCommand:
+        "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json",
       privateStorePath: `${basePath}/verify-production-write.json`,
       evidenceVaultTarget: "production-readiness-report",
       redactionRules: ["Redact tokens, raw Workspace content, customer ids, and raw cloud responses before importing."],
@@ -630,7 +632,7 @@ function buildCommandSequence(input: {
     command(
       "hosted-readonly",
       "Hosted read-only verification",
-      `npm run verify:production -- --url ${input.productUrl} --strict`,
+      `npm run verify:production -- --url ${input.productUrl} --release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json`,
       false,
       false,
       "verify-production-readonly-json",
@@ -639,7 +641,7 @@ function buildCommandSequence(input: {
     command(
       "hosted-write-through",
       "Hosted write-through verification",
-      `npm run verify:production -- --url ${input.productUrl} --strict --include-write-checks`,
+      `npm run verify:production -- --url ${input.productUrl} --release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json`,
       true,
       true,
       "verify-production-write-json",

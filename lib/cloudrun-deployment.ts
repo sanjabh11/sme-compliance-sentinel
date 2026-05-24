@@ -188,8 +188,8 @@ export function buildCloudRunDeploymentEvidence(
     dryRunCommand: `gcloud run services replace ${commandManifestPath} --region ${deploymentRegion} --project ${projectId} --dry-run`,
     deployCommand: `gcloud run services replace ${commandManifestPath} --region ${deploymentRegion} --project ${projectId}`,
     postDeployVerification: [
-      "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --strict",
-      "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --strict --include-write-checks",
+      "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json",
+      "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json",
       "POST /api/production/gemini-smoke from the hosted service after GEMINI_API_KEY is configured.",
       "POST /api/production/persistence from the hosted service after Firestore, BigQuery, and Secret Manager IAM are configured.",
       "POST /api/evidence/vault/import with x-sentinel-admin-token after redacting the hosted verify:production JSON.",

@@ -178,6 +178,10 @@ describe("verify-production readiness script auth", () => {
     expect(report.blockers?.join(" ")).toContain("NEXT_PUBLIC_PRODUCT_URL is missing");
     expect(report.manualIntervention?.commands.join(" ")).toContain("gcloud run services describe");
     expect(report.manualIntervention?.commands.join(" ")).toContain("verify:production");
+    expect(report.manualIntervention?.commands.join(" ")).toContain("--release-id $SENTINEL_RELEASE_ID");
+    expect(report.manualIntervention?.commands.join(" ")).toContain(
+      "--out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json"
+    );
     expect(report.manualIntervention?.stopCondition).toContain("Stop before setting hosted");
     expect(report.proofBoundary).toContain("operator handoff only");
     expect(report.stopConditions?.join(" ")).toContain("Do not treat this missing-URL report as hosted proof");

@@ -30,7 +30,13 @@ describe("hosted evidence capture packet", () => {
     expect(packet.captureCommands.map((command) => command.id)).toEqual(
       expect.arrayContaining(["cloudrun-template-strict", "hosted-readonly", "hosted-write-through", "hosted-evidence-packet"])
     );
+    expect(packet.captureCommands.find((command) => command.id === "hosted-readonly")?.command).toContain(
+      "--release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json"
+    );
     expect(packet.captureCommands.find((command) => command.id === "hosted-write-through")?.mutatesProduction).toBe(true);
+    expect(packet.captureCommands.find((command) => command.id === "hosted-write-through")?.command).toContain(
+      "--release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json"
+    );
     expect(packet.privateArtifactTemplates.map((template) => template.id)).toEqual(
       expect.arrayContaining([
         "cloud-run-url",

@@ -697,7 +697,8 @@ function buildVerificationCommands(): ProductionLaunchCommand[] {
     {
       id: "hosted-production-smoke",
       label: "Hosted production smoke report",
-      command: "npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --strict",
+      command:
+        "npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json",
       ownerRole: "engineering",
       purpose: "Generate one JSON readiness report across hosted launch, submission, compliance, Devpost, license, and Claim Guard endpoints.",
       expectedProof: "JSON report with transport status, blocked/review summary, and next actions attached to the private launch packet."

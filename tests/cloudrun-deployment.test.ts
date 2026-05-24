@@ -107,6 +107,12 @@ describe("Cloud Run deployment evidence verifier", () => {
     });
     expect(evidence.blockers).toEqual([]);
     expect(evidence.dryRunCommand).toContain("artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml");
+    expect(evidence.postDeployVerification).toEqual(
+      expect.arrayContaining([
+        "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json",
+        "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json"
+      ])
+    );
     expect(evidence.nextActions[0]).toContain("Replace all template placeholders");
   });
 

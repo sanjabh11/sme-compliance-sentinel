@@ -130,6 +130,12 @@ describe("production provisioning pack", () => {
     expect(pack.verificationSequence.find((command) => command.id === "collect-cloudrun-deployment-transcript")?.expectedProof).toContain(
       "cloudrun-deployment-transcript-packet.json"
     );
+    expect(pack.verificationSequence.find((command) => command.id === "hosted-smoke")?.command).toContain(
+      "--release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "write-through-smoke")?.command).toContain(
+      "--release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json"
+    );
     expect(pack.verificationSequence.find((command) => command.id === "collect-hosted-proof-bundle")?.command).toContain(
       "npm run collect:hosted-proof"
     );

@@ -559,6 +559,15 @@ describe("local XPRIZE submission verifier", () => {
     expect(phasesById["hosted-proof-capture"].currentPhaseRemainingPercent).toBeGreaterThan(0);
     expect(phasesById["hosted-proof-capture"].commands.join(" ")).toContain("verify:judge-access");
     expect(phasesById["hosted-proof-capture"].commands.join(" ")).toContain("verify:business-evidence");
+    expect(phasesById["hosted-proof-capture"].commands).toContain(
+      "npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json"
+    );
+    expect(phasesById["hosted-proof-capture"].commands).toContain(
+      "npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json"
+    );
+    expect(phasesById["hosted-proof-capture"].commands).toContain(
+      "npm run collect:hosted-proof -- --url $NEXT_PUBLIC_PRODUCT_URL --release-id $SENTINEL_RELEASE_ID --include-write-checks --strict"
+    );
     expect(phasesById["hosted-proof-capture"].relatedGateIds).toContain("judge-access-readiness");
     expect(phasesById["hosted-proof-capture"].evidenceNeeded.join(" ")).toContain("provider=gemini-api");
     expect(phasesById["hosted-proof-capture"].evidenceNeeded.join(" ")).toContain("business-evidence readiness packet");

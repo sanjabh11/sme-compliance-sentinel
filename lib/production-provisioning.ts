@@ -163,7 +163,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
       command(
         "hosted-smoke",
         "Hosted production smoke",
-        "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --strict",
+        "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json",
         "engineering",
         false,
         false,
@@ -172,7 +172,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
       command(
         "write-through-smoke",
         "Production write-through smoke",
-        "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --strict --include-write-checks",
+        "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json",
         "engineering",
         false,
         true,

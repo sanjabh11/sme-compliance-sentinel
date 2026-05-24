@@ -325,7 +325,7 @@ function buildCaptureCommands(productUrl: string): HostedEvidenceCaptureCommand[
     captureCommand({
       id: "hosted-readonly",
       label: "Capture hosted read-only readiness",
-      command: `npm run verify:production -- --url ${url} --strict`,
+      command: `npm run verify:production -- --url ${url} --release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json`,
       mutatesProduction: false,
       expectedArtifact: "Read-only hosted readiness JSON.",
       privateHandling: "Safe for repeated capture; store full output privately."
@@ -333,7 +333,7 @@ function buildCaptureCommands(productUrl: string): HostedEvidenceCaptureCommand[
     captureCommand({
       id: "hosted-write-through",
       label: "Capture hosted write-through readiness",
-      command: `npm run verify:production -- --url ${url} --strict --include-write-checks`,
+      command: `npm run verify:production -- --url ${url} --release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json`,
       mutatesProduction: true,
       expectedArtifact: "Write-through persistence, Gemini, cost-control, and Workspace reconciliation JSON.",
       privateHandling: "Run only after consented data, IAM, redaction, and budget controls are configured."

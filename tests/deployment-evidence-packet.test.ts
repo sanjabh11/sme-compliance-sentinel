@@ -98,6 +98,18 @@ describe("deployment evidence packet", () => {
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-deployment-transcript-collect")?.expectedArtifactId).toBe(
       "cloudrun-deployment-transcript-packet-json"
     );
+    expect(packet.artifactManifest.find((artifact) => artifact.id === "verify-production-readonly-json")?.sourceCommand).toContain(
+      "--out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json"
+    );
+    expect(packet.artifactManifest.find((artifact) => artifact.id === "verify-production-write-json")?.sourceCommand).toContain(
+      "--out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "hosted-readonly")?.command).toContain(
+      "--release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "hosted-write-through")?.command).toContain(
+      "--release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json"
+    );
     expect(packet.commandSequence.map((command) => command.id)).not.toContain("vault-import");
     expect(packet.commandSequence.find((command) => command.id === "hosted-proof-bundle")?.command).toContain(
       "npm run collect:hosted-proof"

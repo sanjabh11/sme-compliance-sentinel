@@ -76,6 +76,9 @@ describe("Production launch command center", () => {
         "final-submission-binder"
       ])
     );
+    expect(center.verificationCommands.find((command) => command.id === "hosted-production-smoke")?.command).toContain(
+      "--release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json"
+    );
     const proofArtifactsById = Object.fromEntries(center.proofArtifacts.map((artifact) => [artifact.id, artifact]));
 
     expect(center.proofArtifacts.map((artifact) => artifact.id)).toEqual(

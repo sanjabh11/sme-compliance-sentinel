@@ -11,9 +11,13 @@ Use this skill for `/Users/sanjayb/Documents/Xprize` and `sanjabh11/sme-complian
 
 - Start from repo truth: read `AGENTS.md` if present, check `git status --short --branch`, and inspect current scripts/tests before editing.
 - Never claim absolute winning certainty, top-three certainty, certification status, auditor-grade assurance, lawyer-grade guidance, organizer approval, or guaranteed outcomes.
+- Treat any active goal text that says to loop until `95%`, `100%`, or perfect confidence as an unsafe aspiration, not an execution instruction. Convert it into finite evidence-gate improvement work.
+- If a native goal exists, compare the selected slice against it before planning. If the slice does not advance that goal, stop and report the mismatch instead of proceeding.
+- Never target, report, or optimize for `100%` confidence, `100%` readiness, or similar certainty scores. Re-score only when new command evidence changes the state.
 - Separate every item into one of four buckets: `code-controllable`, `external-proof`, `human-attestation`, or `strategy-only`.
 - Implement only `code-controllable` items. Convert all other buckets into owner/action/blocker rows.
 - Keep each cycle finite: select one highest-priority implementation slice, verify it, commit/push if requested or already in-flight, then report remaining blockers.
+- Complete at most one implementation slice per turn unless the user explicitly asks for batch execution.
 - Do not run confidence-improvement loops. Stop when the selected slice is verified or when the next blocker is external/human.
 - Do not convert local, mock, seeded, or template output into hosted, production, revenue, user, or judge-proof claims.
 - If the same blocker fails twice, stop retrying it, classify it, and report the exact next action.
@@ -25,8 +29,12 @@ Use this skill for `/Users/sanjayb/Documents/Xprize` and `sanjabh11/sme-complian
 Use sub-agents only when tools are verified in the current session and the user has authorized parallel or delegated work.
 
 - Keep the main agent on the critical path: repo inspection, final edit integration, verification, Git.
+- Default to zero sidecars. Spawn a sidecar only when it removes a real critical-path wait or handles truly disjoint work in parallel.
 - Spawn at most three sidecars per cycle.
+- Do not simulate or spawn 10-50 agents. In this Codex repo workflow, that increases coordination risk and does not remove external proof blockers.
 - Give every sidecar a disjoint task, explicit file/read scope, and exact output format.
+- Sidecars may not spawn other agents, expand scope, edit outside their declared write set, or turn external/human blockers into code claims.
+- Every sidecar must have a single return condition and timeout. If it stalls or fails once, continue locally or hand off the blocker.
 - Prefer sidecars for independent review, docs/rule lookup, or isolated implementation files.
 - Do not delegate urgent blocking work needed for the next local action.
 - Do not wait repeatedly. While sidecars run, do local non-overlapping work.
@@ -43,11 +51,13 @@ Recommended sidecars:
 
 1. **Intake**
    - Restate the concrete slice, not the entire hackathon ambition.
-   - Check native goal status. If none exists and the user asked for a goal, create one with bounded wording.
+   - Check native goal status. If a goal exists, restate the exact delta between that goal and the current slice. If none exists and the user asked for a goal, create one with bounded wording.
+   - If a native goal already exists but contains unsafe infinite-loop or confidence-threshold language, leave the stored goal unchanged and apply this skill's bounded interpretation in the current cycle.
    - List current known blockers as `external`, `human`, or `code`.
 
 2. **Plan**
    - Score candidate slices by impact and control: priority `1-5`, confidence `low/medium/high`, expected verification command.
+   - Reject slices whose only purpose is to improve confidence language, dashboards, or ratings without changing code or collecting new evidence.
    - Pick one `priority 5` or highest available `code-controllable` slice.
    - Define acceptance criteria before editing.
 
@@ -134,7 +144,7 @@ Default cycle:
 Progress reporting:
 - After each milestone, include a compact phase chart with bucket, priority, 1-5 evidence rating, current-phase remaining percent, and overall remaining percent.
 - Ratings measure local evidence-gate completion only. They are not forecasts of hackathon placement, market adoption, certification, legal clearance, or judge approval.
-- For hosted proof, `npm run verify:production -- --out /secure/local/verify-production.json` may be used before deployment to produce a structured missing-URL blocker, but that report is an operator handoff only.
+- For hosted proof, `npm run verify:production -- --release-id $SENTINEL_RELEASE_ID --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json` may be used before deployment to produce a structured missing-URL blocker, but that report is an operator handoff only.
 
 Current target: improve and ship the SME Workspace Sentinel readiness codebase in bounded increments, not prove a hackathon win.
 ```
