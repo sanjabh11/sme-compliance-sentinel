@@ -194,6 +194,7 @@ function isAllowedContext(context: string) {
     normalized.includes("instead of") ||
     normalized.includes("overclaims such as") ||
     normalized.includes("blocks phrases such as") ||
+    normalized.includes("blocks unsupported") ||
     normalized.includes("unsafe claims");
   const questionnairePrompt = normalized.includes("question:") || normalized.includes("are you soc2") || normalized.includes("are you soc 2");
 

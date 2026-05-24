@@ -50,7 +50,7 @@ The product intentionally says **SOC2 readiness evidence**, not “SOC2 complian
 - Claim Guard scanner that checks product, docs, and submission copy for overclaims such as certification, guaranteed compliance, audit assurance, or absolute win claims.
 - Submission Compliance Gate plus dependency/license manifest for new-project disclosure, repository access, judge access, third-party license/API review, demo-video asset clearance, customer redaction, and two-business-day evidence response readiness.
 - Project Provenance Report that checks Git history, first-commit timing, tracked/untracked source state, repository URL, human attestation, and pre-existing framework/dependency disclosure.
-- Source Release Guard that checks required source surfaces, `.gitignore` coverage, release file plan, and obvious secret patterns before the first commit or judge-facing source push.
+- Source Release Guard that checks required source surfaces, `.gitignore` coverage, release file plan, obvious secret patterns, and unsafe public claims before the first commit or judge-facing source push.
 - XPRIZE Submission Gate that blocks readiness until current evidence satisfies production Google Cloud, Gemini, real revenue/user proof, consent, product URL, repository URL, and demo-video requirements.
 - Judge Access Pack that prepares non-secret testing instructions, signed-out smoke commands, private credential rules, safe walkthrough steps, and evidence-response owners without committing judge credentials.
 - Private XPRIZE Submission Binder that maps every gate item to an artifact owner, status, testing instruction, demo-timeline step, private evidence queue, and final pre-submit checklist.
@@ -120,7 +120,7 @@ npm run build
 36. Run **Build intake queue** to prioritize private proof collection, redaction work, accepted proof types, rejection triggers, and Evidence Vault registration payloads for the next paid pilot.
 37. Run **Check submission gate** to see which XPRIZE requirements are proven, warning, or blocked.
 38. Run **Project provenance** to verify Git history, tracked source, first commit timing, repository URL, and pre-existing-work disclosure gaps.
-39. Run **Source release** before the first commit or source push to verify required files, ignore rules, release plan, and obvious secret patterns.
+39. Run **Source release** before the first commit or source push to verify required files, ignore rules, release plan, obvious secret patterns, and Claim Guard-safe public wording.
 40. Run **Check submission compliance** to surface repository, IP/license, public video, customer-redaction, and evidence-response blockers.
 41. Run **License manifest** to export dependency, license, and Google API-use disclosure details.
 42. Run **Judge access pack** to prepare non-secret testing instructions, signed-out smoke checks, safe walkthrough, private credential rules, free-access confirmation, and evidence-response owners.
@@ -327,7 +327,7 @@ Approved answers are added to the Answer Library with an owner, source pack, seg
 
 `GET /api/xprize/eligibility-disclosure` returns the private eligibility and disclosure review packet. It combines repository provenance, pre-existing-work disclosure text, third-party/API review status, entrant-attestation flags, judge-access handling, Google/Gemini proof boundaries, and public/private evidence rules into one reviewer artifact. The packet can be `ready-for-review`, but it does not mark human attestations complete; owners still need to set the relevant `XPRIZE_*` flags only after private review.
 
-`GET /api/xprize/source-release` returns the source-release guard for the repository-publishing workflow. It checks required app/library/test/docs/config surfaces, `.gitignore` coverage for private and generated files, a per-file stage/review/ignore plan, and obvious secret patterns before source is committed or pushed. `npm run verify:source-release` provides a terminal guard for the same release hygiene class.
+`GET /api/xprize/source-release` returns the source-release guard for the repository-publishing workflow. It checks required app/library/test/docs/config surfaces, `.gitignore` coverage for private and generated files, a per-file stage/review/ignore plan, obvious secret patterns, and unsafe public claims before source is committed or pushed. `npm run verify:source-release` provides a terminal guard for the same release hygiene class and blocks unsupported certification, legal, audit, guarantee, `violations prevented`, or absolute-win wording in public-facing source copy.
 
 ## Submission Compliance Gate
 

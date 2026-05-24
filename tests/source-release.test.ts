@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { scanClaimText } from "@/lib/claim-guard";
 import { buildSourceReleaseGuard } from "@/lib/source-release";
-import type { ProjectProvenanceGitSignals, SourceReleaseFilePlan, SourceReleaseSecretFinding } from "@/lib/types";
+import type {
+  ProjectProvenanceGitSignals,
+  SourceReleaseClaimFinding,
+  SourceReleaseFilePlan,
+  SourceReleaseSecretFinding
+} from "@/lib/types";
 
 const cleanGit: ProjectProvenanceGitSignals = {
   gitAvailable: true,
@@ -59,10 +64,12 @@ describe("source release guard", () => {
         "core-categories-present",
         "gitignore-protects-private-files",
         "secret-scan-clean",
+        "claim-guard-clean",
         "source-ready-for-first-commit"
       ])
     );
     expect(guard.checks.find((check) => check.id === "secret-scan-clean")?.status).toBe("passed");
+    expect(guard.checks.find((check) => check.id === "claim-guard-clean")?.status).toBe("passed");
     expect(guard.checks.find((check) => check.id === "source-ready-for-first-commit")?.status).toBe("warning");
     expect(guard.recommendedCommands).toContain("git add .");
   });
@@ -86,6 +93,29 @@ describe("source release guard", () => {
     expect(guard.overallStatus).toBe("blocked");
     expect(guard.blockers.join(" ")).toContain("secret");
     expect(guard.blockers.join(" ")).toContain("Git ignore");
+  });
+
+  it("blocks source release when public copy contains unsafe certification or win claims", () => {
+    const claimFinding: SourceReleaseClaimFinding = {
+      path: "README.md",
+      line: 3,
+      phrase: "SOC2 certified",
+      severity: "high",
+      evidence: "Unsupported certification claim.",
+      fix: "Use SOC2 readiness evidence and risk detection language instead."
+    };
+    const guard = buildSourceReleaseGuard({
+      git: cleanGit,
+      files: releaseFiles,
+      gitignoreText,
+      secretFindings: [],
+      claimFindings: [claimFinding]
+    });
+
+    expect(guard.overallStatus).toBe("blocked");
+    expect(guard.claimFindings).toEqual([claimFinding]);
+    expect(guard.checks.find((check) => check.id === "claim-guard-clean")?.status).toBe("blocked");
+    expect(guard.blockers.join(" ")).toContain("Public-facing source copy");
   });
 
   it("keeps release guidance inside claim guard boundaries", () => {

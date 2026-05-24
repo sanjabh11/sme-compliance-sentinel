@@ -1493,6 +1493,15 @@ export interface SourceReleaseSecretFinding {
   fix: string;
 }
 
+export interface SourceReleaseClaimFinding {
+  path: string;
+  line: number;
+  phrase: string;
+  severity: "critical" | "high" | "medium" | "low";
+  evidence: string;
+  fix: string;
+}
+
 export interface SourceReleaseCheck {
   id: string;
   label: string;
@@ -1511,6 +1520,7 @@ export interface SourceReleaseGuard {
   files: SourceReleaseFilePlan[];
   checks: SourceReleaseCheck[];
   secretFindings: SourceReleaseSecretFinding[];
+  claimFindings: SourceReleaseClaimFinding[];
   blockers: string[];
   nextActions: string[];
   recommendedCommands: string[];

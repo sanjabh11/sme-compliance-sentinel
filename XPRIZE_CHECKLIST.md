@@ -96,8 +96,8 @@
 
 ## Safety Boundaries
 
-- [ ] Do not claim SOC2 certification, legal advice, audit assurance, or compliance guarantee.
-- [ ] Use “SOC2 readiness evidence” and “risk detection.”
+- [x] Do not claim SOC2 certification, legal advice, audit assurance, or compliance guarantee.
+- [x] Use “SOC2 readiness evidence” and “risk detection.”
 - [ ] Do not expose customer security findings publicly.
 - [ ] Keep OAuth scopes minimal and documented.
 - [x] Local MVP exposes a Google OAuth launch plan with minimal pilot scopes and a deferred restricted scope.
@@ -116,6 +116,7 @@
 - [x] Local MVP has an OAuth callback path that blocks honestly without credentials and stores refresh tokens only in Secret Manager in GCP mode.
 - [x] Local MVP treats Drive/Gmail push notifications as hints and tracks reconciliation cursors.
 - [x] Claim Guard scans app/docs/submission copy for certification, legal, audit, guarantee, and absolute-win overclaims.
+- [x] Source-release verification blocks unsafe certification, legal, audit, guarantee, and absolute-win claims before source is shared with judges.
 - [x] Submission Gate separates mock/local proof from production evidence mode.
 - [x] Submission Binder labels each artifact as missing, mock-only, ready, private-on-request, or verified.
 - [x] Require human approval before non-trivial remediation.

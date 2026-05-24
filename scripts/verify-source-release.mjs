@@ -27,6 +27,19 @@ const secretPatterns = [
   { detector: "google-oauth-client-secret", pattern: /GOCSPX-[0-9A-Za-z_-]{20,}/u },
   { detector: "aws-access-key", pattern: /AKIA[0-9A-Z]{16}/u }
 ];
+const unsafeClaimPatterns = [
+  { phrase: "SOC2 certified", severity: "high" },
+  { phrase: "SOC 2 certified", severity: "high" },
+  { phrase: "SOC2 compliant", severity: "high" },
+  { phrase: "SOC 2 compliant", severity: "high" },
+  { phrase: "guaranteed compliance", severity: "critical" },
+  { phrase: "legal advice", severity: "high" },
+  { phrase: "audit assurance", severity: "high" },
+  { phrase: "fully compliant", severity: "high" },
+  { phrase: "violations prevented", severity: "medium" },
+  { phrase: "100% win", severity: "critical" },
+  { phrase: "100% confident this will win", severity: "critical" }
+];
 
 function runGit(args) {
   return execFileSync("git", args, {
@@ -77,6 +90,42 @@ function scanFile(path) {
   return findings;
 }
 
+function scanClaims(path) {
+  const findings = [];
+
+  if (
+    path.startsWith("tests/") ||
+    path.startsWith("scripts/") ||
+    path === "lib/claim-guard.ts" ||
+    !/\.(css|env|example|gitignore|json|js|jsx|mjs|md|ts|tsx|txt|yaml|yml)$/u.test(path) ||
+    path === "package-lock.json"
+  ) {
+    return findings;
+  }
+
+  const text = readFileSync(path, "utf8");
+  text.split(/\r?\n/u).forEach((line, index) => {
+    const context = line.trim();
+    if (!context || isAllowedClaimContext(context)) {
+      return;
+    }
+
+    for (const claim of unsafeClaimPatterns) {
+      if (context.toLowerCase().includes(claim.phrase.toLowerCase())) {
+        findings.push({
+          path,
+          line: index + 1,
+          phrase: claim.phrase,
+          severity: claim.severity,
+          evidence: context.length > 180 ? `${context.slice(0, 177)}...` : context
+        });
+      }
+    }
+  });
+
+  return findings;
+}
+
 function buildReport() {
   const status = parseStatus();
   const tracked = listTracked();
@@ -90,6 +139,7 @@ function buildReport() {
   const missingIgnores = requiredIgnores.filter((pattern) => !gitignoreText.includes(pattern));
   const forbiddenTracked = tracked.filter((path) => forbiddenTrackedPatterns.some((pattern) => pattern.test(path)));
   const secretFindings = candidateFiles.flatMap((path) => (existsSync(path) ? scanFile(path) : []));
+  const claimFindings = candidateFiles.flatMap((path) => (existsSync(path) ? scanClaims(path) : []));
 
   const checks = [
     check("required-files", missingFiles.length === 0, missingFiles.length ? `Missing: ${missingFiles.join(", ")}` : "Required files present."),
@@ -107,6 +157,13 @@ function buildReport() {
       "secret-scan",
       secretFindings.length === 0,
       secretFindings.length ? `${secretFindings.length} possible secret finding(s).` : "No obvious secret patterns found."
+    ),
+    check(
+      "claim-guard",
+      claimFindings.length === 0,
+      claimFindings.length
+        ? `${claimFindings.length} unsafe claim finding(s).`
+        : "No unsafe certification, legal, audit, guarantee, or absolute-win claims found in public-facing source copy."
     )
   ];
   const blocked = checks.filter((item) => item.status === "blocked");
@@ -121,12 +178,37 @@ function buildReport() {
     candidateFileCount: candidateFiles.length,
     checks,
     secretFindings,
+    claimFindings,
     nextActions: blocked.length
       ? blocked.map((item) => item.fix)
       : overallStatus === "published"
         ? ["Rerun npm run verify:provenance and keep the repository URL in the deployment environment."]
         : ["Run full verification, stage intended source files, create the first commit, and rerun npm run verify:provenance."]
   };
+}
+
+function isAllowedClaimContext(context) {
+  const normalized = context.toLowerCase();
+  const explicitNegation =
+    normalized.includes("not ") ||
+    normalized.includes("do not") ||
+    normalized.includes("does not") ||
+    normalized.includes("without ") ||
+    normalized.includes("no ");
+  const guardrailConfig =
+    normalized.includes("bannedclaims") ||
+    normalized.includes("restrictedclaims") ||
+    normalized.includes("banned phrases") ||
+    normalized.includes("banned claim") ||
+    normalized.includes("avoid") ||
+    normalized.includes("instead of") ||
+    normalized.includes("overclaims such as") ||
+    normalized.includes("blocks phrases such as") ||
+    normalized.includes("blocks unsupported") ||
+    normalized.includes("unsafe claims");
+  const questionnairePrompt = normalized.includes("question:") || normalized.includes("are you soc2") || normalized.includes("are you soc 2");
+
+  return explicitNegation || guardrailConfig || questionnairePrompt;
 }
 
 function countCommits() {

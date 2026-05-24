@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { scanClaimText } from "@/lib/claim-guard";
 import type {
   ProjectProvenanceGitSignals,
+  SourceReleaseClaimFinding,
   SourceReleaseCheck,
   SourceReleaseFileCategory,
   SourceReleaseFilePlan,
@@ -49,8 +51,9 @@ export function collectSourceReleaseGuard(rootDir = process.cwd()): SourceReleas
   const gitignoreText = safeRead(rootDir, ".gitignore");
   const files = collectFilePlans(rootDir);
   const secretFindings = scanSecrets(rootDir, files);
+  const claimFindings = scanReleaseClaims(rootDir, files);
 
-  return buildSourceReleaseGuard({ git, files, gitignoreText, secretFindings });
+  return buildSourceReleaseGuard({ git, files, gitignoreText, secretFindings, claimFindings });
 }
 
 export function buildSourceReleaseGuard(input: {
@@ -58,6 +61,7 @@ export function buildSourceReleaseGuard(input: {
   files: SourceReleaseFilePlan[];
   gitignoreText: string;
   secretFindings: SourceReleaseSecretFinding[];
+  claimFindings?: SourceReleaseClaimFinding[];
 }): SourceReleaseGuard {
   const checks = buildChecks(input);
   const blockers = checks.filter((check) => check.status === "blocked").map((check) => `${check.label}: ${check.fix}`);
@@ -76,6 +80,7 @@ export function buildSourceReleaseGuard(input: {
     files: input.files,
     checks,
     secretFindings: input.secretFindings,
+    claimFindings: input.claimFindings ?? [],
     blockers,
     nextActions: buildNextActions(input, overallStatus, blockers),
     recommendedCommands: [
@@ -91,6 +96,7 @@ export function buildSourceReleaseGuard(input: {
     privateHandling: [
       "Do not stage .env, .env.local, OAuth tokens, API keys, raw customer files, invoices, payment exports, judge credentials, or detailed security findings.",
       "Commit `.env.example` placeholders and deployment templates only; production secret values belong in Secret Manager or private Devpost testing instructions.",
+      "Public-facing source copy must stay inside the Claim Guard boundary: SOC2 readiness evidence, risk detection, staged remediation, and explicit remaining proof gaps.",
       "Run this guard immediately before the first commit and again before every source push shared with judges."
     ],
     disclaimer:
@@ -103,6 +109,7 @@ function buildChecks(input: {
   files: SourceReleaseFilePlan[];
   gitignoreText: string;
   secretFindings: SourceReleaseSecretFinding[];
+  claimFindings?: SourceReleaseClaimFinding[];
 }): SourceReleaseCheck[] {
   const paths = new Set(input.files.map((file) => file.path));
   const missingRequired = requiredRepoFiles.filter((path) => !paths.has(path));
@@ -146,6 +153,16 @@ function buildChecks(input: {
       true
     ),
     check(
+      "claim-guard-clean",
+      "Public-facing source copy has no unsafe compliance or absolute-win claims",
+      (input.claimFindings ?? []).length === 0 ? "passed" : "blocked",
+      (input.claimFindings ?? []).length
+        ? `${input.claimFindings?.length ?? 0} unsafe claim finding(s).`
+        : "No unsafe certification, legal, audit, guarantee, or absolute-win claims found in public-facing source copy.",
+      "Replace unsupported claims with SOC2 readiness evidence, risk detection, staged remediation, and explicit external-proof gaps.",
+      true
+    ),
+    check(
       "source-ready-for-first-commit",
       "Repository is ready for first provenance commit",
       input.git.commitCount > 0
@@ -158,6 +175,31 @@ function buildChecks(input: {
       false
     )
   ];
+}
+
+function scanReleaseClaims(rootDir: string, files: SourceReleaseFilePlan[]): SourceReleaseClaimFinding[] {
+  return files
+    .filter((file) => shouldScanClaims(file))
+    .flatMap((file) => {
+      const text = safeRead(rootDir, file.path);
+
+      return scanClaimText({ artifact: file.path, text }).map((violation) => ({
+        path: file.path,
+        line: Number(violation.location.split(":").pop()) || 0,
+        phrase: violation.phrase,
+        severity: violation.severity,
+        evidence: violation.context,
+        fix: violation.fix
+      }));
+    });
+}
+
+function shouldScanClaims(file: SourceReleaseFilePlan) {
+  if (file.releaseAction !== "stage" || !textFilePattern.test(file.path) || file.path === "package-lock.json") {
+    return false;
+  }
+
+  return file.category !== "test" && file.category !== "script" && file.path !== "lib/claim-guard.ts";
 }
 
 function check(
