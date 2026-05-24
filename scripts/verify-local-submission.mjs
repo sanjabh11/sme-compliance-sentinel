@@ -125,6 +125,7 @@ function buildReport() {
     ...(overallStatus === "passed" ? ["Run hosted production verification and attach live evidence before final Devpost submission."] : [])
   ];
   const phasePlan = buildPhasePlan(gateReports);
+  const phaseProgressChart = buildPhaseProgressChart(phasePlan, gateReports);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -134,6 +135,7 @@ function buildReport() {
     remainingBlockers,
     nextActions,
     phasePlan,
+    phaseProgressChart,
     stopConditions: [
       "This local verifier does not deploy Cloud Run or prove hosted availability.",
       "This local verifier does not prove live Gemini API usage, GCP persistence, Workspace OAuth sync, paid pilots, revenue, or active users.",
@@ -143,6 +145,137 @@ function buildReport() {
     disclaimer:
       "This is an engineering readiness aggregator for the local repository. It is not legal advice, audit assurance, certification evidence, or a guarantee of judging outcome."
   };
+}
+
+function buildPhaseProgressChart(phasePlan, gateReports) {
+  const gatesById = new Map(gateReports.map((gate) => [gate.id, gate]));
+  const rows = phasePlan.phases.map((phase) => {
+    const checkpoints = buildPhaseCheckpoints(phase, gatesById);
+    const checkpointCounts = countCheckpoints(checkpoints);
+    const currentPhaseRemainingPercent = remainingPercentFromCounts(checkpointCounts);
+    const bucket = phase.bucket ?? bucketForPhase(phase);
+
+    return {
+      phaseId: phase.id,
+      label: phase.label,
+      bucket,
+      owner: phase.owner,
+      priority: phase.priority,
+      status: phase.status,
+      ratingOutOf5: ratingForCheckpointCounts(checkpointCounts, bucket),
+      currentPhaseRemainingPercent,
+      overallGoalRemainingPercent: 0,
+      done: checkpoints
+        .filter((checkpoint) => checkpoint.status === "done" || checkpoint.status === "partial")
+        .map((checkpoint) =>
+          checkpoint.status === "done" ? `${checkpoint.label}: passed` : `${checkpoint.label}: partial/scaffolded`
+        ),
+      pending: unique(
+        checkpoints.flatMap((checkpoint) => {
+          if (checkpoint.status === "done") {
+            return [];
+          }
+
+          if (checkpoint.status === "partial" && checkpoint.blockers.length === 0) {
+            return [];
+          }
+
+          return checkpoint.blockers.length > 0 ? checkpoint.blockers : [checkpoint.label];
+        })
+      ).slice(0, 8),
+      successCheckpoints: phase.commands,
+      stopConditions: phase.stopConditions,
+      checkpointCounts,
+      progressBasis:
+        "Derived from phase-specific gate and evidence checkpoints. Warning gates count as partial scaffold evidence, not completion. This is not a win-probability estimate.",
+      evidence: checkpoints.map((checkpoint) => `${checkpoint.source}=${checkpoint.status}`).join("; ")
+    };
+  });
+  const overallGoalRemainingPercent = Math.round(
+    rows.reduce((total, row) => total + row.currentPhaseRemainingPercent, 0) / rows.length
+  );
+
+  return {
+    generatedFrom: "verify-local-submission",
+    scale: "Evidence-gate checklist: 1=blocked/no required evidence, 3=partial local evidence, 5=all phase checkpoints verified; not win probability.",
+    overallGoalRemainingPercent,
+    overallGoalRemainingBasis: "Average of phase-specific evidence-gate remaining percentages.",
+    rows: rows.map((row) => ({ ...row, overallGoalRemainingPercent }))
+  };
+}
+
+function buildPhaseCheckpoints(phase, gatesById) {
+  const bucket = phase.bucket ?? bucketForPhase(phase);
+  const gateCheckpoints = phase.relatedGateIds
+    .map((id) => gatesById.get(id))
+    .filter(Boolean)
+    .map((gate) => ({
+      label: gate.label,
+      source: `gate:${gate.id}`,
+      bucket,
+      status: gate.status === "passed" ? "done" : gate.status === "warning" ? "partial" : "blocked",
+      blockers: gate.status === "passed" ? [] : gate.blockers,
+      evidence: gate.evidence
+    }));
+  const evidenceCheckpoints = phase.evidenceNeeded.map((item) => ({
+    label: item,
+    source: "required-evidence",
+    bucket,
+    status: phase.status === "passed" ? "done" : bucket === "external-proof" ? "external-required" : "pending",
+    blockers: phase.status === "passed" ? [] : [item],
+    evidence: item
+  }));
+
+  return [...evidenceCheckpoints, ...gateCheckpoints];
+}
+
+function countCheckpoints(checkpoints) {
+  return checkpoints.reduce(
+    (counts, checkpoint) => {
+      counts.total += 1;
+      counts[checkpoint.status] += 1;
+      return counts;
+    },
+    { total: 0, done: 0, partial: 0, pending: 0, blocked: 0, "external-required": 0 }
+  );
+}
+
+function remainingPercentFromCounts(counts) {
+  if (counts.total === 0) {
+    return 0;
+  }
+
+  const completedPoints = counts.done + counts.partial * 0.5;
+  return Math.round(((counts.total - completedPoints) / counts.total) * 100);
+}
+
+function bucketForPhase(phase) {
+  if (phase.id === "human-attestation-review") {
+    return "human-attestation";
+  }
+
+  if (phase.status === "external-required" || phase.id === "hosted-proof-capture" || phase.id === "business-traction-proof") {
+    return "external-proof";
+  }
+
+  return "code-controllable";
+}
+
+function ratingForCheckpointCounts(counts, bucket) {
+  if (counts.total === 0 || counts.done === counts.total) {
+    return 5;
+  }
+
+  if (bucket === "human-attestation" && counts.blocked > 0) {
+    return 1;
+  }
+
+  if (bucket === "external-proof" && counts.done === 0) {
+    return 1;
+  }
+
+  const completedPoints = counts.done + counts.partial * 0.5;
+  return Math.max(1, Math.min(5, Math.round((completedPoints / counts.total) * 4) + 1));
 }
 
 function buildPhasePlan(gateReports) {
@@ -158,10 +291,10 @@ function buildPhasePlan(gateReports) {
     {
       id: "human-attestation-review",
       label: "Human attestation and disclosure review",
+      bucket: "human-attestation",
       priority: 5,
       owner: "founder/legal",
       status: humanReviewPassed ? "passed" : "needs-review",
-      currentPhaseRemainingPercent: humanReviewPassed ? 0 : 100,
       relatedGateIds: ["source-release", "project-provenance", "license-ip-review"],
       commands: [
         "npm run verify:local-submission -- --out /secure/local/local-submission-readiness.json",
@@ -180,11 +313,11 @@ function buildPhasePlan(gateReports) {
     {
       id: "cloudrun-render-dry-run",
       label: "Cloud Run render and dry-run preflight",
+      bucket: "code-controllable",
       priority: 5,
       owner: "engineering",
       status: cloudRunGate?.status === "blocked" ? "blocked" : cloudRunReady ? "ready-to-dry-run" : "needs-values",
-      currentPhaseRemainingPercent: cloudRunGate?.status === "blocked" ? 100 : cloudRunReady ? 25 : 60,
-      relatedGateIds: ["cloudrun-deployment-template", "judge-access-readiness"],
+      relatedGateIds: ["cloudrun-deployment-template"],
       commands: [
         "npm run write:cloudrun-release-values -- /secure/local/cloudrun-render-values.json",
         "npm run audit:cloudrun-values -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
@@ -205,10 +338,10 @@ function buildPhasePlan(gateReports) {
     {
       id: "hosted-proof-capture",
       label: "Hosted Cloud Run and Gemini proof capture",
+      bucket: "external-proof",
       priority: 5,
       owner: "engineering",
       status: "external-required",
-      currentPhaseRemainingPercent: 100,
       relatedGateIds: ["cloudrun-deployment-template", "judge-access-readiness"],
       commands: [
         "gcloud run services replace artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml --region $SENTINEL_CLOUD_RUN_REGION --dry-run",
@@ -236,11 +369,11 @@ function buildPhasePlan(gateReports) {
     {
       id: "business-traction-proof",
       label: "Paid pilot, user, revenue, and judge-access proof",
+      bucket: "external-proof",
       priority: 5,
       owner: "founder/sales",
       status: "external-required",
-      currentPhaseRemainingPercent: 100,
-      relatedGateIds: ["project-provenance", "license-ip-review", "judge-access-readiness", "business-evidence-readiness"],
+      relatedGateIds: ["judge-access-readiness", "business-evidence-readiness"],
       commands: [
         "npm run verify:business-evidence -- --write-template /secure/local/business-evidence-template.json --out /secure/local/business-evidence-readiness.json",
         "npm run verify:business-evidence -- --evidence /secure/local/business-evidence.json --out /secure/local/business-evidence-readiness.json --strict",
@@ -261,7 +394,11 @@ function buildPhasePlan(gateReports) {
       ]
     }
   ];
-  const nextPhase = phases.find((phase) => phase.status !== "passed") ?? phases.at(-1);
+  const phasesWithProgress = phases.map((phase) => ({
+    ...phase,
+    currentPhaseRemainingPercent: remainingPercentFromCounts(countCheckpoints(buildPhaseCheckpoints(phase, gatesById)))
+  }));
+  const nextPhase = phasesWithProgress.find((phase) => phase.status !== "passed") ?? phasesWithProgress.at(-1);
 
   return {
     objective:
@@ -270,7 +407,7 @@ function buildPhasePlan(gateReports) {
       "This phase plan improves evidence readiness only. It is not a win-probability estimate, legal opinion, audit assurance, certification, or judging guarantee.",
     sourceGateStatus: sourceGate?.status ?? "unknown",
     recommendedNextPhaseId: nextPhase?.id ?? "",
-    phases
+    phases: phasesWithProgress
   };
 }
 

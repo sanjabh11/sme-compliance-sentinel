@@ -31,6 +31,7 @@ type LocalSubmissionReport = {
     phases: Array<{
       id: string;
       label: string;
+      bucket: "code-controllable" | "external-proof" | "human-attestation";
       priority: number;
       owner: string;
       status: string;
@@ -39,6 +40,37 @@ type LocalSubmissionReport = {
       commands: string[];
       evidenceNeeded: string[];
       stopConditions: string[];
+    }>;
+  };
+  phaseProgressChart: {
+    generatedFrom: string;
+    scale: string;
+    overallGoalRemainingPercent: number;
+    overallGoalRemainingBasis: string;
+    rows: Array<{
+      phaseId: string;
+      label: string;
+      bucket: "code-controllable" | "external-proof" | "human-attestation";
+      owner: string;
+      priority: number;
+      status: string;
+      ratingOutOf5: number;
+      currentPhaseRemainingPercent: number;
+      overallGoalRemainingPercent: number;
+      done: string[];
+      pending: string[];
+      successCheckpoints: string[];
+      stopConditions: string[];
+      checkpointCounts: {
+        total: number;
+        done: number;
+        partial: number;
+        pending: number;
+        blocked: number;
+        "external-required": number;
+      };
+      progressBasis: string;
+      evidence: string;
     }>;
   };
   stopConditions: string[];
@@ -116,6 +148,31 @@ describe("local XPRIZE submission verifier", () => {
       "business-traction-proof"
     ]);
     expect(report.phasePlan.phases.every((phase) => phase.priority >= 1 && phase.priority <= 5)).toBe(true);
+    expect(report.phaseProgressChart.generatedFrom).toBe("verify-local-submission");
+    expect(report.phaseProgressChart.scale).toContain("1=blocked");
+    expect(report.phaseProgressChart.overallGoalRemainingBasis).toContain("phase-specific evidence-gate");
+    expect(report.phaseProgressChart.rows.map((row) => row.phaseId)).toEqual(report.phasePlan.phases.map((phase) => phase.id));
+    expect(report.phaseProgressChart.rows.every((row) => row.ratingOutOf5 >= 1 && row.ratingOutOf5 <= 5)).toBe(true);
+    expect(report.phaseProgressChart.rows.every((row) => row.overallGoalRemainingPercent === report.phaseProgressChart.overallGoalRemainingPercent)).toBe(true);
+    expect(report.phaseProgressChart.rows.every((row) => row.progressBasis.includes("not a win-probability estimate"))).toBe(true);
+    expect(report.phaseProgressChart.rows.find((row) => row.phaseId === "human-attestation-review")).toMatchObject({
+      bucket: "human-attestation",
+      ratingOutOf5: 1
+    });
+    expect(
+      report.phaseProgressChart.rows.find((row) => row.phaseId === "human-attestation-review")?.currentPhaseRemainingPercent
+    ).toBeGreaterThan(0);
+    expect(report.phaseProgressChart.rows.find((row) => row.phaseId === "cloudrun-render-dry-run")).toMatchObject({
+      bucket: "code-controllable",
+      ratingOutOf5: 2
+    });
+    expect(
+      report.phaseProgressChart.rows.find((row) => row.phaseId === "cloudrun-render-dry-run")?.currentPhaseRemainingPercent
+    ).toBeGreaterThan(0);
+    expect(report.phaseProgressChart.rows.find((row) => row.phaseId === "hosted-proof-capture")).toMatchObject({
+      bucket: "external-proof",
+      ratingOutOf5: 1
+    });
     expect(report.stopConditions.join(" ")).toContain("does not deploy Cloud Run");
     expect(report.stopConditions.join(" ")).toContain("does not prove live Gemini API usage");
     expect(report.disclaimer).toContain("not legal advice");
@@ -152,8 +209,9 @@ describe("local XPRIZE submission verifier", () => {
     expect(phasesById["cloudrun-render-dry-run"].stopConditions.join(" ")).toContain("Do not run gcloud dry-run");
     expect(phasesById["hosted-proof-capture"]).toMatchObject({
       status: "external-required",
-      currentPhaseRemainingPercent: 100
+      bucket: "external-proof"
     });
+    expect(phasesById["hosted-proof-capture"].currentPhaseRemainingPercent).toBeGreaterThan(0);
     expect(phasesById["hosted-proof-capture"].commands.join(" ")).toContain("verify:judge-access");
     expect(phasesById["hosted-proof-capture"].commands.join(" ")).toContain("verify:business-evidence");
     expect(phasesById["hosted-proof-capture"].relatedGateIds).toContain("judge-access-readiness");
@@ -167,6 +225,25 @@ describe("local XPRIZE submission verifier", () => {
     expect(phasesById["business-traction-proof"].commands.join(" ")).toContain("verify:business-evidence");
     expect(phasesById["business-traction-proof"].relatedGateIds).toContain("business-evidence-readiness");
     expect(phasesById["business-traction-proof"].stopConditions.join(" ")).toContain("Do not count mock pilots");
+  });
+
+  it("emits a phase progress chart with done, pending, ratings, and remaining percentages", () => {
+    const report = runVerifier();
+    const rowsById = Object.fromEntries(report.phaseProgressChart.rows.map((row) => [row.phaseId, row]));
+
+    expect(report.phaseProgressChart.overallGoalRemainingPercent).toBeGreaterThan(0);
+    expect(report.phaseProgressChart.overallGoalRemainingPercent).toBeLessThanOrEqual(100);
+    expect(rowsById["human-attestation-review"].done.join(" ")).toContain("Source release guard: passed");
+    expect(rowsById["human-attestation-review"].pending.join(" ")).toContain("project-created-after-start");
+    expect(rowsById["human-attestation-review"].successCheckpoints.join(" ")).toContain("prepare:xprize-attestation");
+    expect(rowsById["cloudrun-render-dry-run"].done.join(" ")).toContain("Cloud Run deployment evidence template: partial/scaffolded");
+    expect(rowsById["cloudrun-render-dry-run"].pending.join(" ")).toContain("filled private render-values file");
+    expect(rowsById["cloudrun-render-dry-run"].evidence).not.toContain("judge-access-readiness");
+    expect(rowsById["hosted-proof-capture"].pending.join(" ")).toContain("hosted live Gemini API call evidence");
+    expect(rowsById["business-traction-proof"].pending.join(" ")).toContain("invoice/payment");
+    expect(rowsById["business-traction-proof"].evidence).not.toContain("project-provenance");
+    expect(rowsById["business-traction-proof"].evidence).not.toContain("license-ip-review");
+    expect(rowsById["business-traction-proof"].pending.join(" ")).not.toContain("project-created-after-start");
   });
 
   it("rejects raw secret-shaped CLI arguments", () => {
