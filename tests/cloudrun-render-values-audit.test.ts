@@ -23,6 +23,8 @@ interface CloudRunRenderValuesAuditModule {
     markdownPath: string;
     missingStrictKeys: string[];
     placeholderKeys: string[];
+    valueConsistencyChecks: Array<{ id: string; key: string; status: string; fix: string }>;
+    valueConsistencyBlockers: Array<{ id: string; key: string; status: string; fix: string }>;
     derivedValues: Array<{ key: string; status: string }>;
     manualReviewFlags: Array<{ key: string; status: string }>;
     secretVersionKeys: Array<{ envName: string; versionKey: string; status: string }>;
@@ -87,6 +89,16 @@ describe("Cloud Run render-values audit", () => {
     expect(packet.readyForStrictRender).toBe(true);
     expect(packet.missingStrictKeys).toEqual([]);
     expect(packet.placeholderKeys).toEqual([]);
+    expect(packet.valueConsistencyBlockers).toEqual([]);
+    expect(packet.valueConsistencyChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "source-commit-shape", status: "passed" }),
+        expect.objectContaining({ id: "hosted-product-url", status: "passed" }),
+        expect.objectContaining({ id: "oauth-redirect-product-url", status: "passed" }),
+        expect.objectContaining({ id: "budget-resource-billing-account", status: "passed" }),
+        expect.objectContaining({ id: "gemini-ip-allowlist", status: "passed" })
+      ])
+    );
     expect(packet.releaseIdConsistency).toMatchObject({
       status: "matched",
       blocking: false,
@@ -110,6 +122,7 @@ describe("Cloud Run render-values audit", () => {
     expect(packetJson.status).toBe("ready-to-render");
     expect(markdown).toContain("Ready for strict render: yes");
     expect(markdown).toContain("Status: matched");
+    expect(markdown).toContain("Value consistency blockers: 0");
     expect(JSON.stringify(packet)).not.toContain("AIza");
     expect(JSON.stringify(packet)).not.toContain("private-admin-token");
   });
@@ -167,6 +180,56 @@ describe("Cloud Run render-values audit", () => {
     expect(packet.placeholderKeys).toEqual(expect.arrayContaining(["GOOGLE_CLOUD_PROJECT", "SENTINEL_RELEASE_ID"]));
     expect(packet.nextActions.join(" ")).toContain("Fill the missing non-secret values");
     expect(packet.auditPath).toContain("cloudrun-render-values-audit.json");
+  });
+
+  it("blocks stale production values before strict rendering", async () => {
+    const { writeCloudRunRenderValuesAudit } = await loadAudit();
+    const tempDir = await makeTempDir();
+    const valuesPath = await writeValues(tempDir, {
+      ...safeRenderValues(),
+      SENTINEL_SOURCE_COMMIT: "short-sha",
+      NEXT_PUBLIC_PRODUCT_URL: "http://127.0.0.1:3000",
+      XPRIZE_DEMO_VIDEO_URL: "https://example.com/sentinel-demo",
+      XPRIZE_CATEGORY: "Professional Services Access",
+      GOOGLE_OAUTH_REDIRECT_URI: "https://old.example.com/api/oauth/google/callback",
+      WORKSPACE_GMAIL_TOPIC: "projects/old-project/topics/workspace-gmail-updates",
+      SENTINEL_GCP_BUDGET_ID: "billingAccounts/old-billing/budgets/budget-123",
+      SENTINEL_GEMINI_API_KEY_ID: "projects/999999999999/locations/global/keys/gemini-key-123",
+      SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS: "0.0.0.0,*",
+      GEMINI_API_KEY_VERSION: "latest"
+    });
+
+    const packet = await writeCloudRunRenderValuesAudit({
+      valuesPath,
+      outDir: tempDir,
+      releaseId: "release-20260523-001"
+    });
+
+    expect(packet.status).toBe("value-consistency-blocked");
+    expect(packet.readyForStrictRender).toBe(false);
+    expect(packet.valueConsistencyBlockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "source-commit-shape", key: "SENTINEL_SOURCE_COMMIT" }),
+        expect.objectContaining({ id: "hosted-product-url", key: "NEXT_PUBLIC_PRODUCT_URL" }),
+        expect.objectContaining({ id: "demo-video-host", key: "XPRIZE_DEMO_VIDEO_URL" }),
+        expect.objectContaining({ id: "category-fit", key: "XPRIZE_CATEGORY" }),
+        expect.objectContaining({ id: "oauth-redirect-product-url", key: "GOOGLE_OAUTH_REDIRECT_URI" }),
+        expect.objectContaining({ id: "gmail-topic-project", key: "WORKSPACE_GMAIL_TOPIC" }),
+        expect.objectContaining({ id: "budget-resource-billing-account", key: "SENTINEL_GCP_BUDGET_ID" }),
+        expect.objectContaining({ id: "gemini-api-key-project-number", key: "SENTINEL_GEMINI_API_KEY_ID" }),
+        expect.objectContaining({ id: "gemini-ip-allowlist", key: "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS" }),
+        expect.objectContaining({ id: "secret-version-gemini_api_key_version", key: "GEMINI_API_KEY_VERSION" })
+      ])
+    );
+    expect(packet.stopConditions.join(" ")).toContain("stale, mismatched, or invalid");
+    await expect(
+      writeCloudRunRenderValuesAudit({
+        valuesPath,
+        outDir: tempDir,
+        releaseId: "release-20260523-001",
+        strict: true
+      })
+    ).rejects.toThrow(/value-consistency-blocked/u);
   });
 
   it("fails strict mode when render values are not ready", async () => {

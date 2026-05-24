@@ -1,4 +1,4 @@
-/* global console, process */
+/* global console, process, URL */
 
 import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -455,6 +455,8 @@ export async function auditCloudRunRenderValues(options = {}) {
     .map(([key]) => key)
     .sort();
   const releaseIdConsistency = buildReleaseIdConsistency(options.releaseId, renderValues.SENTINEL_RELEASE_ID);
+  const valueConsistencyChecks = buildValueConsistencyChecks(renderValues, releaseIdConsistency);
+  const valueConsistencyBlockers = valueConsistencyChecks.filter((check) => check.status === "blocked");
   const derivedValues = derivedValueKeys.map((key) => ({
     key,
     status: fileValues[key] !== undefined ? "provided" : renderValues[key] !== undefined ? "derived" : "unused"
@@ -470,7 +472,13 @@ export async function auditCloudRunRenderValues(options = {}) {
     status: isMissingStrictValue(renderValues[versionKey]) ? "needs-value" : "version-set"
   }));
   const releaseId = String(options.releaseId || renderValues.SENTINEL_RELEASE_ID || "release-candidate");
-  const status = releaseIdConsistency.blocking ? "release-id-mismatch" : missingStrictKeys.length ? "needs-values" : "ready-to-render";
+  const status = releaseIdConsistency.blocking
+    ? "release-id-mismatch"
+    : missingStrictKeys.length
+      ? "needs-values"
+      : valueConsistencyBlockers.length
+        ? "value-consistency-blocked"
+        : "ready-to-render";
 
   return {
     generatedAt: new Date().toISOString(),
@@ -483,17 +491,19 @@ export async function auditCloudRunRenderValues(options = {}) {
     appliedValueKeyCount: Object.keys(renderValues).length,
     missingStrictKeys,
     placeholderKeys,
+    valueConsistencyChecks,
+    valueConsistencyBlockers,
     derivedValues,
     manualReviewFlags,
     secretVersionKeys: secretVersionKeysStatus,
-    stopConditions: buildAuditStopConditions({ missingStrictKeys, placeholderKeys, releaseIdConsistency }),
+    stopConditions: buildAuditStopConditions({ missingStrictKeys, placeholderKeys, releaseIdConsistency, valueConsistencyBlockers }),
     redactionChecklist: [
       "Keep the filled render-values file private; it can expose project ids, URLs, budget ids, and evidence-state decisions.",
       "Never place raw API keys, OAuth secrets, refresh tokens, service-account key paths, judge credentials, invoices, or customer findings in render values.",
       "Before sharing this audit packet, review valuesPath, project ids, URLs, billing ids, and evidence-state flags for customer or operator sensitivity.",
       "Only mark manual XPRIZE/evidence flags true after the private proof exists and the responsible owner has reviewed it."
     ],
-    nextActions: buildAuditNextActions({ missingStrictKeys, releaseIdConsistency }),
+    nextActions: buildAuditNextActions({ missingStrictKeys, releaseIdConsistency, valueConsistencyBlockers }),
     disclaimer:
       "This audit validates the private render-values input before rendering a Cloud Run manifest. It does not deploy Cloud Run, call Gemini, prove Workspace sync, or prove XPRIZE business evidence."
   };
@@ -584,6 +594,148 @@ function assertReleaseIdConsistency(requestedReleaseId, valueReleaseId) {
   if (consistency.blocking) {
     throw new Error(consistency.fix);
   }
+}
+
+function buildValueConsistencyChecks(values, releaseIdConsistency) {
+  const productUrl = trimTrailingSlash(values.NEXT_PUBLIC_PRODUCT_URL);
+  const normalizedReleaseId =
+    releaseIdConsistency.normalizedValueReleaseId ||
+    releaseIdConsistency.normalizedRequestedReleaseId ||
+    sanitizePathSegment(values.SENTINEL_RELEASE_ID || "");
+  const expectedDockerTag = dockerTag(normalizedReleaseId || values.SENTINEL_RELEASE_ID || "");
+  const projectId = values.GOOGLE_CLOUD_PROJECT;
+  const projectNumber = values.GOOGLE_CLOUD_PROJECT_NUMBER;
+  const billingAccountId = values.GOOGLE_CLOUD_BILLING_ACCOUNT_ID;
+  const region = values.SENTINEL_CLOUD_RUN_REGION || "us-central1";
+
+  return [
+    valueCheck(
+      "source-commit-shape",
+      "SENTINEL_SOURCE_COMMIT",
+      /^[a-f0-9]{40}$/iu.test(String(values.SENTINEL_SOURCE_COMMIT ?? "")),
+      "Use the 40-character Git commit SHA that produced the container image."
+    ),
+    valueCheck(
+      "source-commit-time",
+      "SENTINEL_SOURCE_COMMIT_AT",
+      isIsoTimestamp(values.SENTINEL_SOURCE_COMMIT_AT),
+      "Use the exact ISO timestamp for the deployed source commit."
+    ),
+    valueCheck(
+      "hosted-product-url",
+      "NEXT_PUBLIC_PRODUCT_URL",
+      isPublicHttpsUrl(productUrl),
+      "Use the public HTTPS Cloud Run/custom-domain URL, not localhost, HTTP, or a placeholder."
+    ),
+    valueCheck(
+      "demo-video-host",
+      "XPRIZE_DEMO_VIDEO_URL",
+      isAcceptedDemoVideoUrl(values.XPRIZE_DEMO_VIDEO_URL),
+      "Use a public YouTube, Vimeo, or Youku demo URL before strict render."
+    ),
+    valueCheck(
+      "category-fit",
+      "XPRIZE_CATEGORY",
+      values.XPRIZE_CATEGORY === "Small Business Services",
+      "Keep the deployment category aligned to Small Business Services unless strategy is formally changed."
+    ),
+    valueCheck(
+      "entrant-type",
+      "XPRIZE_ENTRANT_TYPE",
+      ["individual", "team", "organization"].includes(String(values.XPRIZE_ENTRANT_TYPE ?? "")),
+      "Set XPRIZE_ENTRANT_TYPE to individual, team, or organization after human review."
+    ),
+    valueCheck(
+      "cloud-run-image-release",
+      "SENTINEL_CLOUD_RUN_IMAGE",
+      String(values.SENTINEL_CLOUD_RUN_IMAGE ?? "").startsWith(`${region}-docker.pkg.dev/${projectId}/`) &&
+        String(values.SENTINEL_CLOUD_RUN_IMAGE ?? "").endsWith(`:${expectedDockerTag}`),
+      "Use the Artifact Registry image in the selected project/region and tag it with SENTINEL_RELEASE_ID."
+    ),
+    valueCheck(
+      "cloud-run-service-account-project",
+      "SENTINEL_CLOUD_RUN_SERVICE_ACCOUNT_EMAIL",
+      String(values.SENTINEL_CLOUD_RUN_SERVICE_ACCOUNT_EMAIL ?? "") === `sentinel-runtime@${projectId}.iam.gserviceaccount.com`,
+      "Use the dedicated sentinel-runtime service account in the production project."
+    ),
+    valueCheck(
+      "private-evidence-bucket-project",
+      "SENTINEL_PRIVATE_EVIDENCE_BUCKET",
+      String(values.SENTINEL_PRIVATE_EVIDENCE_BUCKET ?? "") === `gs://${projectId}-sentinel-private-evidence`,
+      "Use the private evidence bucket derived from the production Google Cloud project."
+    ),
+    valueCheck(
+      "oauth-redirect-product-url",
+      "GOOGLE_OAUTH_REDIRECT_URI",
+      values.GOOGLE_OAUTH_REDIRECT_URI === `${productUrl}/api/oauth/google/callback`,
+      "Keep the OAuth callback bound to NEXT_PUBLIC_PRODUCT_URL."
+    ),
+    valueCheck(
+      "pubsub-push-audience-product-url",
+      "WORKSPACE_PUBSUB_PUSH_AUDIENCE",
+      values.WORKSPACE_PUBSUB_PUSH_AUDIENCE === `${productUrl}/api/webhooks/pubsub/gmail`,
+      "Keep the Pub/Sub push audience bound to the hosted Gmail webhook URL."
+    ),
+    valueCheck(
+      "gmail-topic-project",
+      "WORKSPACE_GMAIL_TOPIC",
+      String(values.WORKSPACE_GMAIL_TOPIC ?? "").startsWith(`projects/${projectId}/topics/`),
+      "Use a Gmail Pub/Sub topic in the production Google Cloud project."
+    ),
+    valueCheck(
+      "gmail-subscription-project",
+      "WORKSPACE_GMAIL_SUBSCRIPTION",
+      String(values.WORKSPACE_GMAIL_SUBSCRIPTION ?? "").startsWith(`projects/${projectId}/subscriptions/`),
+      "Use a Gmail Pub/Sub subscription in the production Google Cloud project."
+    ),
+    valueCheck(
+      "pubsub-service-account-project",
+      "WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL",
+      String(values.WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL ?? "") === `workspace-push@${projectId}.iam.gserviceaccount.com`,
+      "Use the dedicated workspace-push service account in the production project."
+    ),
+    valueCheck(
+      "budget-resource-billing-account",
+      "SENTINEL_GCP_BUDGET_ID",
+      String(values.SENTINEL_GCP_BUDGET_ID ?? "").startsWith(`billingAccounts/${billingAccountId}/budgets/`),
+      "Use a Cloud Billing budget resource under GOOGLE_CLOUD_BILLING_ACCOUNT_ID."
+    ),
+    valueCheck(
+      "budget-pubsub-topic-project",
+      "SENTINEL_BUDGET_PUBSUB_TOPIC",
+      String(values.SENTINEL_BUDGET_PUBSUB_TOPIC ?? "").startsWith(`projects/${projectId}/topics/`),
+      "Use a budget-alert Pub/Sub topic in the production Google Cloud project."
+    ),
+    valueCheck(
+      "gemini-api-key-project-number",
+      "SENTINEL_GEMINI_API_KEY_ID",
+      String(values.SENTINEL_GEMINI_API_KEY_ID ?? "").startsWith(`projects/${projectNumber}/locations/global/keys/`),
+      "Use the Gemini API key resource id from GOOGLE_CLOUD_PROJECT_NUMBER."
+    ),
+    valueCheck(
+      "gemini-ip-allowlist",
+      "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
+      parseCsv(values.SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS).every(isIpv4Address),
+      "Use a comma-separated allowlist of concrete server IPv4 addresses; do not use wildcards or placeholders."
+    ),
+    ...secretVersionKeys.map((key) =>
+      valueCheck(
+        `secret-version-${key.toLowerCase()}`,
+        key,
+        /^[1-9][0-9]*$/u.test(String(values[key] ?? "")),
+        `${key} must be a positive numeric Secret Manager version.`
+      )
+    )
+  ];
+}
+
+function valueCheck(id, key, passed, fix) {
+  return {
+    id,
+    key,
+    status: passed ? "passed" : "blocked",
+    fix
+  };
 }
 
 function renderManifest(template, values) {
@@ -728,7 +880,7 @@ function assertNoUnsafeRenderedSecrets(renderedManifest) {
   }
 }
 
-function buildAuditStopConditions({ missingStrictKeys, placeholderKeys, releaseIdConsistency }) {
+function buildAuditStopConditions({ missingStrictKeys, placeholderKeys, releaseIdConsistency, valueConsistencyBlockers }) {
   if (releaseIdConsistency.blocking) {
     return [
       "Do not render or dry-run while the CLI release id and SENTINEL_RELEASE_ID disagree.",
@@ -740,6 +892,13 @@ function buildAuditStopConditions({ missingStrictKeys, placeholderKeys, releaseI
     return [
       "Do not run strict render or Cloud Run dry-run while required render values are missing or placeholder-shaped.",
       ...missingStrictKeys.slice(0, 8).map((key) => `${key}: fill a reviewed non-secret production value.`)
+    ];
+  }
+
+  if (valueConsistencyBlockers.length) {
+    return [
+      "Do not render or dry-run while production render values are stale, mismatched, or invalid.",
+      ...valueConsistencyBlockers.slice(0, 8).map((check) => `${check.key}: ${check.fix}`)
     ];
   }
 
@@ -756,7 +915,7 @@ function buildAuditStopConditions({ missingStrictKeys, placeholderKeys, releaseI
   ];
 }
 
-function buildAuditNextActions({ missingStrictKeys, releaseIdConsistency }) {
+function buildAuditNextActions({ missingStrictKeys, releaseIdConsistency, valueConsistencyBlockers }) {
   if (releaseIdConsistency.blocking) {
     return [
       "Use the same non-placeholder release id in --release-id and SENTINEL_RELEASE_ID.",
@@ -770,6 +929,14 @@ function buildAuditNextActions({ missingStrictKeys, releaseIdConsistency }) {
       "Fill the missing non-secret values in the private render-values file.",
       "Keep manual evidence flags false until private proof exists.",
       "Rerun this audit before rendering the Cloud Run manifest."
+    ];
+  }
+
+  if (valueConsistencyBlockers.length) {
+    return [
+      "Fix blocked value-consistency checks in the private render-values file.",
+      "Regenerate this audit before rendering the Cloud Run manifest.",
+      "Keep release id, source commit, product URL, OAuth, Pub/Sub, billing, Gemini key, and Secret Manager versions bound to the same deployment."
     ];
   }
 
@@ -890,6 +1057,57 @@ function dockerTag(value) {
 
 function trimTrailingSlash(value) {
   return value ? String(value).replace(/\/+$/u, "") : "";
+}
+
+function isIsoTimestamp(value) {
+  if (!value) {
+    return false;
+  }
+
+  const timestamp = Date.parse(String(value));
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === String(value);
+}
+
+function isPublicHttpsUrl(value) {
+  try {
+    const url = new URL(String(value));
+    return url.protocol === "https:" && !["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isAcceptedDemoVideoUrl(value) {
+  try {
+    const host = new URL(String(value)).hostname.toLowerCase();
+    return (
+      host === "youtu.be" ||
+      host === "youtube.com" ||
+      host.endsWith(".youtube.com") ||
+      host === "vimeo.com" ||
+      host.endsWith(".vimeo.com") ||
+      host === "youku.com" ||
+      host.endsWith(".youku.com")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function parseCsv(value) {
+  return String(value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isIpv4Address(value) {
+  const parts = String(value).split(".");
+  return (
+    parts.length === 4 &&
+    parts.every((part) => /^\d{1,3}$/u.test(part) && Number(part) >= 0 && Number(part) <= 255) &&
+    value !== "0.0.0.0"
+  );
 }
 
 function shellQuote(value) {

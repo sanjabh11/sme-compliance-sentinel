@@ -121,7 +121,13 @@ function renderMarkdown(packet) {
     `- Applied value keys: ${packet.appliedValueKeyCount}`,
     `- Missing strict keys: ${packet.missingStrictKeys.length}`,
     `- Placeholder keys: ${packet.placeholderKeys.length}`,
+    `- Value consistency blockers: ${packet.valueConsistencyBlockers.length}`,
     `- Manual review flags: ${packet.manualReviewFlags.length}`,
+    "",
+    "## Value Consistency",
+    ...(packet.valueConsistencyChecks.length
+      ? packet.valueConsistencyChecks.map((check) => `- ${check.key}: ${check.status}; ${check.fix}`)
+      : ["- none"]),
     "",
     "## Missing Strict Keys",
     ...(packet.missingStrictKeys.length ? packet.missingStrictKeys.map((key) => `- ${key}`) : ["- none"]),
