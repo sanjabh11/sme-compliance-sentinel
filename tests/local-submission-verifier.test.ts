@@ -673,6 +673,11 @@ describe("local XPRIZE submission verifier", () => {
         row.privateArtifactPaths.includes("artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json")
       )
     ).toBe(true);
+    expect(
+      cloudRunRows.some((row) =>
+        row.privateArtifactPaths.includes("artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-summary.json")
+      )
+    ).toBe(true);
     expect(cloudRunRows.some((row) => row.commands.join(" ").includes("audit:cloudrun-values"))).toBe(true);
     expect(hostedRows.some((row) => row.action.includes("Cloud Run service URL"))).toBe(true);
     expect(
@@ -686,6 +691,7 @@ describe("local XPRIZE submission verifier", () => {
     expect(ownerPacketsByOwner.engineering.privateArtifactPaths).toEqual(
       expect.arrayContaining([
         "/secure/local/cloudrun-render-values.json",
+        "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-summary.json",
         "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json",
         "/secure/local/cloudrun/$SENTINEL_RELEASE_ID/cloudrun-dry-run.log"
       ])

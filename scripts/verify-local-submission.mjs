@@ -390,6 +390,7 @@ function privateArtifactPathsForGate(gateId) {
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-values-audit.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet-verifier.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-summary.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-packet-verifier.json"
     ],
