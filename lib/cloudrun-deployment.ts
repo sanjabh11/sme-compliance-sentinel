@@ -203,6 +203,54 @@ const allowedRepositoryAccessModes = new Set(["public", "private-shared"]);
 const requiredRepositoryJudgeEmails = ["testing@devpost.com", "judging@hacker.fund"];
 const requiredJudgingPeriodEndAt = "2026-09-15T17:00:00-07:00";
 
+const evidenceFlagDependencies = [
+  {
+    flag: "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED",
+    requires: [
+      "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
+      "XPRIZE_REVENUE_BY_MONTH_EVIDENCE_CONFIGURED",
+      "XPRIZE_TOTAL_COSTS_EVIDENCE_CONFIGURED",
+      "XPRIZE_REAL_USER_EVIDENCE_CONFIGURED"
+    ],
+    evidence:
+      "Business-model evidence cannot be marked configured until revenue, monthly revenue, cost, and real-user proof flags are also reviewed."
+  },
+  {
+    flag: "XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED",
+    requires: ["XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED", "XPRIZE_REAL_USER_EVIDENCE_CONFIGURED"],
+    evidence:
+      "Category-impact evidence depends on reviewed business-model and real-user proof, not only a category label."
+  },
+  {
+    flag: "XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED",
+    requires: [
+      "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
+      "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
+      "XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED",
+      "XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED"
+    ],
+    evidence:
+      "AI-native operations evidence requires deployed Google Cloud product proof, live Gemini proof, product-running proof, and agent execution logs."
+  },
+  {
+    flag: "XPRIZE_EVIDENCE_RESPONSE_READY",
+    requires: [
+      "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
+      "XPRIZE_JUDGE_ACCESS_CONFIGURED",
+      "XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED",
+      "XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED",
+      "XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED",
+      "XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED",
+      "XPRIZE_DEMO_VIDEO_CUSTOMER_DATA_REDACTED_CONFIRMED",
+      "XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED",
+      "XPRIZE_THIRD_PARTY_REVIEW_APPROVED",
+      "XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED"
+    ],
+    evidence:
+      "Evidence-response readiness requires repository access, judge access, demo-video clearance, third-party review, and IP ownership review flags to be reviewed first."
+  }
+] as const;
+
 const placeholderPatterns = [
   /PROJECT_ID/u,
   /PROJECT_NUMBER/u,
@@ -808,6 +856,7 @@ function checkProductionValueInvariants(
       )
     );
   }
+  checks.push(...checkEvidenceFlagDependencies(envByName));
 
   if (judgingPeriodEndAt) {
     const judgingEndTimestamp = Date.parse(judgingPeriodEndAt);
@@ -1034,6 +1083,31 @@ function checkProductionValueInvariants(
   );
 
   return checks;
+}
+
+function checkEvidenceFlagDependencies(envByName: Map<string, ParsedEnvEntry>): CloudRunDeploymentEnvCheck[] {
+  return evidenceFlagDependencies.flatMap((definition) => {
+    if (cleanEnvValue(envByName, definition.flag) !== "true") {
+      return [];
+    }
+
+    const missing = definition.requires.filter((name) => cleanEnvValue(envByName, name) !== "true");
+    if (!missing.length) {
+      return [];
+    }
+
+    return [
+      envCheck(
+        `INCONSISTENT_${definition.flag}`,
+        "xprize",
+        "blocked",
+        false,
+        missing.join(","),
+        definition.evidence,
+        `${definition.flag}=true requires ${missing.join(", ")}. Keep ${definition.flag}=false until those private proof flags are reviewed.`
+      )
+    ];
+  });
 }
 
 function checkHttpsUrl(

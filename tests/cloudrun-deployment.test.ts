@@ -193,6 +193,47 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(evidence.blockers.join(" ")).toContain("judging@hacker.fund");
   });
 
+  it("blocks contradictory XPRIZE proof flags before Cloud Run dry-run", () => {
+    const inconsistentManifest = renderProductionCandidateManifest()
+      .replace(
+        'name: XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED\n              value: "false"',
+        'name: XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED\n              value: "true"'
+      )
+      .replace(
+        'name: XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED\n              value: "false"',
+        'name: XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED\n              value: "true"'
+      )
+      .replace(
+        'name: XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED\n              value: "false"',
+        'name: XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED\n              value: "true"'
+      )
+      .replace(
+        'name: XPRIZE_EVIDENCE_RESPONSE_READY\n              value: "false"',
+        'name: XPRIZE_EVIDENCE_RESPONSE_READY\n              value: "true"'
+      );
+    const evidence = buildCloudRunDeploymentEvidence(inconsistentManifest);
+    const checksByName = Object.fromEntries(evidence.envChecks.map((check) => [check.name, check]));
+
+    expect(evidence.overallStatus).toBe("blocked");
+    expect(checksByName.INCONSISTENT_XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED).toMatchObject({
+      status: "blocked",
+      currentValue: expect.stringContaining("XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED")
+    });
+    expect(checksByName.INCONSISTENT_XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED).toMatchObject({
+      status: "blocked",
+      currentValue: expect.stringContaining("XPRIZE_REAL_USER_EVIDENCE_CONFIGURED")
+    });
+    expect(checksByName.INCONSISTENT_XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED).toMatchObject({
+      status: "blocked",
+      currentValue: expect.stringContaining("XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED")
+    });
+    expect(checksByName.INCONSISTENT_XPRIZE_EVIDENCE_RESPONSE_READY).toMatchObject({
+      status: "blocked",
+      currentValue: expect.stringContaining("XPRIZE_JUDGE_ACCESS_CONFIGURED")
+    });
+    expect(evidence.blockers.join(" ")).toContain("Keep XPRIZE_EVIDENCE_RESPONSE_READY=false");
+  });
+
   it("blocks rendered manifests when Cloud Run secret lookup annotations are missing", () => {
     const evidence = buildCloudRunDeploymentEvidence(
       renderProductionCandidateManifest().replace(/\n\s+run\.googleapis\.com\/secrets: "[^"]+"/u, "")
@@ -340,6 +381,9 @@ describe("Cloud Run deployment evidence verifier", () => {
       ).replace(
         "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:release-20260523-001",
         "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:latest"
+      ).replace(
+        'name: XPRIZE_EVIDENCE_RESPONSE_READY\n              value: "false"',
+        'name: XPRIZE_EVIDENCE_RESPONSE_READY\n              value: "true"'
       ),
       "utf8"
     );
@@ -356,6 +400,7 @@ describe("Cloud Run deployment evidence verifier", () => {
       expect(report.blockers.join(" ")).toContain("INVALID_XPRIZE_ENTRANT_TYPE");
       expect(report.blockers.join(" ")).toContain("INVALID_SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS");
       expect(report.blockers.join(" ")).toContain("INVALID_CLOUD_RUN_IMAGE_TAG");
+      expect(report.blockers.join(" ")).toContain("INCONSISTENT_XPRIZE_EVIDENCE_RESPONSE_READY");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

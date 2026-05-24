@@ -43,6 +43,13 @@ describe("Cloud Run deployment contract", () => {
     for (const name of contract.prohibitedCredentialEnv) {
       expect(entries.map((entry) => entry.name)).not.toContain(name);
     }
+
+    for (const dependency of contract.evidenceFlagDependencies) {
+      expect(contract.manualReviewEnv).toContain(dependency.flag);
+      dependency.requires.forEach((name) => {
+        expect(contract.manualReviewEnv).toContain(name);
+      });
+    }
   });
 
   it("keeps the TypeScript verifier and CLI verifier enforcing the same deployment contract", () => {
