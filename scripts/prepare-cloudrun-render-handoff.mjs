@@ -171,7 +171,9 @@ export async function prepareCloudRunRenderHandoff(options = {}) {
       "This handoff writes local private render-value starter artifacts and verifies the owner packet. It does not deploy Cloud Run, run gcloud, call Gemini, prove hosted availability, prove Workspace sync, prove revenue, or guarantee judging outcome."
   };
 
+  await assertDirectoryPathSafe(outputDirectory, "Cloud Run render handoff output directory");
   await mkdir(outputDirectory, { recursive: true });
+  await assertDirectoryExistsSafe(outputDirectory, "Cloud Run render handoff output directory");
   await writeJson(handoffPath, handoff);
   await writeTextFile(handoffMarkdownPath, renderMarkdown(handoff), "Cloud Run render handoff Markdown");
 
@@ -802,13 +804,62 @@ function sortJson(value) {
 }
 
 async function writeJson(path, value) {
+  await assertDirectoryPathSafe(dirname(path), "Cloud Run render handoff output parent directory");
   await assertRegularFileIfExists(path, "Cloud Run render handoff output file");
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
 async function writeTextFile(path, content, label) {
+  await assertDirectoryPathSafe(dirname(path), `${label} parent directory`);
   await assertRegularFileIfExists(path, label);
   await writeFile(path, content, "utf8");
+}
+
+async function assertDirectoryPathSafe(path, label) {
+  const directories = [];
+  let cursor = resolve(path);
+
+  while (true) {
+    directories.push(cursor);
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+
+  for (const directory of directories.reverse()) {
+    let fileStat;
+
+    try {
+      fileStat = await lstat(directory);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+
+    if (fileStat.isSymbolicLink()) {
+      throw new Error(`${label} ${directory} is a symbolic link; use a regular private directory before Cloud Run render handoff.`);
+    }
+
+    if (!fileStat.isDirectory()) {
+      throw new Error(`${label} ${directory} is not a directory; use a regular private directory before Cloud Run render handoff.`);
+    }
+  }
+}
+
+async function assertDirectoryExistsSafe(path, label) {
+  const fileStat = await lstat(path);
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private directory before Cloud Run render handoff.`);
+  }
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${path} is not a directory; use a regular private directory before Cloud Run render handoff.`);
+  }
 }
 
 async function assertRegularFileIfExists(path, label) {

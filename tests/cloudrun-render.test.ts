@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -147,6 +147,20 @@ describe("Cloud Run manifest renderer", () => {
     await expect(writeReleaseCandidateValues(releaseValuesPath, { gitRunner })).rejects.toThrow(/symbolic link/u);
 
     const valuesPath = await writeValues(tempDir, safeRenderValues());
+    const realOutDir = join(tempDir, "reviewed-render-output");
+    const symlinkedOutDir = join(tempDir, "symlinked-render-output");
+    await mkdir(realOutDir);
+    await symlink(realOutDir, symlinkedOutDir);
+
+    await expect(
+      renderCloudRunManifest({
+        valuesPath,
+        outDir: symlinkedOutDir,
+        releaseId: "release-20260523-001",
+        strict: true
+      })
+    ).rejects.toThrow(/symbolic link/u);
+
     const rendered = await renderCloudRunManifest({
       valuesPath,
       outDir: tempDir,

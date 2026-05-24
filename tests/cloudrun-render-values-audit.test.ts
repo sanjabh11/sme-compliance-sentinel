@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -469,6 +469,18 @@ describe("Cloud Run render-values audit", () => {
 
     expect(symlinked.overallStatus).toBe("blocked");
     expect(symlinked.blockers.join(" ")).toContain("symbolic link");
+
+    const realOutDir = join(tempDir, "reviewed-render-values-audit-output");
+    const symlinkedOutDir = join(tempDir, "symlinked-render-values-audit-output");
+    await mkdir(realOutDir);
+    await symlink(realOutDir, symlinkedOutDir);
+    await expect(
+      writeCloudRunRenderValuesAudit({
+        valuesPath: "docs/deployment/cloudrun-render-values.template.json",
+        outDir: symlinkedOutDir
+      })
+    ).rejects.toThrow(/symbolic link/u);
+
     await expect(
       writeCloudRunRenderValuesAudit({
         valuesPath: "docs/deployment/cloudrun-render-values.template.json",

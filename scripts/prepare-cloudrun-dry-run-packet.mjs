@@ -120,7 +120,9 @@ export async function prepareCloudRunDryRunPacket(options) {
   const evidenceFileDigests = await buildEvidenceFileDigests(renderSummary);
   const packet = buildDryRunPacket({ renderSummary, verifier, valuesPath: options.valuesPath, evidenceFileDigests });
 
+  await assertDirectoryPathSafe(outputDirectory, "Cloud Run dry-run packet output directory");
   await mkdir(outputDirectory, { recursive: true });
+  await assertDirectoryExistsSafe(outputDirectory, "Cloud Run dry-run packet output directory");
   await writeJson(join(outputDirectory, packetFileName), packet);
   await writeTextFile(join(outputDirectory, markdownFileName), renderMarkdown(packet), "Cloud Run dry-run packet Markdown");
 
@@ -844,13 +846,62 @@ function buildVerificationNextActions({ status, packet }) {
 }
 
 async function writeJson(path, value) {
+  await assertDirectoryPathSafe(dirname(path), "Cloud Run dry-run packet output parent directory");
   await assertRegularFileIfExists(path, "Cloud Run dry-run packet output file");
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
 async function writeTextFile(path, content, label) {
+  await assertDirectoryPathSafe(dirname(path), `${label} parent directory`);
   await assertRegularFileIfExists(path, label);
   await writeFile(path, content, "utf8");
+}
+
+async function assertDirectoryPathSafe(path, label) {
+  const directories = [];
+  let cursor = resolve(path);
+
+  while (true) {
+    directories.push(cursor);
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+
+  for (const directory of directories.reverse()) {
+    let fileStat;
+
+    try {
+      fileStat = await lstat(directory);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+
+    if (fileStat.isSymbolicLink()) {
+      throw new Error(`${label} ${directory} is a symbolic link; use a regular private directory before Cloud Run dry-run preflight.`);
+    }
+
+    if (!fileStat.isDirectory()) {
+      throw new Error(`${label} ${directory} is not a directory; use a regular private directory before Cloud Run dry-run preflight.`);
+    }
+  }
+}
+
+async function assertDirectoryExistsSafe(path, label) {
+  const fileStat = await lstat(path);
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private directory before Cloud Run dry-run preflight.`);
+  }
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${path} is not a directory; use a regular private directory before Cloud Run dry-run preflight.`);
+  }
 }
 
 async function assertRegularFileIfExists(path, label) {

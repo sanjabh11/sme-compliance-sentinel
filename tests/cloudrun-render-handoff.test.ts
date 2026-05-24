@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -263,6 +263,19 @@ describe("Cloud Run render handoff", () => {
 
     expect(symlinkedVerification.overallStatus).toBe("blocked");
     expect(symlinkedVerification.blockers.join(" ")).toContain("symbolic link");
+
+    const realOutDir = join(tempDir, "reviewed-render-handoff-output");
+    const symlinkedOutDir = join(tempDir, "symlinked-render-handoff-output");
+    await mkdir(realOutDir);
+    await symlink(realOutDir, symlinkedOutDir);
+    await expect(
+      prepareCloudRunRenderHandoff({
+        valuesPath: join(tempDir, "symlink-output-dir-values.json"),
+        outDir: symlinkedOutDir,
+        gitRunner: makeFakeGitRunner()
+      })
+    ).rejects.toThrow(/symbolic link/u);
+
     await expect(
       prepareCloudRunRenderHandoff({
         valuesPath: symlinkedHandoff.valuesPath,

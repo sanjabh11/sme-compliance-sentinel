@@ -4,7 +4,7 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { lstat, mkdir, writeFile, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { auditCloudRunRenderValues } from "./render-cloudrun-manifest.mjs";
 
 const defaultOutDir = "artifacts/deployment";
@@ -125,7 +125,9 @@ export async function writeCloudRunRenderValuesAudit(options) {
     evidencePacket
   };
 
+  await assertDirectoryPathSafe(outputDirectory, "Cloud Run render-values output directory");
   await mkdir(outputDirectory, { recursive: true });
+  await assertDirectoryExistsSafe(outputDirectory, "Cloud Run render-values output directory");
   await writeJson(packet.auditPath, packet);
   await writeTextFile(packet.markdownPath, renderMarkdown(packet), "Cloud Run render-values audit Markdown");
   await writeJson(packet.evidencePacketPath, evidencePacket);
@@ -981,13 +983,62 @@ function renderEvidenceMarkdown(packet) {
 }
 
 async function writeJson(path, value) {
+  await assertDirectoryPathSafe(dirname(path), "Cloud Run render-values output parent directory");
   await assertRegularFileIfExists(path, "Cloud Run render-values output file");
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
 async function writeTextFile(path, content, label) {
+  await assertDirectoryPathSafe(dirname(path), `${label} parent directory`);
   await assertRegularFileIfExists(path, label);
   await writeFile(path, content, "utf8");
+}
+
+async function assertDirectoryPathSafe(path, label) {
+  const directories = [];
+  let cursor = resolve(path);
+
+  while (true) {
+    directories.push(cursor);
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+
+  for (const directory of directories.reverse()) {
+    let fileStat;
+
+    try {
+      fileStat = await lstat(directory);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+
+    if (fileStat.isSymbolicLink()) {
+      throw new Error(`${label} ${directory} is a symbolic link; use a regular private directory before Cloud Run render-value audit.`);
+    }
+
+    if (!fileStat.isDirectory()) {
+      throw new Error(`${label} ${directory} is not a directory; use a regular private directory before Cloud Run render-value audit.`);
+    }
+  }
+}
+
+async function assertDirectoryExistsSafe(path, label) {
+  const fileStat = await lstat(path);
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private directory before Cloud Run render-value audit.`);
+  }
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${path} is not a directory; use a regular private directory before Cloud Run render-value audit.`);
+  }
 }
 
 async function assertRegularFileIfExists(path, label) {

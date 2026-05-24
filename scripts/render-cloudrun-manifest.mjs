@@ -262,7 +262,9 @@ export async function renderCloudRunManifest(options) {
   }
   const releaseId = sanitizePathSegment(options.releaseId || renderValues.SENTINEL_RELEASE_ID || "release-candidate");
   const outputDirectory = resolve(options.outDir ?? defaultOutDir, releaseId);
+  await assertDirectoryPathSafe(outputDirectory, "Cloud Run output directory");
   await mkdir(outputDirectory, { recursive: true });
+  await assertDirectoryExistsSafe(outputDirectory, "Cloud Run output directory");
 
   const templatePath = options.template ?? defaultTemplate;
   const template = await readFile(templatePath, "utf8");
@@ -350,7 +352,9 @@ export function getCloudRunRenderContractSummary() {
 
 export async function writeRenderValuesTemplate(outputPath = defaultValuesTemplatePath) {
   const absolutePath = resolve(outputPath || defaultValuesTemplatePath);
+  await assertDirectoryPathSafe(dirname(absolutePath), "Cloud Run render values parent directory");
   await mkdir(dirname(absolutePath), { recursive: true });
+  await assertDirectoryExistsSafe(dirname(absolutePath), "Cloud Run render values parent directory");
   await writeJson(absolutePath, buildRenderValuesTemplate());
 
   return {
@@ -394,7 +398,9 @@ export async function writeReleaseCandidateValues(outputPath, options = {}) {
 
   const absolutePath = resolve(outputPath);
   const values = buildReleaseCandidateValues(options);
+  await assertDirectoryPathSafe(dirname(absolutePath), "Cloud Run release values parent directory");
   await mkdir(dirname(absolutePath), { recursive: true });
+  await assertDirectoryExistsSafe(dirname(absolutePath), "Cloud Run release values parent directory");
   await writeJson(absolutePath, values);
 
   return {
@@ -1432,13 +1438,62 @@ function isIsoLikeTimestamp(value) {
 }
 
 async function writeJson(path, payload) {
+  await assertDirectoryPathSafe(dirname(path), "Cloud Run render output parent directory");
   await assertRegularFileIfExists(path, "Cloud Run render output file");
   await writeFile(path, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
 async function writeTextFile(path, content, label) {
+  await assertDirectoryPathSafe(dirname(path), `${label} parent directory`);
   await assertRegularFileIfExists(path, label);
   await writeFile(path, content, "utf8");
+}
+
+async function assertDirectoryPathSafe(path, label) {
+  const directories = [];
+  let cursor = resolve(path);
+
+  while (true) {
+    directories.push(cursor);
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+
+  for (const directory of directories.reverse()) {
+    let fileStat;
+
+    try {
+      fileStat = await lstat(directory);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+
+    if (fileStat.isSymbolicLink()) {
+      throw new Error(`${label} ${directory} is a symbolic link; use a regular private directory before Cloud Run render.`);
+    }
+
+    if (!fileStat.isDirectory()) {
+      throw new Error(`${label} ${directory} is not a directory; use a regular private directory before Cloud Run render.`);
+    }
+  }
+}
+
+async function assertDirectoryExistsSafe(path, label) {
+  const fileStat = await lstat(path);
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private directory before Cloud Run render.`);
+  }
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${path} is not a directory; use a regular private directory before Cloud Run render.`);
+  }
 }
 
 async function assertRegularFileIfExists(path, label) {
