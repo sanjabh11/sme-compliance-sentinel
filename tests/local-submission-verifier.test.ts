@@ -271,8 +271,10 @@ describe("local XPRIZE submission verifier", () => {
       owner: "engineering",
       priority: 5
     });
-    expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("render-values file");
+    expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("release-prefilled private Cloud Run render-values file");
+    expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("remaining non-secret production values");
     expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("operator handoff");
+    expect(report.phasePlan.recommendedNextCodeControllableAction.commands.join(" ")).toContain("write:cloudrun-release-values");
     expect(report.phasePlan.recommendedNextCodeControllableAction.commands.join(" ")).toContain("audit:cloudrun-values");
     expect(report.phasePlan.recommendedNextCodeControllableAction.privateArtifactPaths).toContain(
       "/secure/local/cloudrun-render-values.json"
@@ -417,7 +419,7 @@ describe("local XPRIZE submission verifier", () => {
       expect(markdown).toContain("## Gate Summary");
       expect(markdown).toContain("## Phase Progress Chart");
       expect(markdown).toContain("## Next Code-Controllable Action");
-      expect(markdown).toContain("Prepare the private Cloud Run render-values file");
+      expect(markdown).toContain("Generate the release-prefilled private Cloud Run render-values file");
       expect(markdown).toContain("## Manual Intervention Owners");
       expect(markdown).toContain("Rating");
       expect(markdown).toContain("Phase remaining");
@@ -509,7 +511,12 @@ describe("local XPRIZE submission verifier", () => {
       expect(bundleManifest.files.every((file) => /^[a-f0-9]{64}$/u.test(file.sha256) && file.bytes > 0)).toBe(true);
       expect(bundleManifest.proofBoundary).toContain("not hosted Cloud Run proof");
       expect(bundleManifest.phaseProgress?.recommendedNextCodeControllablePhaseId).toBe("cloudrun-render-dry-run");
-      expect(bundleManifest.phaseProgress?.recommendedNextCodeControllableAction?.action).toContain("render-values file");
+      expect(bundleManifest.phaseProgress?.recommendedNextCodeControllableAction?.action).toContain(
+        "release-prefilled private Cloud Run render-values file"
+      );
+      expect(bundleManifest.phaseProgress?.recommendedNextCodeControllableAction?.commands.join(" ")).toContain(
+        "write:cloudrun-release-values"
+      );
       expect(bundleManifest.phaseProgress?.recommendedNextCodeControllableAction?.action).toContain("operator handoff");
       expect(bundleManifest.phaseProgress?.recommendedNextCodeControllableAction?.commands.join(" ")).toContain(
         "audit:cloudrun-values"
@@ -700,7 +707,7 @@ describe("local XPRIZE submission verifier", () => {
     expect(rowsById["human-attestation-review"].pending.join(" ")).toContain("project-created-after-start");
     expect(rowsById["human-attestation-review"].successCheckpoints.join(" ")).toContain("prepare:xprize-attestation");
     expect(rowsById["cloudrun-render-dry-run"].done.join(" ")).toContain("Cloud Run deployment evidence template: partial/scaffolded");
-    expect(rowsById["cloudrun-render-dry-run"].pending.join(" ")).toContain("filled private render-values file");
+    expect(rowsById["cloudrun-render-dry-run"].pending.join(" ")).toContain("release-prefilled private render-values file");
     expect(rowsById["cloudrun-render-dry-run"].evidence).not.toContain("judge-access-readiness");
     expect(rowsById["hosted-proof-capture"].pending.join(" ")).toContain("hosted live Gemini API call evidence");
     expect(rowsById["business-traction-proof"].pending.join(" ")).toContain("invoice/payment");

@@ -693,7 +693,7 @@ function buildPhasePlan(gateReports) {
         "npm run verify:cloudrun-dry-run-packet -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json --strict"
       ],
       evidenceNeeded: [
-        "filled private render-values file with no raw secrets",
+        "release-prefilled private render-values file with source metadata and no raw secrets",
         "render-values audit JSON/Markdown plus owner-routed render evidence packet",
         "dry-run preflight packet and digest verifier"
       ],
@@ -819,7 +819,7 @@ function buildRecommendedNextCodeControllableAction(phases) {
 
 function codeControllableActionForPhase(phase) {
   if (phase.id === "cloudrun-render-dry-run") {
-    return "Prepare the private Cloud Run render-values file, run and verify the render-values audit packet, render the ignored manifest, produce and verify the dry-run preflight packet, and review its operator handoff. Stop before gcloud dry-run/deploy until private production values and owner approvals exist.";
+    return "Generate the release-prefilled private Cloud Run render-values file, fill the remaining non-secret production values privately, run and verify the render-values audit packet, render the ignored manifest, produce and verify the dry-run preflight packet, and review its operator handoff. Stop before gcloud dry-run/deploy until private production values and owner approvals exist.";
   }
 
   return `Advance ${phase.label} with local code or generated private handoff artifacts only; stop before claiming hosted, revenue, user, legal, or human-attestation proof.`;
