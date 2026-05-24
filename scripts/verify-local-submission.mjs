@@ -821,7 +821,7 @@ function buildRecommendedNextCodeControllableAction(phases) {
 
 function codeControllableActionForPhase(phase) {
   if (phase.id === "cloudrun-render-dry-run") {
-    return "Generate the release-prefilled private Cloud Run render-values file, fill the remaining non-secret production values privately, run and verify the render-values audit packet, render the ignored manifest, produce and verify the dry-run preflight packet, and review its operator handoff. Stop before gcloud dry-run/deploy until private production values and owner approvals exist.";
+    return "Generate the release-prefilled private Cloud Run render-values file, fill the remaining non-secret production values privately, run the render-values audit, verify the render-evidence owner packet, render the ignored manifest, produce and verify the dry-run preflight packet, and review its operator handoff. Stop before gcloud dry-run/deploy until private production values and owner approvals exist.";
   }
 
   return `Advance ${phase.label} with local code or generated private handoff artifacts only; stop before claiming hosted, revenue, user, legal, or human-attestation proof.`;

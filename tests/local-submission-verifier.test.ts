@@ -273,6 +273,7 @@ describe("local XPRIZE submission verifier", () => {
     });
     expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("release-prefilled private Cloud Run render-values file");
     expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("remaining non-secret production values");
+    expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("verify the render-evidence owner packet");
     expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("operator handoff");
     expect(report.phasePlan.recommendedNextCodeControllableAction.commands.join(" ")).toContain("write:cloudrun-release-values");
     expect(report.phasePlan.recommendedNextCodeControllableAction.commands.join(" ")).toContain("audit:cloudrun-values");
