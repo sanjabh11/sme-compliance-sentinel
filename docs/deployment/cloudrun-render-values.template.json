@@ -58,6 +58,7 @@
   "GOOGLE_OAUTH_CLIENT_ID": "YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com",
   "SENTINEL_GEMINI_API_KEY_SHORT_ID": "GEMINI_API_KEY_ID",
   "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS": "STATIC_EGRESS_IPS",
+  "WORKSPACE_DRIVE_WEBHOOK_URL": "https://YOUR-SERVICE-URL/api/webhooks/pubsub/drive",
   "SENTINEL_GEMINI_QUOTA_EVIDENCE_CONFIRMED": "false",
   "GOOGLE_OAUTH_REQUESTED_SCOPES": "https://www.googleapis.com/auth/drive.metadata.readonly,https://www.googleapis.com/auth/gmail.metadata",
   "GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES": "https://www.googleapis.com/auth/drive",

@@ -73,6 +73,7 @@ const strictRequiredValueKeys = [
   "GOOGLE_CLOUD_BILLING_ACCOUNT_ID",
   "SENTINEL_GCP_BUDGET_ID",
   "SENTINEL_BUDGET_PUBSUB_TOPIC",
+  "WORKSPACE_DRIVE_WEBHOOK_URL",
   "WORKSPACE_GMAIL_TOPIC",
   "WORKSPACE_GMAIL_SUBSCRIPTION",
   "WORKSPACE_PUBSUB_PUSH_AUDIENCE",
@@ -145,6 +146,7 @@ const renderValuesTemplate = {
   GOOGLE_CLOUD_BILLING_ACCOUNT_ID: "BILLING_ACCOUNT_ID",
   SENTINEL_GCP_BUDGET_SHORT_ID: "BUDGET_ID",
   GOOGLE_OAUTH_CLIENT_ID: "YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+  WORKSPACE_DRIVE_WEBHOOK_URL: "https://YOUR-SERVICE-URL/api/webhooks/pubsub/drive",
   GOOGLE_OAUTH_REQUESTED_SCOPES: "https://www.googleapis.com/auth/drive.metadata.readonly,https://www.googleapis.com/auth/gmail.metadata",
   GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES: "https://www.googleapis.com/auth/drive",
   GOOGLE_OAUTH_SCOPE_REVIEW_CONFIRMED: "false",
@@ -536,6 +538,9 @@ function buildRenderValues(fileValues) {
 
   if (productUrl) {
     values.NEXT_PUBLIC_PRODUCT_URL = productUrl;
+    if (!values.WORKSPACE_DRIVE_WEBHOOK_URL || hasTemplatePlaceholder(values.WORKSPACE_DRIVE_WEBHOOK_URL)) {
+      values.WORKSPACE_DRIVE_WEBHOOK_URL = `${productUrl}/api/webhooks/pubsub/drive`;
+    }
     values.WORKSPACE_PUBSUB_PUSH_AUDIENCE ||= `${productUrl}/api/webhooks/pubsub/gmail`;
     values.GOOGLE_OAUTH_REDIRECT_URI ||= `${productUrl}/api/oauth/google/callback`;
   }
@@ -688,6 +693,12 @@ function buildValueConsistencyChecks(values, releaseIdConsistency) {
       "GOOGLE_OAUTH_REDIRECT_URI",
       values.GOOGLE_OAUTH_REDIRECT_URI === `${productUrl}/api/oauth/google/callback`,
       "Keep the OAuth callback bound to NEXT_PUBLIC_PRODUCT_URL."
+    ),
+    valueCheck(
+      "drive-webhook-product-url",
+      "WORKSPACE_DRIVE_WEBHOOK_URL",
+      values.WORKSPACE_DRIVE_WEBHOOK_URL === `${productUrl}/api/webhooks/pubsub/drive`,
+      "Keep the Drive watch webhook bound to NEXT_PUBLIC_PRODUCT_URL."
     ),
     valueCheck(
       "pubsub-push-audience-product-url",

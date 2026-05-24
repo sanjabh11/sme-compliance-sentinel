@@ -167,6 +167,7 @@ describe("Cloud Run manifest renderer", () => {
       XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS: "2",
       XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED: "false",
       SENTINEL_GEMINI_QUOTA_EVIDENCE_CONFIRMED: "false",
+      WORKSPACE_DRIVE_WEBHOOK_URL: "https://YOUR-SERVICE-URL/api/webhooks/pubsub/drive",
       GOOGLE_OAUTH_REQUESTED_SCOPES: "https://www.googleapis.com/auth/drive.metadata.readonly,https://www.googleapis.com/auth/gmail.metadata",
       GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES: "https://www.googleapis.com/auth/drive",
       GOOGLE_OAUTH_SCOPE_REVIEW_CONFIRMED: "false",
@@ -223,6 +224,9 @@ describe("Cloud Run manifest renderer", () => {
     expect(renderedManifest).toContain('name: XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED\n              value: "false"');
     expect(renderedManifest).toContain('name: XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED\n              value: "false"');
     expect(renderedManifest).toContain('name: XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED\n              value: "false"');
+    expect(renderedManifest).toContain(
+      'name: WORKSPACE_DRIVE_WEBHOOK_URL\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/api/webhooks/pubsub/drive"'
+    );
     expect(renderedManifest).toContain(
       'name: GOOGLE_OAUTH_REQUESTED_SCOPES\n              value: "https://www.googleapis.com/auth/drive.metadata.readonly,https://www.googleapis.com/auth/gmail.metadata"'
     );

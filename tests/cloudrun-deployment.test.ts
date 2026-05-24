@@ -363,6 +363,10 @@ describe("Cloud Run deployment evidence verifier", () => {
         'name: GOOGLE_OAUTH_REDIRECT_URI\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/wrong/oauth/callback"'
       )
       .replace(
+        'name: WORKSPACE_DRIVE_WEBHOOK_URL\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/api/webhooks/pubsub/drive"',
+        'name: WORKSPACE_DRIVE_WEBHOOK_URL\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/api/webhooks/pubsub/gmail"'
+      )
+      .replace(
         'name: WORKSPACE_PUBSUB_PUSH_AUDIENCE\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/api/webhooks/pubsub/gmail"',
         'name: WORKSPACE_PUBSUB_PUSH_AUDIENCE\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/api/webhooks/pubsub/drive"'
       )
@@ -396,6 +400,7 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(checksByName.INVALID_CLOUD_RUN_cpu).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_CLOUD_RUN_memory).toMatchObject({ status: "blocked" });
     expect(checksByName.MISMATCHED_GOOGLE_OAUTH_REDIRECT_URI).toMatchObject({ status: "blocked" });
+    expect(checksByName.MISMATCHED_WORKSPACE_DRIVE_WEBHOOK_URL).toMatchObject({ status: "blocked" });
     expect(checksByName.MISMATCHED_WORKSPACE_PUBSUB_PUSH_AUDIENCE).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_GOOGLE_OAUTH_REQUESTED_SCOPES).toMatchObject({ status: "blocked" });
     expect(checksByName.REQUESTED_RESTRICTED_GOOGLE_OAUTH_SCOPES).toMatchObject({ status: "blocked" });

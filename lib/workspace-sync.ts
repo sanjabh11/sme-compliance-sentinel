@@ -339,7 +339,7 @@ export async function bootstrapLiveWorkspaceSyncState(
     (connection) => connection.mode === "oauth" || connection.mode === "domain-wide-delegation"
   );
   const persistence = buildPersistenceReadiness();
-  const callbackBaseUrl = sentinelConfig.productUrl;
+  const driveWebhookUrl = configuredDriveWebhookUrl();
   const driveChannelTokenReady = sentinelConfig.workspaceDriveChannelTokenConfigured;
   const gmailTopic = sentinelConfig.gmailPubSubTopic || input.syncState.gmail.topicName;
   const missingConfiguration = [
@@ -348,7 +348,7 @@ export async function bootstrapLiveWorkspaceSyncState(
     ...(persistence.configured
       ? []
       : [`SENTINEL_STORAGE_MODE=gcp-rest and Google Cloud persistence are required. Missing env: ${persistence.missingEnv.join(", ") || "none"}.`]),
-    ...(callbackBaseUrl ? [] : ["NEXT_PUBLIC_PRODUCT_URL is required for the Drive webhook callback URL."]),
+    ...(driveWebhookUrl ? [] : ["WORKSPACE_DRIVE_WEBHOOK_URL or NEXT_PUBLIC_PRODUCT_URL is required for the Drive webhook callback URL."]),
     ...(driveChannelTokenReady ? [] : ["WORKSPACE_DRIVE_CHANNEL_TOKEN must be configured before creating a Drive watch channel."]),
     ...(gmailTopic ? [] : ["WORKSPACE_GMAIL_TOPIC must be configured before creating a Gmail watch."]),
     ...(sentinelConfig.oauthClientId && sentinelConfig.oauthClientSecret
@@ -414,7 +414,7 @@ export async function bootstrapLiveWorkspaceSyncState(
     activeTarget = "drive-watch";
     const driveWatchRequest = buildDriveChangesWatchRequest({
       pageToken: startPageToken,
-      callbackUrl: `${callbackBaseUrl.replace(/\/+$/u, "")}/api/webhooks/pubsub/drive`,
+      callbackUrl: driveWebhookUrl,
       channelId: makeId("drive_channel"),
       channelToken: sentinelConfig.workspaceDriveChannelToken,
       expirationAt: driveExpiration
@@ -532,7 +532,7 @@ export async function renewLiveWorkspaceWatches(
     (connection) => connection.mode === "oauth" || connection.mode === "domain-wide-delegation"
   );
   const persistence = buildPersistenceReadiness();
-  const callbackBaseUrl = sentinelConfig.productUrl;
+  const driveWebhookUrl = configuredDriveWebhookUrl();
   const drivePageToken = input.syncState.drive.pageToken ?? input.syncState.drive.startPageToken;
   const gmailTopic = sentinelConfig.gmailPubSubTopic || input.syncState.gmail.topicName;
   const missingConfiguration = [
@@ -541,7 +541,7 @@ export async function renewLiveWorkspaceWatches(
     ...(persistence.configured
       ? []
       : [`SENTINEL_STORAGE_MODE=gcp-rest and Google Cloud persistence are required. Missing env: ${persistence.missingEnv.join(", ") || "none"}.`]),
-    ...(callbackBaseUrl ? [] : ["NEXT_PUBLIC_PRODUCT_URL is required for the Drive webhook callback URL."]),
+    ...(driveWebhookUrl ? [] : ["WORKSPACE_DRIVE_WEBHOOK_URL or NEXT_PUBLIC_PRODUCT_URL is required for the Drive webhook callback URL."]),
     ...(sentinelConfig.workspaceDriveChannelTokenConfigured ? [] : ["WORKSPACE_DRIVE_CHANNEL_TOKEN must be configured before renewing a Drive watch channel."]),
     ...(gmailTopic ? [] : ["WORKSPACE_GMAIL_TOPIC must be configured before renewing a Gmail watch."]),
     ...(sentinelConfig.oauthClientId && sentinelConfig.oauthClientSecret
@@ -590,7 +590,7 @@ export async function renewLiveWorkspaceWatches(
     activeTarget = "drive-watch";
     const driveWatchRequest = buildDriveChangesWatchRequest({
       pageToken: drivePageToken,
-      callbackUrl: `${callbackBaseUrl.replace(/\/+$/u, "")}/api/webhooks/pubsub/drive`,
+      callbackUrl: driveWebhookUrl,
       channelId: makeId("drive_channel_renewal"),
       channelToken: sentinelConfig.workspaceDriveChannelToken,
       expirationAt: driveExpiration
@@ -768,17 +768,28 @@ function sanitizeWorkspaceSyncError(error: unknown) {
     .replace(/Bearer\s+[A-Za-z0-9._~-]+/gu, "Bearer [redacted]");
 }
 
+function configuredDriveWebhookUrl(fallback = "") {
+  const configured = sentinelConfig.workspaceDriveWebhookUrl || fallback || deriveDriveWebhookUrlFromProduct();
+  return configured.replace(/\/+$/u, "");
+}
+
+function deriveDriveWebhookUrlFromProduct() {
+  return sentinelConfig.productUrl
+    ? `${sentinelConfig.productUrl.replace(/\/+$/u, "")}/api/webhooks/pubsub/drive`
+    : "";
+}
+
 function buildDriveRenewalItem(syncState: WorkspaceSyncState, now: Date): WorkspaceWatchRenewalItem {
   const pageToken = syncState.drive.pageToken ?? syncState.drive.startPageToken;
   const expirationAt = syncState.drive.channelExpirationAt;
-  const callbackBaseUrl = sentinelConfig.productUrl || "https://YOUR-CLOUD-RUN-URL";
+  const driveWebhookUrl = configuredDriveWebhookUrl();
   const blocker =
     syncState.mode === "mock"
       ? undefined
       : !pageToken
         ? "Drive renewal needs an initialized changes page token."
-        : !sentinelConfig.productUrl
-          ? "NEXT_PUBLIC_PRODUCT_URL is required for the Drive watch callback URL."
+        : !driveWebhookUrl
+          ? "WORKSPACE_DRIVE_WEBHOOK_URL or NEXT_PUBLIC_PRODUCT_URL is required for the Drive watch callback URL."
           : !sentinelConfig.workspaceDriveChannelTokenConfigured
             ? "WORKSPACE_DRIVE_CHANNEL_TOKEN must be configured through Secret Manager."
             : undefined;
@@ -788,7 +799,7 @@ function buildDriveRenewalItem(syncState: WorkspaceSyncState, now: Date): Worksp
       ? undefined
       : buildDriveChangesWatchRequest({
           pageToken,
-          callbackUrl: `${callbackBaseUrl.replace(/\/+$/u, "")}/api/webhooks/pubsub/drive`,
+          callbackUrl: driveWebhookUrl,
           channelId: "drive_channel_RENEWAL_RUN_ID",
           channelToken: "[secret-manager:workspace-drive-channel-token]",
           expirationAt: addHours(now, WATCH_RENEWAL_EXTENSION_HOURS)

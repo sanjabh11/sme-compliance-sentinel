@@ -944,6 +944,7 @@ function checkProductionValueInvariants(
   if (productUrl && isHttpsUrl(productUrl)) {
     checks.push(
       ...checkExpectedUrl(envByName, "GOOGLE_OAUTH_REDIRECT_URI", `${trimTrailingSlash(productUrl)}/api/oauth/google/callback`),
+      ...checkExpectedUrl(envByName, "WORKSPACE_DRIVE_WEBHOOK_URL", `${trimTrailingSlash(productUrl)}/api/webhooks/pubsub/drive`),
       ...checkExpectedUrl(envByName, "WORKSPACE_PUBSUB_PUSH_AUDIENCE", `${trimTrailingSlash(productUrl)}/api/webhooks/pubsub/gmail`)
     );
   }

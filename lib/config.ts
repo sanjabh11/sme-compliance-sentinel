@@ -44,6 +44,7 @@ export const sentinelConfig = {
   bigQueryAuditTable: process.env.BIGQUERY_AUDIT_TABLE ?? "audit_events",
   bigQueryAgentRunsTable: process.env.BIGQUERY_AGENT_RUNS_TABLE ?? "agent_runs",
   workspaceSecretPrefix: process.env.WORKSPACE_SECRET_PREFIX ?? "sentinel-workspace-oauth",
+  workspaceDriveWebhookUrl: process.env.WORKSPACE_DRIVE_WEBHOOK_URL ?? "",
   gmailPubSubTopic: process.env.WORKSPACE_GMAIL_TOPIC ?? "",
   gmailPubSubSubscription: process.env.WORKSPACE_GMAIL_SUBSCRIPTION ?? "",
   workspaceWebhookAuthMode: parseWorkspaceWebhookAuthMode(process.env.SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE, process.env.SENTINEL_MOCK_MODE !== "false"),

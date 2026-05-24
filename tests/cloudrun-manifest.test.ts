@@ -82,6 +82,7 @@ const requiredDeploymentCapabilityGroups = [
     id: "workspace-oauth-and-sync",
     env: [
       "WORKSPACE_SECRET_PREFIX",
+      "WORKSPACE_DRIVE_WEBHOOK_URL",
       "WORKSPACE_GMAIL_TOPIC",
       "WORKSPACE_GMAIL_SUBSCRIPTION",
       "SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE",
@@ -223,6 +224,7 @@ describe("Cloud Run deployment manifest", () => {
       "BIGQUERY_AUDIT_TABLE",
       "BIGQUERY_AGENT_RUNS_TABLE",
       "WORKSPACE_SECRET_PREFIX",
+      "WORKSPACE_DRIVE_WEBHOOK_URL",
       "WORKSPACE_GMAIL_TOPIC",
       "WORKSPACE_GMAIL_SUBSCRIPTION",
       "SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE",
@@ -283,6 +285,7 @@ describe("Cloud Run deployment manifest", () => {
     expectEnvValue("XPRIZE_EVIDENCE_RESPONSE_READY", "false");
     expectEnvValue("XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS", "2");
     expectEnvValue("XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED", "false");
+    expectEnvValue("WORKSPACE_DRIVE_WEBHOOK_URL", "https://YOUR-SERVICE-URL/api/webhooks/pubsub/drive");
     expectEnvValue("SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE", "oidc");
     expectEnvValue(
       "GOOGLE_OAUTH_REQUESTED_SCOPES",

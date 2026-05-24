@@ -169,6 +169,8 @@ spec:
               value: "agent_runs"
             - name: WORKSPACE_SECRET_PREFIX
               value: "sentinel-workspace-oauth"
+            - name: WORKSPACE_DRIVE_WEBHOOK_URL
+              value: "https://YOUR-SERVICE-URL/api/webhooks/pubsub/drive"
             - name: WORKSPACE_GMAIL_TOPIC
               value: "projects/PROJECT_ID/topics/workspace-gmail-updates"
             - name: WORKSPACE_GMAIL_SUBSCRIPTION
