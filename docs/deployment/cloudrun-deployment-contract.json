@@ -156,6 +156,7 @@
   "evidenceFlagDependencies": [
     {
       "flag": "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED",
+      "evidence": "Business-model evidence cannot be marked configured until revenue, monthly revenue, cost, and real-user proof flags are also reviewed.",
       "requires": [
         "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
         "XPRIZE_REVENUE_BY_MONTH_EVIDENCE_CONFIGURED",
@@ -165,6 +166,7 @@
     },
     {
       "flag": "XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED",
+      "evidence": "Category-impact evidence depends on reviewed business-model and real-user proof, not only a category label.",
       "requires": [
         "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED",
         "XPRIZE_REAL_USER_EVIDENCE_CONFIGURED"
@@ -172,6 +174,7 @@
     },
     {
       "flag": "XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED",
+      "evidence": "AI-native operations evidence requires deployed Google Cloud product proof, live Gemini proof, product-running proof, and agent execution logs.",
       "requires": [
         "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
         "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
@@ -181,6 +184,7 @@
     },
     {
       "flag": "XPRIZE_EVIDENCE_RESPONSE_READY",
+      "evidence": "Evidence-response readiness requires repository access, judge access, demo-video clearance, third-party review, and IP ownership review flags to be reviewed first.",
       "requires": [
         "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
         "XPRIZE_JUDGE_ACCESS_CONFIGURED",

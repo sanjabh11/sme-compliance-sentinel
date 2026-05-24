@@ -2,6 +2,9 @@
 
 import { readFileSync } from "node:fs";
 
+const deploymentContract = JSON.parse(
+  readFileSync(new URL("../docs/deployment/cloudrun-deployment-contract.json", import.meta.url), "utf8")
+);
 const manifestPath = process.argv.find((arg) => arg.startsWith("--manifest="))?.slice("--manifest=".length) ?? "cloudrun.service.yaml";
 const strict = process.argv.includes("--strict");
 
@@ -194,54 +197,7 @@ const allowedEntrantTypes = new Set(["individual", "team", "organization"]);
 const allowedRepositoryAccessModes = new Set(["public", "private-shared"]);
 const requiredRepositoryJudgeEmails = ["testing@devpost.com", "judging@hacker.fund"];
 const requiredJudgingPeriodEndAt = "2026-09-15T17:00:00-07:00";
-
-const evidenceFlagDependencies = [
-  {
-    flag: "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED",
-    requires: [
-      "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
-      "XPRIZE_REVENUE_BY_MONTH_EVIDENCE_CONFIGURED",
-      "XPRIZE_TOTAL_COSTS_EVIDENCE_CONFIGURED",
-      "XPRIZE_REAL_USER_EVIDENCE_CONFIGURED"
-    ],
-    evidence:
-      "Business-model evidence cannot be marked configured until revenue, monthly revenue, cost, and real-user proof flags are also reviewed."
-  },
-  {
-    flag: "XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED",
-    requires: ["XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED", "XPRIZE_REAL_USER_EVIDENCE_CONFIGURED"],
-    evidence:
-      "Category-impact evidence depends on reviewed business-model and real-user proof, not only a category label."
-  },
-  {
-    flag: "XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED",
-    requires: [
-      "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
-      "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
-      "XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED",
-      "XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED"
-    ],
-    evidence:
-      "AI-native operations evidence requires deployed Google Cloud product proof, live Gemini proof, product-running proof, and agent execution logs."
-  },
-  {
-    flag: "XPRIZE_EVIDENCE_RESPONSE_READY",
-    requires: [
-      "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
-      "XPRIZE_JUDGE_ACCESS_CONFIGURED",
-      "XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED",
-      "XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED",
-      "XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED",
-      "XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED",
-      "XPRIZE_DEMO_VIDEO_CUSTOMER_DATA_REDACTED_CONFIRMED",
-      "XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED",
-      "XPRIZE_THIRD_PARTY_REVIEW_APPROVED",
-      "XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED"
-    ],
-    evidence:
-      "Evidence-response readiness requires repository access, judge access, demo-video clearance, third-party review, and IP ownership review flags to be reviewed first."
-  }
-];
+const evidenceFlagDependencies = deploymentContract.evidenceFlagDependencies ?? [];
 
 const placeholderPatterns = [
   /PROJECT_ID/u,

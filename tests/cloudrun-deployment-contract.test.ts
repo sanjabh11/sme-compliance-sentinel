@@ -46,6 +46,7 @@ describe("Cloud Run deployment contract", () => {
 
     for (const dependency of contract.evidenceFlagDependencies) {
       expect(contract.manualReviewEnv).toContain(dependency.flag);
+      expect(dependency.evidence).toMatch(/\S/u);
       dependency.requires.forEach((name) => {
         expect(contract.manualReviewEnv).toContain(name);
       });
