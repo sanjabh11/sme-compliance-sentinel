@@ -64,6 +64,7 @@ describe("production provisioning pack", () => {
         "write-through-smoke",
         "collect-hosted-proof-bundle",
         "dry-run-hosted-proof-import",
+        "write-deployment-results-template",
         "prepare-deployment-execution-checklist"
       ])
     );
@@ -92,6 +93,9 @@ describe("production provisioning pack", () => {
       pack.verificationSequence.findIndex((command) => command.id === "dry-run-hosted-proof-import")
     );
     expect(pack.verificationSequence.findIndex((command) => command.id === "dry-run-hosted-proof-import")).toBeLessThan(
+      pack.verificationSequence.findIndex((command) => command.id === "write-deployment-results-template")
+    );
+    expect(pack.verificationSequence.findIndex((command) => command.id === "write-deployment-results-template")).toBeLessThan(
       pack.verificationSequence.findIndex((command) => command.id === "prepare-deployment-execution-checklist")
     );
     expect(pack.verificationSequence.findIndex((command) => command.id === "prepare-deployment-execution-checklist")).toBeLessThan(
@@ -131,6 +135,9 @@ describe("production provisioning pack", () => {
       "npm run import:hosted-proof"
     );
     expect(pack.verificationSequence.find((command) => command.id === "dry-run-hosted-proof-import")?.command).toContain("--dry-run");
+    expect(pack.verificationSequence.find((command) => command.id === "write-deployment-results-template")?.command).toContain(
+      "--write-results-template"
+    );
     expect(pack.verificationSequence.find((command) => command.id === "prepare-deployment-execution-checklist")?.command).toContain(
       "npm run prepare:deployment-execution-checklist"
     );
@@ -177,6 +184,7 @@ describe("production provisioning pack", () => {
     expect(pack.privateHandlingRules.join(" ")).toContain("collect:cloudrun-deployment");
     expect(pack.privateHandlingRules.join(" ")).toContain("collect:hosted-proof");
     expect(pack.privateHandlingRules.join(" ")).toContain("prepare:deployment-execution-checklist");
+    expect(pack.privateHandlingRules.join(" ")).toContain("write-results-template");
     expect(pack.privateHandlingRules.join(" ")).toContain("release-integrity");
 
     const violations = scanClaimText({

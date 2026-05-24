@@ -428,7 +428,7 @@ function buildArtifactManifest(input: {
       ownerRole: "engineering",
       status: "external-required",
       sourceCommand:
-        "npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --results /secure/local/deployment-command-results.json --strict",
+        "npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --write-results-template /secure/local/deployment-command-results.json, then fill the private template and run npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --results /secure/local/deployment-command-results.json --strict",
       privateStorePath: `${basePath}/hosted-proof-bundle/deployment-execution-checklist.json`,
       evidenceVaultTarget: "operator command-result ledger",
       redactionRules: [
@@ -632,7 +632,7 @@ function buildCommandSequence(input: {
     command(
       "deployment-execution-checklist",
       "Prepare deployment execution checklist",
-      "npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --results /secure/local/deployment-command-results.json --strict",
+      "npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --write-results-template /secure/local/deployment-command-results.json && npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --results /secure/local/deployment-command-results.json --strict",
       false,
       false,
       "deployment-execution-checklist-json",

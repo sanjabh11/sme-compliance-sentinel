@@ -8,9 +8,21 @@ interface DeploymentExecutionChecklistModule {
   parseArgs: (argv: string[]) => {
     bundleDir: string;
     resultsPath: string;
+    writeResultsTemplatePath: string;
     outFile: string;
     strict: boolean;
   };
+  writeDeploymentCommandResultsTemplate: (options: {
+    bundleDir: string;
+    outputPath?: string;
+    writeResultsTemplatePath?: string;
+  }) => Promise<{
+    path: string;
+    releaseId: string;
+    sourceUrl: string;
+    entryCount: number;
+    privateHandling: string;
+  }>;
   prepareDeploymentExecutionChecklist: (options: {
     bundleDir: string;
     resultsPath?: string;
@@ -55,6 +67,8 @@ describe("deployment execution checklist", () => {
         "--bundle-dir",
         "/secure/local/hosted-proof/release-1",
         "--results=/secure/local/deployment-command-results.json",
+        "--write-results-template",
+        "/secure/local/deployment-command-results.template.json",
         "--out-file",
         "/secure/local/hosted-proof/release-1/deployment-execution-checklist.json",
         "--strict"
@@ -62,10 +76,71 @@ describe("deployment execution checklist", () => {
     ).toMatchObject({
       bundleDir: "/secure/local/hosted-proof/release-1",
       resultsPath: "/secure/local/deployment-command-results.json",
+      writeResultsTemplatePath: "/secure/local/deployment-command-results.template.json",
       outFile: "/secure/local/hosted-proof/release-1/deployment-execution-checklist.json",
       strict: true
     });
     expect(() => parseArgs(["--admin-token=secret"])).toThrow(/Raw secret CLI args/u);
+  });
+
+  it("writes a private command results template that is blocked until filled", async () => {
+    const {
+      deploymentImportRequiredCommandIds,
+      prepareDeploymentExecutionChecklist,
+      writeDeploymentCommandResultsTemplate
+    } = await loadChecklist();
+    const bundleDir = await makeBundle(deploymentImportRequiredCommandIds);
+    const resultsTemplatePath = join(bundleDir, "deployment-command-results.template.json");
+
+    const summary = await writeDeploymentCommandResultsTemplate({
+      bundleDir,
+      outputPath: resultsTemplatePath
+    });
+    const template = JSON.parse(await readFile(resultsTemplatePath, "utf8")) as {
+      entries: Array<{
+        commandId: string;
+        status: string;
+        releaseId: string;
+        sourceUrl: string;
+        recordedAt: string;
+        expectedArtifactPath: string;
+        evidencePath: string;
+        evidenceSha256: string;
+        commandSha256: string;
+      }>;
+      instructions: string[];
+    };
+    const checklist = await prepareDeploymentExecutionChecklist({
+      bundleDir,
+      resultsPath: resultsTemplatePath
+    });
+
+    expect(summary).toMatchObject({
+      path: resultsTemplatePath,
+      releaseId: "release-1",
+      sourceUrl: "https://sentinel.example.com",
+      entryCount: deploymentImportRequiredCommandIds.length
+    });
+    expect(summary.privateHandling).toContain("outside Git");
+    expect(template.instructions.join(" ")).toContain("Change status from pending to passed");
+    expect(template.entries).toHaveLength(deploymentImportRequiredCommandIds.length);
+    expect(template.entries[0]).toMatchObject({
+      commandId: deploymentImportRequiredCommandIds[0],
+      status: "pending",
+      releaseId: "release-1",
+      sourceUrl: "https://sentinel.example.com",
+      recordedAt: "REPLACE_WITH_ISO_TIMESTAMP",
+      expectedArtifactPath: `gs://sentinel-private/releases/release-1/${deploymentImportRequiredCommandIds[0]}.json`,
+      evidencePath: `gs://sentinel-private/releases/release-1/${deploymentImportRequiredCommandIds[0]}.json`,
+      evidenceSha256: "REPLACE_WITH_SHA256_OF_PRIVATE_ARTIFACT"
+    });
+    expect(template.entries[0].commandSha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(JSON.stringify(template)).not.toContain("SENTINEL_ADMIN_ACTION_TOKEN");
+    expect(JSON.stringify(template)).not.toContain("private-admin-token");
+    expect(checklist.overallStatus).toBe("blocked");
+    expect(checklist.entries[0].blockers.join(" ")).toContain("status is pending");
+    expect(checklist.entries[0].blockers.join(" ")).toContain("recordedAt must be an ISO timestamp");
+    expect(checklist.entries[0].blockers.join(" ")).toContain("valid evidenceSha256");
   });
 
   it("writes a passed checklist from private command results", async () => {

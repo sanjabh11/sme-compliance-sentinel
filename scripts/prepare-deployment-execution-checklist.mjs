@@ -9,6 +9,7 @@ const defaultBundleDir = "artifacts/hosted-proof/RELEASE_ID";
 const defaultChecklistFileName = "deployment-execution-checklist.json";
 const defaultMarkdownFileName = "deployment-execution-checklist.md";
 const defaultResultsPath = "";
+const defaultResultsTemplatePath = "";
 
 export const deploymentImportRequiredCommandIds = [
   "lint",
@@ -37,6 +38,7 @@ export function parseArgs(argv) {
   const args = {
     bundleDir: process.env.SENTINEL_HOSTED_PROOF_BUNDLE_DIR ?? defaultBundleDir,
     resultsPath: defaultResultsPath,
+    writeResultsTemplatePath: defaultResultsTemplatePath,
     outFile: "",
     strict: false
   };
@@ -70,6 +72,17 @@ export function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--write-results-template") {
+      args.writeResultsTemplatePath = argv[index + 1] ?? defaultResultsTemplatePath;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--write-results-template=")) {
+      args.writeResultsTemplatePath = arg.slice("--write-results-template=".length);
+      continue;
+    }
+
     if (arg === "--out-file") {
       args.outFile = argv[index + 1] ?? "";
       index += 1;
@@ -87,6 +100,67 @@ export function parseArgs(argv) {
   }
 
   return args;
+}
+
+export async function writeDeploymentCommandResultsTemplate(options) {
+  const bundleDir = options.bundleDir || defaultBundleDir;
+  const outputPath = options.outputPath || options.writeResultsTemplatePath || "";
+
+  if (!outputPath) {
+    throw new Error("Deployment command results template requires --write-results-template /private/path/deployment-command-results.json.");
+  }
+
+  const manifest = await readJson(join(bundleDir, "manifest.json"));
+  const deploymentPacket = await readJson(join(bundleDir, "deployment-packet.json"));
+  const releaseId = cleanString(manifest.releaseId || deploymentPacket.releaseId);
+  const sourceUrl = cleanString(manifest.baseUrl || deploymentPacket.productUrl);
+  const commandById = new Map((Array.isArray(deploymentPacket.commandSequence) ? deploymentPacket.commandSequence : []).map((command) => [cleanString(command.id), command]));
+  const artifactById = new Map((Array.isArray(deploymentPacket.artifactManifest) ? deploymentPacket.artifactManifest : []).map((artifact) => [cleanString(artifact.id), artifact]));
+  const template = {
+    generatedAt: new Date().toISOString(),
+    releaseId,
+    sourceUrl,
+    bundleDir,
+    instructions: [
+      "Keep this file outside Git. Fill it only after each command has actually run for this release.",
+      "Change status from pending to passed only when the command output has been reviewed and the evidence artifact exists.",
+      "Replace recordedAt with the command completion timestamp and evidenceSha256 with the SHA-256 of the private evidence artifact.",
+      "Do not paste admin tokens, OAuth secrets, API keys, customer names, raw security findings, invoices, or shell environment dumps into notes."
+    ],
+    entries: deploymentImportRequiredCommandIds.map((commandId) => {
+      const command = commandById.get(commandId) ?? {};
+      const expectedArtifactId = cleanString(command.expectedArtifactId);
+      const expectedArtifactPath = cleanString(artifactById.get(expectedArtifactId)?.privateStorePath);
+
+      return {
+        commandId,
+        status: "pending",
+        releaseId,
+        sourceUrl,
+        recordedAt: "REPLACE_WITH_ISO_TIMESTAMP",
+        expectedArtifactId,
+        expectedArtifactPath,
+        evidencePath: expectedArtifactPath || "REPLACE_WITH_PRIVATE_EVIDENCE_PATH",
+        evidenceSha256: "REPLACE_WITH_SHA256_OF_PRIVATE_ARTIFACT",
+        commandSha256: sha256(cleanString(command.command)),
+        mutatesProduction: Boolean(command.mutatesProduction),
+        requiresAdminToken: Boolean(command.requiresAdminToken),
+        note: "Record reviewed private operator evidence. Do not include secrets or customer-sensitive details."
+      };
+    })
+  };
+
+  await mkdir(dirname(outputPath), { recursive: true });
+  await writeJson(outputPath, template);
+
+  return {
+    generatedAt: template.generatedAt,
+    path: outputPath,
+    releaseId,
+    sourceUrl,
+    entryCount: template.entries.length,
+    privateHandling: "This results template is non-secret until filled. Keep the filled copy outside Git with the private deployment evidence bundle."
+  };
 }
 
 export async function prepareDeploymentExecutionChecklist(options) {
@@ -329,8 +403,14 @@ function isSha256(value) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
-    const checklist = await prepareDeploymentExecutionChecklist(parseArgs(process.argv.slice(2)));
-    console.log(JSON.stringify(checklist, null, 2));
+    const args = parseArgs(process.argv.slice(2));
+    const result = args.writeResultsTemplatePath
+      ? await writeDeploymentCommandResultsTemplate({
+          bundleDir: args.bundleDir,
+          outputPath: args.writeResultsTemplatePath
+        })
+      : await prepareDeploymentExecutionChecklist(args);
+    console.log(JSON.stringify(result, null, 2));
   } catch (error) {
     if (error?.checklist) {
       console.error(JSON.stringify(error.checklist, null, 2));
