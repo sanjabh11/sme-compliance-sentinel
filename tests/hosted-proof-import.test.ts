@@ -30,6 +30,7 @@ interface HostedProofImportModule {
     releaseId: string | null;
     releaseIntegrityStatus: string | null;
     proofFlagStatus: string | null;
+    deploymentExecutionChecklistStatus: string | null;
     sourceUrl: string;
     requestFile: string;
     responseFile: string | null;
@@ -47,6 +48,28 @@ interface HostedProofImportModule {
 }
 
 const tempDirs: string[] = [];
+const deploymentImportRequiredCommandIds = [
+  "lint",
+  "typecheck",
+  "test",
+  "build",
+  "source-release",
+  "provenance",
+  "cloudrun-render-values-audit",
+  "cloudrun-render-manifest",
+  "cloudrun-template-strict",
+  "cloudrun-dry-run-preflight",
+  "cloudrun-dry-run-packet-verify",
+  "cloudrun-dry-run",
+  "cloudrun-deploy",
+  "cloudrun-describe",
+  "cloudrun-deployment-transcript-collect",
+  "hosted-readonly",
+  "hosted-write-through",
+  "hosted-evidence",
+  "hosted-proof-bundle",
+  "hosted-proof-import-dry-run"
+];
 
 describe("hosted proof bundle Evidence Vault importer", () => {
   afterEach(async () => {
@@ -98,6 +121,7 @@ describe("hosted proof bundle Evidence Vault importer", () => {
     expect(summary.releaseId).toBe("release-1");
     expect(summary.releaseIntegrityStatus).toBe("passed");
     expect(summary.proofFlagStatus).toBe("passed");
+    expect(summary.deploymentExecutionChecklistStatus).toBe("passed");
     expect(summary.sourceUrl).toBe("https://sentinel.example.com");
     expect(summary.responseFile).toBeNull();
     expect(JSON.parse(requestJson)).toMatchObject({
@@ -193,6 +217,27 @@ describe("hosted proof bundle Evidence Vault importer", () => {
     );
   });
 
+  it("rejects final hosted proof import until the deployment execution checklist passes", async () => {
+    const { importHostedProofBundle } = await loadImporter();
+    const missingChecklistBundle = await makeBundle("https://sentinel.example.com", {}, { includeExecutionChecklist: false });
+    const blockedChecklistBundle = await makeBundle("https://sentinel.example.com", {}, { executionChecklistStatus: "blocked" });
+
+    await expect(
+      importHostedProofBundle({
+        bundleDir: missingChecklistBundle,
+        confirmImport: true,
+        adminToken: "private-admin-token"
+      })
+    ).rejects.toThrow(/deployment-execution-checklist\.json/u);
+    await expect(
+      importHostedProofBundle({
+        bundleDir: blockedChecklistBundle,
+        confirmImport: true,
+        adminToken: "private-admin-token"
+      })
+    ).rejects.toThrow(/Deployment execution checklist is blocked/u);
+  });
+
   it("rejects local, non-verifier, or unredacted source files before import", async () => {
     const { importHostedProofBundle } = await loadImporter();
     const localBundle = await makeBundle("http://127.0.0.1:3000");
@@ -225,6 +270,8 @@ async function makeBundle(
     releaseIntegrityStatus?: string;
     proofFlagStatus?: string;
     proofFlagChecks?: Array<Record<string, unknown>>;
+    includeExecutionChecklist?: boolean;
+    executionChecklistStatus?: string;
   } = {}
 ) {
   const bundleDir = await mkdtemp(join(tmpdir(), "sentinel-import-"));
@@ -233,6 +280,7 @@ async function makeBundle(
   const releaseEvidenceReleaseId = metadataOverrides.releaseEvidenceReleaseId ?? releaseId;
   const releaseIntegrityStatus = metadataOverrides.releaseIntegrityStatus ?? "passed";
   const proofFlagStatus = metadataOverrides.proofFlagStatus ?? "passed";
+  const executionChecklistStatus = metadataOverrides.executionChecklistStatus ?? "passed";
   const proofFlagChecks = metadataOverrides.proofFlagChecks ?? [
     {
       envName: "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
@@ -277,6 +325,31 @@ async function makeBundle(
     )}\n`,
     "utf8"
   );
+  if (metadataOverrides.includeExecutionChecklist !== false) {
+    await writeFile(
+      join(bundleDir, "deployment-execution-checklist.json"),
+      `${JSON.stringify(
+        {
+          generatedAt: "2026-05-23T12:00:00.000Z",
+          releaseId,
+          sourceUrl: baseUrl,
+          overallStatus: executionChecklistStatus,
+          entries: deploymentImportRequiredCommandIds.map((commandId) => ({
+            commandId,
+            releaseId,
+            sourceUrl: baseUrl,
+            status: executionChecklistStatus === "passed" ? "passed" : "blocked",
+            recordedAt: "2026-05-23T12:01:00.000Z",
+            expectedArtifactPath: `gs://private/releases/${releaseId}/${commandId}.json`,
+            evidencePath: `artifacts/hosted-proof/${releaseId}/${commandId}.json`
+          }))
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+  }
   return bundleDir;
 }
 

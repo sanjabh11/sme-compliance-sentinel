@@ -162,7 +162,7 @@ function buildRunbook(input: {
       stopCondition:
         "Stop if hosted checks are local/mock-only, if Gemini proof is not provider=gemini-api, if GCP/Workspace write-through checks are blocked, or if hosted proof bundle release integrity is not passed.",
       redactionCheck: "Redact customer identifiers, Workspace resource ids, raw findings, tokens, and cloud response details before judge or Evidence Vault use.",
-      nextStep: "Dry-run the hosted proof bundle import and review the redacted request before any Evidence Vault write.",
+      nextStep: "Dry-run the hosted proof bundle import, then generate the deployment execution checklist before any confirmed Evidence Vault write.",
       externalProofRequired: true
     }),
     runbookStep({
@@ -170,11 +170,11 @@ function buildRunbook(input: {
       phase: "evidence-import",
       label: "Import redacted proof and prepare judge packet",
       ownerRole: "legal",
-      commandIds: commandIds("hosted-proof-import-dry-run", "hosted-proof-import-confirm"),
-      requiredArtifactIds: ["evidence-vault-import-request-json", "evidence-vault-import-response-json"],
-      proofFiles: proofFiles("evidence-vault-import-request-json", "evidence-vault-import-response-json"),
+      commandIds: commandIds("hosted-proof-import-dry-run", "deployment-execution-checklist", "hosted-proof-import-confirm"),
+      requiredArtifactIds: ["deployment-execution-checklist-json", "evidence-vault-import-request-json", "evidence-vault-import-response-json"],
+      proofFiles: proofFiles("deployment-execution-checklist-json", "evidence-vault-import-request-json", "evidence-vault-import-response-json"),
       stopCondition:
-        "Stop if import input is not redacted, release integrity is not passed, checksums are missing, or customer consent and Devpost disclosure review are incomplete.",
+        "Stop if the deployment execution checklist is not passed, import input is not redacted, release integrity is not passed, checksums are missing, or customer consent and Devpost disclosure review are incomplete.",
       redactionCheck: "Share checksums, statuses, consent flags, and aggregate evidence; keep raw logs, invoices, security findings, and customer contact data private.",
       nextStep: "Attach release id, source commit, Cloud Run revision, checksums, demo video link, judge access instructions, and revenue/user evidence to Devpost.",
       externalProofRequired: true
@@ -423,6 +423,21 @@ function buildArtifactManifest(input: {
       nextAction: "Run the dry-run import and confirm the request contains only redacted hosted verify:production JSON."
     }),
     artifact({
+      id: "deployment-execution-checklist-json",
+      label: "Deployment execution checklist JSON",
+      ownerRole: "engineering",
+      status: "external-required",
+      sourceCommand:
+        "npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --results /secure/local/deployment-command-results.json --strict",
+      privateStorePath: `${basePath}/hosted-proof-bundle/deployment-execution-checklist.json`,
+      evidenceVaultTarget: "operator command-result ledger",
+      redactionRules: [
+        "Keep operator result notes free of credentials, raw customer data, security findings, invoices, and shell environment dumps.",
+        "Record every required command result with release id, timestamp, expected artifact path, and private evidence path before confirmed hosted proof import."
+      ],
+      nextAction: "Generate and pass the deployment execution checklist after dry-run import and before confirm-import."
+    }),
+    artifact({
       id: "evidence-vault-import-response-json",
       label: "Evidence Vault import response JSON",
       ownerRole: "legal",
@@ -470,6 +485,24 @@ function buildCommandSequence(input: {
     command("typecheck", "Typecheck", "npm run typecheck", false, false, "local-quality-gates-log", "Safe local quality gate."),
     command("test", "Unit tests", "npm test", false, false, "local-quality-gates-log", "Safe local quality gate."),
     command("build", "Production build", "npm run build", false, false, "local-quality-gates-log", "Safe local quality gate."),
+    command(
+      "source-release",
+      "Source release guard",
+      "npm run verify:source-release",
+      false,
+      false,
+      "source-release-json",
+      "Run before final source push and judge review."
+    ),
+    command(
+      "provenance",
+      "Project provenance report",
+      "npm run verify:provenance",
+      false,
+      false,
+      "provenance-json",
+      "Run after the final source commit is pushed."
+    ),
     command(
       "cloudrun-render-values-audit",
       "Audit private Cloud Run render values",
@@ -597,6 +630,15 @@ function buildCommandSequence(input: {
       "Writes the redacted Evidence Vault import request without contacting the hosted app."
     ),
     command(
+      "deployment-execution-checklist",
+      "Prepare deployment execution checklist",
+      "npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --results /secure/local/deployment-command-results.json --strict",
+      false,
+      false,
+      "deployment-execution-checklist-json",
+      "Records each required deployment command result after dry-run import and before confirmed hosted proof import; keep the private results file outside source."
+    ),
+    command(
       "hosted-proof-import-confirm",
       "Import hosted proof bundle",
       `npm run import:hosted-proof -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --url ${input.productUrl} --confirm-import`,
@@ -605,24 +647,6 @@ function buildCommandSequence(input: {
       "evidence-vault-import-response-json",
       "Imports metadata into the hosted Evidence Vault only after bundle release integrity and dry-run review pass."
     ),
-    command(
-      "source-release",
-      "Source release guard",
-      "npm run verify:source-release",
-      false,
-      false,
-      "source-release-json",
-      "Run before final source push and judge review."
-    ),
-    command(
-      "provenance",
-      "Project provenance report",
-      "npm run verify:provenance",
-      false,
-      false,
-      "provenance-json",
-      "Run after the final source commit is pushed."
-    )
   ];
 }
 

@@ -63,7 +63,8 @@ describe("production provisioning pack", () => {
         "hosted-smoke",
         "write-through-smoke",
         "collect-hosted-proof-bundle",
-        "dry-run-hosted-proof-import"
+        "dry-run-hosted-proof-import",
+        "prepare-deployment-execution-checklist"
       ])
     );
     expect(pack.verificationSequence.findIndex((command) => command.id === "audit-render-values")).toBeLessThan(
@@ -91,6 +92,9 @@ describe("production provisioning pack", () => {
       pack.verificationSequence.findIndex((command) => command.id === "dry-run-hosted-proof-import")
     );
     expect(pack.verificationSequence.findIndex((command) => command.id === "dry-run-hosted-proof-import")).toBeLessThan(
+      pack.verificationSequence.findIndex((command) => command.id === "prepare-deployment-execution-checklist")
+    );
+    expect(pack.verificationSequence.findIndex((command) => command.id === "prepare-deployment-execution-checklist")).toBeLessThan(
       pack.verificationSequence.findIndex((command) => command.id === "import-hosted-proof")
     );
     expect(pack.verificationSequence.find((command) => command.id === "audit-render-values")?.command).toContain(
@@ -127,6 +131,12 @@ describe("production provisioning pack", () => {
       "npm run import:hosted-proof"
     );
     expect(pack.verificationSequence.find((command) => command.id === "dry-run-hosted-proof-import")?.command).toContain("--dry-run");
+    expect(pack.verificationSequence.find((command) => command.id === "prepare-deployment-execution-checklist")?.command).toContain(
+      "npm run prepare:deployment-execution-checklist"
+    );
+    expect(pack.verificationSequence.find((command) => command.id === "prepare-deployment-execution-checklist")?.expectedProof).toContain(
+      "deployment-execution-checklist.json"
+    );
     expect(pack.verificationSequence.find((command) => command.id === "import-hosted-proof")?.command).toContain(
       "npm run import:hosted-proof"
     );
@@ -166,6 +176,7 @@ describe("production provisioning pack", () => {
     expect(pack.privateHandlingRules.join(" ")).toContain("verify:cloudrun-dry-run-packet");
     expect(pack.privateHandlingRules.join(" ")).toContain("collect:cloudrun-deployment");
     expect(pack.privateHandlingRules.join(" ")).toContain("collect:hosted-proof");
+    expect(pack.privateHandlingRules.join(" ")).toContain("prepare:deployment-execution-checklist");
     expect(pack.privateHandlingRules.join(" ")).toContain("release-integrity");
 
     const violations = scanClaimText({

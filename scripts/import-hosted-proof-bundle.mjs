@@ -2,6 +2,7 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { deploymentImportRequiredCommandIds } from "./prepare-deployment-execution-checklist.mjs";
 
 const defaultTimeoutMs = 15000;
 const defaultAdminTokenEnv = "SENTINEL_ADMIN_ACTION_TOKEN";
@@ -9,6 +10,7 @@ const adminTokenHeader = "x-sentinel-admin-token";
 const defaultVerifyFileName = "verify-production.json";
 const bundleManifestFileName = "manifest.json";
 const releaseEvidenceFileName = "release-evidence-manifest.json";
+const deploymentExecutionChecklistFileName = "deployment-execution-checklist.json";
 const requestFileName = "evidence-vault-import-request.json";
 const responseFileName = "evidence-vault-import-response.json";
 const summaryFileName = "evidence-vault-import-summary.json";
@@ -134,6 +136,13 @@ export async function importHostedProofBundle(options) {
   assertBundleConsistency({ verifyReport, bundleMetadata, baseUrl });
   assertHostedUrl(baseUrl, Boolean(options.allowLocal));
   assertRedacted(verifyReport);
+  if (options.confirmImport) {
+    assertDeploymentExecutionChecklist({
+      checklist: bundleMetadata?.deploymentExecutionChecklist,
+      releaseId: bundleMetadata?.releaseId ?? cleanString(verifyReport.releaseId),
+      baseUrl
+    });
+  }
   await mkdir(bundleDir, { recursive: true });
   const releaseId = bundleMetadata?.releaseId ?? cleanString(verifyReport.releaseId);
 
@@ -159,6 +168,7 @@ export async function importHostedProofBundle(options) {
       releaseId,
       releaseIntegrityStatus: bundleMetadata?.releaseIntegrityStatus ?? "",
       proofFlagStatus: bundleMetadata?.proofFlagStatus ?? "",
+      deploymentExecutionChecklistStatus: checklistStatus(bundleMetadata?.deploymentExecutionChecklist),
       responseStatus: 0,
       responsePayload: { ok: true, dryRun: true }
     });
@@ -192,6 +202,7 @@ export async function importHostedProofBundle(options) {
     releaseId,
     releaseIntegrityStatus: bundleMetadata?.releaseIntegrityStatus ?? "",
     proofFlagStatus: bundleMetadata?.proofFlagStatus ?? "",
+    deploymentExecutionChecklistStatus: checklistStatus(bundleMetadata?.deploymentExecutionChecklist),
     responseStatus: responsePayload.httpStatus,
     responsePayload: redactedResponse
   });
@@ -234,16 +245,26 @@ async function postImport(input) {
 async function readBundleMetadata(bundleDir) {
   const manifest = await readRequiredJson(join(bundleDir, bundleManifestFileName), bundleManifestFileName);
   const releaseEvidence = await readRequiredJson(join(bundleDir, releaseEvidenceFileName), releaseEvidenceFileName);
+  const deploymentExecutionChecklist = await readOptionalJson(join(bundleDir, deploymentExecutionChecklistFileName));
   const proofFlagChecks = Array.isArray(releaseEvidence.proofFlagChecks) ? releaseEvidence.proofFlagChecks : [];
 
   return {
     manifest,
     releaseEvidence,
+    deploymentExecutionChecklist,
     proofFlagChecks,
     proofFlagStatus: cleanString(releaseEvidence.proofFlagStatus),
     releaseId: cleanString(manifest.releaseId),
     releaseIntegrityStatus: cleanString(releaseEvidence.releaseIntegrity?.status || manifest.releaseIntegrity?.status)
   };
+}
+
+async function readOptionalJson(path) {
+  try {
+    return parseJson(await readFile(path, "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 async function readRequiredJson(path, fileName) {
@@ -313,6 +334,49 @@ function assertProofFlagChecks(proofFlagChecks) {
   );
 }
 
+function assertDeploymentExecutionChecklist(input) {
+  const checklist = input.checklist;
+
+  if (!checklist || typeof checklist !== "object" || Array.isArray(checklist)) {
+    throw new Error("Hosted proof import requires deployment-execution-checklist.json. Run npm run prepare:deployment-execution-checklist before --confirm-import.");
+  }
+
+  const releaseId = cleanString(input.releaseId);
+  const checklistReleaseId = cleanString(checklist.releaseId);
+  const sourceUrl = cleanString(checklist.sourceUrl);
+  const overallStatus = cleanString(checklist.overallStatus);
+  const entries = Array.isArray(checklist.entries) ? checklist.entries : [];
+  const entriesByCommandId = new Map(entries.map((entry) => [cleanString(entry?.commandId), entry]));
+
+  if (checklistReleaseId !== releaseId) {
+    throw new Error(`Deployment execution checklist release mismatch: expected ${releaseId || "missing"}, received ${checklistReleaseId || "missing"}.`);
+  }
+
+  if (sourceUrl !== input.baseUrl) {
+    throw new Error(`Deployment execution checklist URL mismatch: expected ${input.baseUrl}, received ${sourceUrl || "missing"}.`);
+  }
+
+  if (overallStatus !== "passed") {
+    throw new Error(`Deployment execution checklist is ${overallStatus || "missing"}; every required command must pass before hosted proof import.`);
+  }
+
+  const missingEntries = deploymentImportRequiredCommandIds.filter((commandId) => !entriesByCommandId.has(commandId));
+
+  if (missingEntries.length) {
+    throw new Error(`Deployment execution checklist is missing required commands: ${missingEntries.join(", ")}.`);
+  }
+
+  const blockedEntries = deploymentImportRequiredCommandIds
+    .map((commandId) => entriesByCommandId.get(commandId))
+    .filter((entry) => cleanString(entry?.status) !== "passed" || !cleanString(entry?.recordedAt) || !cleanString(entry?.expectedArtifactPath));
+
+  if (blockedEntries.length) {
+    throw new Error(
+      `Deployment execution checklist has incomplete entries: ${blockedEntries.map((entry) => cleanString(entry?.commandId) || "unknown").join(", ")}.`
+    );
+  }
+}
+
 function buildSummary(input) {
   const importResult = input.responsePayload?.importResult;
   const artifactCount =
@@ -324,6 +388,7 @@ function buildSummary(input) {
     releaseId: input.releaseId || null,
     releaseIntegrityStatus: input.releaseIntegrityStatus || null,
     proofFlagStatus: input.proofFlagStatus || null,
+    deploymentExecutionChecklistStatus: input.deploymentExecutionChecklistStatus || null,
     bundleDir: input.bundleDir,
     sourceFile: input.sourceFile,
     sourceUrl: input.baseUrl,
@@ -342,6 +407,7 @@ function buildSummary(input) {
     },
     nextActions: [
       "Open evidence-vault-import-response.json and confirm every candidate artifact status before relying on it.",
+      "Keep deployment-execution-checklist.json passed before running --confirm-import.",
       "Confirm release-evidence-manifest.json proofFlagChecks passed before setting repository, Google Cloud, or Gemini proof flags true in production values.",
       "Run /api/evidence/vault and /api/production/hosted-evidence after import to confirm checksummed artifact records are visible.",
       "Keep the source hosted proof bundle private; do not commit generated proof, credentials, invoices, customer findings, or raw cloud responses.",
@@ -350,6 +416,14 @@ function buildSummary(input) {
     disclaimer:
       "This script imports redacted hosted verification metadata into the Evidence Vault. It does not prove production readiness unless the source JSON came from the deployed product and the underlying checks passed."
   };
+}
+
+function checklistStatus(checklist) {
+  if (!checklist || typeof checklist !== "object" || Array.isArray(checklist)) {
+    return "missing";
+  }
+
+  return cleanString(checklist.overallStatus) || "missing";
 }
 
 function assertHostedUrl(baseUrl, allowLocal) {

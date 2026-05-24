@@ -45,6 +45,7 @@ describe("deployment evidence packet", () => {
         "hosted-proof-bundle-manifest-json",
         "hosted-proof-release-evidence-json",
         "evidence-vault-import-request-json",
+        "deployment-execution-checklist-json",
         "evidence-vault-import-response-json",
         "source-release-json",
         "provenance-json"
@@ -64,6 +65,7 @@ describe("deployment evidence packet", () => {
         "hosted-write-through",
         "hosted-proof-bundle",
         "hosted-proof-import-dry-run",
+        "deployment-execution-checklist",
         "hosted-proof-import-confirm",
         "source-release",
         "provenance"
@@ -104,6 +106,22 @@ describe("deployment evidence packet", () => {
       "npm run import:hosted-proof"
     );
     expect(packet.commandSequence.find((command) => command.id === "hosted-proof-import-dry-run")?.command).toContain("--dry-run");
+    expect(packet.commandSequence.find((command) => command.id === "deployment-execution-checklist")?.command).toContain(
+      "npm run prepare:deployment-execution-checklist"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "deployment-execution-checklist")?.expectedArtifactId).toBe(
+      "deployment-execution-checklist-json"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "deployment-execution-checklist")?.command).not.toContain("Bearer ");
+    expect(packet.commandSequence.find((command) => command.id === "deployment-execution-checklist")?.command).not.toContain(
+      "x-sentinel-admin-token"
+    );
+    expect(packet.commandSequence.findIndex((command) => command.id === "hosted-proof-import-dry-run")).toBeLessThan(
+      packet.commandSequence.findIndex((command) => command.id === "deployment-execution-checklist")
+    );
+    expect(packet.commandSequence.findIndex((command) => command.id === "deployment-execution-checklist")).toBeLessThan(
+      packet.commandSequence.findIndex((command) => command.id === "hosted-proof-import-confirm")
+    );
     expect(packet.commandSequence.find((command) => command.id === "hosted-proof-import-confirm")?.command).toContain(
       "--confirm-import"
     );
@@ -174,8 +192,18 @@ describe("deployment evidence packet", () => {
     expect(packet.runbook[3].stopCondition).toContain("provider=gemini-api");
     expect(packet.runbook[3].stopCondition).toContain("release integrity is not passed");
     expect(packet.runbook[4].requiredArtifactIds).toEqual(
-      expect.arrayContaining(["evidence-vault-import-request-json", "evidence-vault-import-response-json"])
+      expect.arrayContaining([
+        "deployment-execution-checklist-json",
+        "evidence-vault-import-request-json",
+        "evidence-vault-import-response-json"
+      ])
     );
+    expect(packet.runbook[4].proofFiles).toEqual(
+      expect.arrayContaining([
+        "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/hosted-proof-bundle/deployment-execution-checklist.json"
+      ])
+    );
+    expect(packet.runbook[4].stopCondition).toContain("deployment execution checklist");
     expect(packet.runbook[4].stopCondition).toContain("release integrity is not passed");
     expect(packet.runbook[4].redactionCheck).toContain("checksums");
     expect(packet.runbook.filter((step) => step.externalProofRequired)).toHaveLength(3);

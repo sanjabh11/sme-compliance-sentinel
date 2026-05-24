@@ -25,6 +25,7 @@
     "collect:cloudrun-deployment": "node scripts/collect-cloudrun-deployment-transcript.mjs",
     "verify:production": "node scripts/verify-production-readiness.mjs",
     "collect:hosted-proof": "node scripts/collect-hosted-proof-bundle.mjs",
+    "prepare:deployment-execution-checklist": "node scripts/prepare-deployment-execution-checklist.mjs",
     "import:hosted-proof": "node scripts/import-hosted-proof-bundle.mjs"
   },
   "dependencies": {

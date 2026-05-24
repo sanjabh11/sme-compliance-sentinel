@@ -190,6 +190,15 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
         "evidence-vault-import-request.json and evidence-vault-import-summary.json generated without a hosted write."
       ),
       command(
+        "prepare-deployment-execution-checklist",
+        "Prepare deployment execution checklist",
+        "npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --results /secure/local/deployment-command-results.json --strict",
+        "engineering",
+        false,
+        false,
+        "deployment-execution-checklist.json showing every required deployment command passed with recordedAt and private evidencePath before hosted proof import."
+      ),
+      command(
         "import-hosted-proof",
         "Import redacted hosted proof",
         "npm run import:hosted-proof -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --url https://YOUR-CLOUD-RUN-URL --confirm-import",
@@ -206,7 +215,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
       "Run npm run audit:cloudrun-values against the filled private values file before rendering; stop if the audit is not ready-to-render.",
       "Run npm run prepare:cloudrun-dry-run and npm run verify:cloudrun-dry-run-packet before gcloud dry-run; preserve both JSON outputs in the private evidence store.",
       "Run npm run collect:cloudrun-deployment after Cloud Run dry-run, deploy, and describe; keep raw gcloud logs private and share only the redacted transcript packet.",
-      "Run npm run collect:hosted-proof and npm run import:hosted-proof --dry-run before the final hosted Evidence Vault import; do not bypass release-integrity checks with raw curl.",
+      "Run npm run collect:hosted-proof, npm run import:hosted-proof --dry-run, and npm run prepare:deployment-execution-checklist before the final hosted Evidence Vault import; do not bypass release-integrity checks with raw curl.",
       "Use Secret Manager for the runtime secrets and grant access only to the Cloud Run runtime service account.",
       "Use Devpost private testing instructions for judge credentials; keep public README and video free of login secrets.",
       "Use the admin action token only from private operator tooling when importing hosted proof JSON.",
