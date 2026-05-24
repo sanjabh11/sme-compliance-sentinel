@@ -5,6 +5,7 @@ import contract from "../docs/deployment/cloudrun-deployment-contract.json";
 
 const manifest = readFileSync(join(process.cwd(), "cloudrun.service.yaml"), "utf8");
 const envExample = readFileSync(join(process.cwd(), ".env.example"), "utf8");
+const dockerfile = readFileSync(join(process.cwd(), "Dockerfile"), "utf8");
 
 const requiredDeploymentCapabilityGroups = [
   {
@@ -137,6 +138,7 @@ const requiredDeploymentCapabilityGroups = [
 describe("Cloud Run deployment manifest", () => {
   it("keeps production mode, XPRIZE, Google Cloud, Workspace, and Gemini env placeholders in one deployable manifest", () => {
     expect(manifest).toContain("run.googleapis.com/execution-environment: gen2");
+    expect(manifest).toContain("run.googleapis.com/ingress: all");
     expect(manifest).toContain("run.googleapis.com/vpc-access-connector: sentinel-egress");
     expect(manifest).toContain("run.googleapis.com/vpc-access-egress: all-traffic");
     expect(manifest).toContain("run.googleapis.com/secrets:");
@@ -145,6 +147,11 @@ describe("Cloud Run deployment manifest", () => {
     expect(manifest).not.toContain("/web:latest");
     expect(manifest).toContain("containerConcurrency: 80");
     expect(manifest).toContain("timeoutSeconds: 60");
+    expect(manifest).toContain("containerPort: 3000");
+    expect(manifest).toContain('cpu: "1"');
+    expect(manifest).toContain("memory: 1Gi");
+    expect(dockerfile).toContain("EXPOSE 3000");
+    expect(dockerfile).toContain('CMD ["npm", "run", "start"]');
 
     [
       "SENTINEL_MOCK_MODE",

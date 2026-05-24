@@ -89,6 +89,22 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(evidence.envChecks.find((check) => check.name === "XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED")?.status).toBe(
       "manual-review"
     );
+    expect(evidence.envChecks.find((check) => check.name === "CLOUD_RUN_run.googleapis.com/ingress")).toMatchObject({
+      status: "passed",
+      currentValue: "all"
+    });
+    expect(evidence.envChecks.find((check) => check.name === "CLOUD_RUN_containerPort")).toMatchObject({
+      status: "passed",
+      currentValue: "3000"
+    });
+    expect(evidence.envChecks.find((check) => check.name === "CLOUD_RUN_timeoutSeconds")).toMatchObject({
+      status: "passed",
+      currentValue: "60"
+    });
+    expect(evidence.envChecks.find((check) => check.name === "CLOUD_RUN_memory")).toMatchObject({
+      status: "passed",
+      currentValue: "1Gi"
+    });
     expect(evidence.blockers).toEqual([]);
     expect(evidence.dryRunCommand).toContain("artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml");
     expect(evidence.nextActions[0]).toContain("Replace all template placeholders");
@@ -331,6 +347,13 @@ describe("Cloud Run deployment evidence verifier", () => {
       .replace('name: XPRIZE_SUBMISSION_CLOSE_AT\n              value: "2026-08-17T13:00:00-07:00"', 'name: XPRIZE_SUBMISSION_CLOSE_AT\n              value: "2026-08-18T13:00:00-07:00"')
       .replace('name: XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS\n              value: "2"', 'name: XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS\n              value: "3"')
       .replace("run.googleapis.com/vpc-access-egress: all-traffic", "run.googleapis.com/vpc-access-egress: private-ranges-only")
+      .replace("run.googleapis.com/ingress: all", "run.googleapis.com/ingress: internal")
+      .replace('run.googleapis.com/startup-cpu-boost: "true"', 'run.googleapis.com/startup-cpu-boost: "false"')
+      .replace('autoscaling.knative.dev/maxScale: "5"', 'autoscaling.knative.dev/maxScale: "25"')
+      .replace("containerPort: 3000", "containerPort: 8080")
+      .replace("timeoutSeconds: 60", "timeoutSeconds: 600")
+      .replace('cpu: "1"', 'cpu: "2"')
+      .replace("memory: 1Gi", "memory: 2Gi")
       .replace('name: SENTINEL_CLOUD_RUN_VPC_EGRESS\n              value: "all-traffic"', 'name: SENTINEL_CLOUD_RUN_VPC_EGRESS\n              value: "private-ranges-only"')
       .replace("123456789012-abcdef.apps.googleusercontent.com", "client-id")
       .replace('name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS\n              value: "34.10.10.10"', 'name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS\n              value: "0.0.0.0/0"')
@@ -365,6 +388,13 @@ describe("Cloud Run deployment evidence verifier", () => {
 
     expect(evidence.overallStatus).toBe("blocked");
     expect(checksByName.INVALID_VALUE_SENTINEL_MOCK_MODE).toMatchObject({ status: "blocked" });
+    expect(checksByName["INVALID_CLOUD_RUN_run.googleapis.com/ingress"]).toMatchObject({ status: "blocked" });
+    expect(checksByName["INVALID_CLOUD_RUN_run.googleapis.com/startup-cpu-boost"]).toMatchObject({ status: "blocked" });
+    expect(checksByName["INVALID_CLOUD_RUN_autoscaling.knative.dev/maxScale"]).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_CLOUD_RUN_containerPort).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_CLOUD_RUN_timeoutSeconds).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_CLOUD_RUN_cpu).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_CLOUD_RUN_memory).toMatchObject({ status: "blocked" });
     expect(checksByName.MISMATCHED_GOOGLE_OAUTH_REDIRECT_URI).toMatchObject({ status: "blocked" });
     expect(checksByName.MISMATCHED_WORKSPACE_PUBSUB_PUSH_AUDIENCE).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_GOOGLE_OAUTH_REQUESTED_SCOPES).toMatchObject({ status: "blocked" });

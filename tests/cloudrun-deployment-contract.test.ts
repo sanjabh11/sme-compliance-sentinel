@@ -29,6 +29,17 @@ describe("Cloud Run deployment contract", () => {
     const secretRefs = contract.requiredSecretEnv;
     const secretNames = secretRefs.map((entry) => entry.envName);
 
+    expect(contract.requiredServiceShape).toMatchObject({
+      ingress: "all",
+      maxScale: "5",
+      executionEnvironment: "gen2",
+      startupCpuBoost: "true",
+      containerConcurrency: "80",
+      timeoutSeconds: "60",
+      containerPort: "3000",
+      cpu: "1",
+      memory: "1Gi"
+    });
     expect(entries.map((entry) => entry.name)).toEqual([...nonSecretNames, ...secretNames]);
 
     for (const name of nonSecretNames) {
@@ -75,7 +86,16 @@ describe("Cloud Run deployment contract", () => {
     const requiredCheckNames = [
       ...contract.requiredNonSecretEnv,
       ...contract.requiredSecretEnv.map((entry) => entry.envName),
-      ...contract.requiredSecretEnv.map((entry) => `${entry.envName}_SECRET_ANNOTATION`)
+      ...contract.requiredSecretEnv.map((entry) => `${entry.envName}_SECRET_ANNOTATION`),
+      "CLOUD_RUN_run.googleapis.com/ingress",
+      "CLOUD_RUN_autoscaling.knative.dev/maxScale",
+      "CLOUD_RUN_run.googleapis.com/execution-environment",
+      "CLOUD_RUN_run.googleapis.com/startup-cpu-boost",
+      "CLOUD_RUN_containerConcurrency",
+      "CLOUD_RUN_timeoutSeconds",
+      "CLOUD_RUN_containerPort",
+      "CLOUD_RUN_cpu",
+      "CLOUD_RUN_memory"
     ];
 
     expect(libraryReport.overallStatus).toBe("template-needs-values");

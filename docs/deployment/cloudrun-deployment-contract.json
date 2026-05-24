@@ -1,5 +1,16 @@
 {
   "description": "Cloud Run deployment contract for XPRIZE evidence, Google Cloud, Gemini, Workspace, cost-control, and private proof configuration. This file contains non-secret env and secret-reference names only.",
+  "requiredServiceShape": {
+    "ingress": "all",
+    "maxScale": "5",
+    "executionEnvironment": "gen2",
+    "startupCpuBoost": "true",
+    "containerConcurrency": "80",
+    "timeoutSeconds": "60",
+    "containerPort": "3000",
+    "cpu": "1",
+    "memory": "1Gi"
+  },
   "requiredNonSecretEnv": [
     "NEXT_PUBLIC_APP_NAME",
     "SENTINEL_TENANT_ID",

@@ -10,6 +10,7 @@ const strict = process.argv.includes("--strict");
 
 const requiredNonSecretEnv = deploymentContract.requiredNonSecretEnv ?? [];
 const requiredSecretEnv = (deploymentContract.requiredSecretEnv ?? []).map((entry) => entry.envName);
+const requiredServiceShape = deploymentContract.requiredServiceShape ?? {};
 const secretLookupNameByEnvName = Object.fromEntries(
   (deploymentContract.requiredSecretEnv ?? []).map((entry) => [entry.envName, entry.secretName])
 );
@@ -131,6 +132,7 @@ function buildReport(manifest) {
       checkSecretAnnotation(name, envByName.get(name), secretAnnotations, envByName.get("GOOGLE_CLOUD_PROJECT_NUMBER")?.value)
     ]),
     ...prohibitedCredentialEnv.flatMap((item) => checkProhibitedCredentialEnv(item, envByName.get(item.name))),
+    ...checkCloudRunServiceShape(manifest, annotations),
     ...checkProductionValueInvariants(envByName, annotations, image, runtimeServiceAccount),
     ...checkDuplicateEnvEntries(envEntries),
     ...checkUnsafeRawEnvValues(envEntries)
@@ -218,7 +220,7 @@ function parseSecretAnnotations(manifest) {
 
 function parseAnnotations(manifest) {
   const annotations = new Map();
-  const pattern = /\n\s+([A-Za-z0-9_./-]+):\s*(?:"([^"]*)"|'([^']*)'|([^\n]*))/gu;
+  const pattern = /^\s+([A-Za-z0-9_./-]+):[ \t]*(?:"([^"]*)"|'([^']*)'|([^\n]*))$/gmu;
 
   for (const match of manifest.matchAll(pattern)) {
     const name = match[1];
@@ -350,6 +352,117 @@ function checkProhibitedCredentialEnv(item, entry) {
       item.fix
     )
   ];
+}
+
+function checkCloudRunServiceShape(manifest, annotations) {
+  const shape = requiredServiceShape;
+  if (!Object.keys(shape).length) {
+    return [
+      check(
+        "MISSING_CLOUD_RUN_SERVICE_SHAPE_CONTRACT",
+        "blocked",
+        "missing",
+        "Cloud Run deployment contract is missing requiredServiceShape.",
+        "Add requiredServiceShape to docs/deployment/cloudrun-deployment-contract.json."
+      )
+    ];
+  }
+
+  return [
+    checkRequiredAnnotation(
+      annotations,
+      "run.googleapis.com/ingress",
+      shape.ingress,
+      "Cloud Run ingress must stay aligned with judge-access testing expectations.",
+      "Keep run.googleapis.com/ingress set to all until a reviewed private-access testing path exists."
+    ),
+    checkRequiredAnnotation(
+      annotations,
+      "autoscaling.knative.dev/maxScale",
+      shape.maxScale,
+      "Cloud Run maxScale must stay bounded for hackathon cost control.",
+      "Keep autoscaling.knative.dev/maxScale aligned with the deployment contract or update the contract after cost review."
+    ),
+    checkRequiredAnnotation(
+      annotations,
+      "run.googleapis.com/execution-environment",
+      shape.executionEnvironment,
+      "Cloud Run execution environment must stay explicit for production parity.",
+      "Keep run.googleapis.com/execution-environment aligned with the deployment contract."
+    ),
+    checkRequiredAnnotation(
+      annotations,
+      "run.googleapis.com/startup-cpu-boost",
+      shape.startupCpuBoost,
+      "Cloud Run startup CPU boost must stay explicit for cold-start reliability.",
+      "Keep run.googleapis.com/startup-cpu-boost aligned with the deployment contract."
+    ),
+    checkRequiredScalar(
+      manifest,
+      "containerConcurrency",
+      shape.containerConcurrency,
+      "Cloud Run container concurrency must stay bounded and predictable for cost/performance evidence.",
+      "Keep containerConcurrency aligned with the deployment contract or update the contract after load and cost review."
+    ),
+    checkRequiredScalar(
+      manifest,
+      "timeoutSeconds",
+      shape.timeoutSeconds,
+      "Cloud Run request timeout must stay explicit for webhook and judge-smoke reliability.",
+      "Keep timeoutSeconds aligned with the deployment contract."
+    ),
+    checkRequiredScalar(
+      manifest,
+      "containerPort",
+      shape.containerPort,
+      "Cloud Run must route requests to the same port exposed by the production container.",
+      "Keep containerPort aligned with Dockerfile EXPOSE and the app start command."
+    ),
+    checkRequiredScalar(
+      manifest,
+      "cpu",
+      shape.cpu,
+      "Cloud Run CPU limit must stay explicit for deployment cost evidence.",
+      "Keep cpu aligned with the deployment contract or update the contract after cost review."
+    ),
+    checkRequiredScalar(
+      manifest,
+      "memory",
+      shape.memory,
+      "Cloud Run memory limit must stay explicit for deployment cost evidence.",
+      "Keep memory aligned with the deployment contract or update the contract after load review."
+    )
+  ];
+}
+
+function checkRequiredAnnotation(annotations, name, expectedValue, evidence, fix) {
+  return checkRequiredRuntimeValue(name, annotations.get(name), expectedValue, evidence, fix);
+}
+
+function checkRequiredScalar(manifest, name, expectedValue, evidence, fix) {
+  return checkRequiredRuntimeValue(name, extractSimpleScalar(manifest, name), expectedValue, evidence, fix);
+}
+
+function checkRequiredRuntimeValue(name, value, expectedValue, evidence, fix) {
+  if (!expectedValue) {
+    return check(
+      `MISSING_CONTRACT_VALUE_${name}`,
+      "blocked",
+      "missing",
+      `Cloud Run deployment contract is missing the expected ${name} value.`,
+      "Add the expected value to requiredServiceShape before relying on the deployment verifier."
+    );
+  }
+
+  if (!value) {
+    return check(`MISSING_CLOUD_RUN_${name}`, "blocked", "missing", `${name} is missing from the Cloud Run service template.`, fix);
+  }
+
+  if (value !== expectedValue) {
+    return check(`INVALID_CLOUD_RUN_${name}`, "blocked", value, evidence, `${fix} Expected ${expectedValue}.`);
+  }
+
+  return check(`CLOUD_RUN_${name}`, "passed", value, evidence, "No action.");
 }
 
 function checkProductionValueInvariants(envByName, annotations, image, runtimeServiceAccount) {
@@ -886,6 +999,11 @@ function resourceFinding(target, value) {
 function extractScalar(manifest, key) {
   const prefix = key === "image" ? "\\s+-\\s+" : "\\s+";
   return manifest.match(new RegExp(`\\n${prefix}${key}:\\s*([^\\n]+)`, "u"))?.[1]?.trim();
+}
+
+function extractSimpleScalar(manifest, key) {
+  const match = manifest.match(new RegExp(`^\\s+(?:-\\s+)?${escapeRegExp(key)}:[ \\t]*(?:"([^"]*)"|'([^']*)'|([^\\n]+))$`, "mu"));
+  return (match?.[1] ?? match?.[2] ?? match?.[3])?.trim();
 }
 
 function hasPlaceholder(value) {

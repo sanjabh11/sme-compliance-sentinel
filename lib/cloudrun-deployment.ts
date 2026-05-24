@@ -15,6 +15,7 @@ const recommendedRegion = "us-central1";
 const requiredNonSecretEnv = deploymentContract.requiredNonSecretEnv;
 const requiredSecretEnv = deploymentContract.requiredSecretEnv.map((entry) => entry.envName);
 const requiredSecretEnvSet = new Set<string>(requiredSecretEnv);
+const requiredServiceShape = deploymentContract.requiredServiceShape;
 const secretLookupNameByEnvName = Object.fromEntries(
   deploymentContract.requiredSecretEnv.map((entry) => [entry.envName, entry.secretName])
 ) as Record<string, string>;
@@ -145,6 +146,7 @@ export function buildCloudRunDeploymentEvidence(
       checkSecretAnnotation(name, envByName.get(name), secretAnnotations, envByName.get("GOOGLE_CLOUD_PROJECT_NUMBER")?.value)
     ]),
     ...prohibitedCredentialEnv.flatMap((item) => checkProhibitedCredentialEnv(item, envByName.get(item.name))),
+    ...checkCloudRunServiceShape(manifest, annotations),
     ...checkProductionValueInvariants(envByName, annotations, image, runtimeServiceAccount),
     ...checkDuplicateEnvEntries(envEntries),
     ...checkUnsafeRawEnvValues(envEntries)
@@ -254,7 +256,7 @@ function parseSecretAnnotations(manifest: string) {
 
 function parseAnnotations(manifest: string) {
   const annotations = new Map<string, string>();
-  const pattern = /\n\s+([A-Za-z0-9_./-]+):\s*(?:"([^"]*)"|'([^']*)'|([^\n]*))/gu;
+  const pattern = /^\s+([A-Za-z0-9_./-]+):[ \t]*(?:"([^"]*)"|'([^']*)'|([^\n]*))$/gmu;
 
   for (const match of manifest.matchAll(pattern)) {
     const name = match[1];
@@ -486,6 +488,160 @@ function checkProhibitedCredentialEnv(
       item.fix
     )
   ];
+}
+
+function checkCloudRunServiceShape(manifest: string, annotations: Map<string, string>): CloudRunDeploymentEnvCheck[] {
+  const checks: CloudRunDeploymentEnvCheck[] = [];
+  const shape = requiredServiceShape as Record<string, string> | undefined;
+
+  if (!shape) {
+    return [
+      envCheck(
+        "MISSING_CLOUD_RUN_SERVICE_SHAPE_CONTRACT",
+        "runtime",
+        "blocked",
+        false,
+        "missing",
+        "Cloud Run deployment contract is missing requiredServiceShape.",
+        "Add requiredServiceShape to docs/deployment/cloudrun-deployment-contract.json."
+      )
+    ];
+  }
+
+  checks.push(
+    checkRequiredAnnotation(
+      annotations,
+      "run.googleapis.com/ingress",
+      shape.ingress,
+      "Cloud Run ingress must stay aligned with judge-access testing expectations.",
+      "Keep run.googleapis.com/ingress set to all until a reviewed private-access testing path exists."
+    ),
+    checkRequiredAnnotation(
+      annotations,
+      "autoscaling.knative.dev/maxScale",
+      shape.maxScale,
+      "Cloud Run maxScale must stay bounded for hackathon cost control.",
+      "Keep autoscaling.knative.dev/maxScale aligned with the deployment contract or update the contract after cost review."
+    ),
+    checkRequiredAnnotation(
+      annotations,
+      "run.googleapis.com/execution-environment",
+      shape.executionEnvironment,
+      "Cloud Run execution environment must stay explicit for production parity.",
+      "Keep run.googleapis.com/execution-environment aligned with the deployment contract."
+    ),
+    checkRequiredAnnotation(
+      annotations,
+      "run.googleapis.com/startup-cpu-boost",
+      shape.startupCpuBoost,
+      "Cloud Run startup CPU boost must stay explicit for cold-start reliability.",
+      "Keep run.googleapis.com/startup-cpu-boost aligned with the deployment contract."
+    ),
+    checkRequiredScalar(
+      manifest,
+      "containerConcurrency",
+      shape.containerConcurrency,
+      "Cloud Run container concurrency must stay bounded and predictable for cost/performance evidence.",
+      "Keep containerConcurrency aligned with the deployment contract or update the contract after load and cost review."
+    ),
+    checkRequiredScalar(
+      manifest,
+      "timeoutSeconds",
+      shape.timeoutSeconds,
+      "Cloud Run request timeout must stay explicit for webhook and judge-smoke reliability.",
+      "Keep timeoutSeconds aligned with the deployment contract."
+    ),
+    checkRequiredScalar(
+      manifest,
+      "containerPort",
+      shape.containerPort,
+      "Cloud Run must route requests to the same port exposed by the production container.",
+      "Keep containerPort aligned with Dockerfile EXPOSE and the app start command."
+    ),
+    checkRequiredScalar(
+      manifest,
+      "cpu",
+      shape.cpu,
+      "Cloud Run CPU limit must stay explicit for deployment cost evidence.",
+      "Keep cpu aligned with the deployment contract or update the contract after cost review."
+    ),
+    checkRequiredScalar(
+      manifest,
+      "memory",
+      shape.memory,
+      "Cloud Run memory limit must stay explicit for deployment cost evidence.",
+      "Keep memory aligned with the deployment contract or update the contract after load review."
+    )
+  );
+
+  return checks;
+}
+
+function checkRequiredAnnotation(
+  annotations: Map<string, string>,
+  name: string,
+  expectedValue: string | undefined,
+  evidence: string,
+  fix: string
+): CloudRunDeploymentEnvCheck {
+  const value = annotations.get(name);
+  return checkRequiredRuntimeValue(name, value, expectedValue, evidence, fix);
+}
+
+function checkRequiredScalar(
+  manifest: string,
+  name: string,
+  expectedValue: string | undefined,
+  evidence: string,
+  fix: string
+): CloudRunDeploymentEnvCheck {
+  return checkRequiredRuntimeValue(name, extractSimpleScalar(manifest, name), expectedValue, evidence, fix);
+}
+
+function checkRequiredRuntimeValue(
+  name: string,
+  value: string | undefined,
+  expectedValue: string | undefined,
+  evidence: string,
+  fix: string
+): CloudRunDeploymentEnvCheck {
+  if (!expectedValue) {
+    return envCheck(
+      `MISSING_CONTRACT_VALUE_${name}`,
+      "runtime",
+      "blocked",
+      false,
+      "missing",
+      `Cloud Run deployment contract is missing the expected ${name} value.`,
+      "Add the expected value to requiredServiceShape before relying on the deployment verifier."
+    );
+  }
+
+  if (!value) {
+    return envCheck(
+      `MISSING_CLOUD_RUN_${name}`,
+      "runtime",
+      "blocked",
+      false,
+      "missing",
+      `${name} is missing from the Cloud Run service template.`,
+      fix
+    );
+  }
+
+  if (value !== expectedValue) {
+    return envCheck(
+      `INVALID_CLOUD_RUN_${name}`,
+      "runtime",
+      "blocked",
+      false,
+      value,
+      evidence,
+      `${fix} Expected ${expectedValue}.`
+    );
+  }
+
+  return envCheck(`CLOUD_RUN_${name}`, "runtime", "passed", false, value, evidence, "No action.");
 }
 
 function checkDuplicateEnvEntries(envEntries: ParsedEnvEntry[]): CloudRunDeploymentEnvCheck[] {
@@ -1419,6 +1575,11 @@ function categoryForEnv(name: string): CloudRunDeploymentEnvCheck["category"] {
 function extractScalar(manifest: string, key: "image" | "serviceAccountName") {
   const prefix = key === "image" ? "\\s+-\\s+" : "\\s+";
   return manifest.match(new RegExp(`\\n${prefix}${key}:\\s*([^\\n]+)`, "u"))?.[1]?.trim();
+}
+
+function extractSimpleScalar(manifest: string, key: string) {
+  const match = manifest.match(new RegExp(`^\\s+(?:-\\s+)?${escapeRegExp(key)}:[ \\t]*(?:"([^"]*)"|'([^']*)'|([^\\n]+))$`, "mu"));
+  return (match?.[1] ?? match?.[2] ?? match?.[3])?.trim();
 }
 
 function hasPlaceholder(value: string) {
