@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -248,6 +248,20 @@ describe("Cloud Run render handoff", () => {
 
     expect(countDriftVerification.overallStatus).toBe("blocked");
     expect(countDriftVerification.blockers.join(" ")).toContain("handoff-private-value-checklist-counts");
+
+    const symlinkedHandoff = await prepareCloudRunRenderHandoff({
+      valuesPath: join(tempDir, "symlink-values.json"),
+      outDir: join(tempDir, "symlink-deployment"),
+      gitRunner: makeFakeGitRunner()
+    });
+    const symlinkTargetPath = join(tempDir, "reviewed-cloudrun-render-handoff.json");
+    await writeFile(symlinkTargetPath, await readFile(symlinkedHandoff.handoffPath, "utf8"), "utf8");
+    await rm(symlinkedHandoff.handoffPath, { force: true });
+    await symlink(symlinkTargetPath, symlinkedHandoff.handoffPath);
+    const symlinkedVerification = await verifyCloudRunRenderHandoff(symlinkedHandoff.handoffPath);
+
+    expect(symlinkedVerification.overallStatus).toBe("blocked");
+    expect(symlinkedVerification.blockers.join(" ")).toContain("symbolic link");
   });
 
   it("blocks mismatched release ids before private handoff proceeds", async () => {

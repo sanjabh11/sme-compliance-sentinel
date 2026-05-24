@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -455,6 +455,19 @@ describe("Cloud Run render-values audit", () => {
 
     expect(tampered.overallStatus).toBe("blocked");
     expect(tampered.blockers.join(" ")).toContain("evidence-markdown-regenerated");
+
+    const symlinkedPacket = await writeCloudRunRenderValuesAudit({
+      valuesPath: "docs/deployment/cloudrun-render-values.template.json",
+      outDir: tempDir
+    });
+    const symlinkTargetPath = join(tempDir, "reviewed-render-evidence-packet.json");
+    await writeFile(symlinkTargetPath, await readFile(symlinkedPacket.evidencePacketPath, "utf8"), "utf8");
+    await rm(symlinkedPacket.evidencePacketPath, { force: true });
+    await symlink(symlinkTargetPath, symlinkedPacket.evidencePacketPath);
+    const symlinked = await verifyCloudRunRenderEvidencePacket(symlinkedPacket.evidencePacketPath);
+
+    expect(symlinked.overallStatus).toBe("blocked");
+    expect(symlinked.blockers.join(" ")).toContain("symbolic link");
   });
 
   it("blocks mismatched CLI and values-file release ids before rendering", async () => {

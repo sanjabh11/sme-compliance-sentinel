@@ -3,7 +3,7 @@
 
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { mkdir, stat, writeFile, readFile } from "node:fs/promises";
+import { lstat, mkdir, writeFile, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { auditCloudRunRenderValues } from "./render-cloudrun-manifest.mjs";
 
@@ -382,17 +382,23 @@ async function verifyPacketFile({ id, path, requiredText }) {
 
   let content = "";
   let fileStat;
+  const fileResult = await readRegularTextFileForVerification(resolvedPath, id);
 
-  try {
-    content = await readFile(resolvedPath, "utf8");
-    fileStat = await stat(resolvedPath);
-    checks.push(verificationCheck(`${id}-readable`, "passed", `${resolvedPath} is readable.`));
-  } catch (error) {
-    checks.push(
-      verificationCheck(`${id}-readable`, "blocked", `${resolvedPath} is not readable: ${error instanceof Error ? error.message : String(error)}.`)
-    );
+  checks.push(
+    verificationCheck(
+      `${id}-regular-file`,
+      fileResult.ok ? "passed" : "blocked",
+      fileResult.ok ? `${resolvedPath} is a regular file.` : fileResult.error
+    )
+  );
+
+  if (!fileResult.ok) {
     return checks;
   }
+
+  content = fileResult.content;
+  fileStat = fileResult.stat;
+  checks.push(verificationCheck(`${id}-readable`, "passed", `${resolvedPath} is readable.`));
 
   checks.push(
     verificationCheck(
@@ -434,7 +440,13 @@ async function verifyRenderedTextMatch({ id, path, expectedContent }) {
   }
 
   try {
-    const actualContent = await readFile(resolvedPath, "utf8");
+    const fileResult = await readRegularTextFileForVerification(resolvedPath, id);
+
+    if (!fileResult.ok) {
+      return verificationCheck(id, "blocked", fileResult.error);
+    }
+
+    const actualContent = fileResult.content;
 
     return verificationCheck(
       id,
@@ -450,11 +462,57 @@ async function verifyRenderedTextMatch({ id, path, expectedContent }) {
 
 async function readJsonForVerification(path, label) {
   try {
-    return { ok: true, value: JSON.parse(await readFile(path, "utf8")) };
+    const fileResult = await readRegularTextFileForVerification(path, label);
+
+    if (!fileResult.ok) {
+      return { ok: false, error: fileResult.error };
+    }
+
+    return { ok: true, value: JSON.parse(fileResult.content) };
   } catch (error) {
     return {
       ok: false,
       error: `${label} could not be parsed from ${path}: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+async function readRegularTextFileForVerification(path, label) {
+  const resolvedPath = typeof path === "string" && path ? resolve(path) : "";
+
+  if (!resolvedPath) {
+    return {
+      ok: false,
+      error: `${label} path is missing.`
+    };
+  }
+
+  try {
+    const fileStat = await lstat(resolvedPath);
+
+    if (fileStat.isSymbolicLink()) {
+      return {
+        ok: false,
+        error: `${label} at ${resolvedPath} is a symbolic link; regenerate the packet into a regular private file before verification.`
+      };
+    }
+
+    if (!fileStat.isFile()) {
+      return {
+        ok: false,
+        error: `${label} at ${resolvedPath} is not a regular file.`
+      };
+    }
+
+    return {
+      ok: true,
+      content: await readFile(resolvedPath, "utf8"),
+      stat: fileStat
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: `${label} at ${resolvedPath} is not readable: ${error instanceof Error ? error.message : String(error)}.`
     };
   }
 }
