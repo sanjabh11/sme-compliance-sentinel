@@ -121,6 +121,15 @@ type LocalSubmissionReport = {
       stopCondition: string;
       proofBoundary: string;
     }>;
+    packetFiles?: {
+      indexPath: string;
+      ownerPacketPaths: Array<{
+        owner: string;
+        path: string;
+        actionCount: number;
+      }>;
+      proofBoundary: string;
+    };
     stopConditions: string[];
     privateHandling: string[];
   };
@@ -253,6 +262,38 @@ describe("local XPRIZE submission verifier", () => {
       expect(readFileSync(outPath, "utf8")).toContain('"overallStatus": "blocked"');
       expect(report.gates.map((gate) => gate.id)).toContain("license-ip-review");
       expect(() => runVerifier(["--strict"])).toThrow();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes private owner-routed Markdown manual intervention packets", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-manual-packets-"));
+
+    try {
+      const report = runVerifier(["--manual-packets-dir", tempDir]);
+      const indexMarkdown = readFileSync(join(tempDir, "manual-intervention-index.md"), "utf8");
+      const engineeringMarkdown = readFileSync(join(tempDir, "engineering.md"), "utf8");
+      const founderLegalMarkdown = readFileSync(join(tempDir, "founder-legal.md"), "utf8");
+      const founderSalesMarkdown = readFileSync(join(tempDir, "founder-sales.md"), "utf8");
+
+      expect(report.manualInterventionPlan.packetFiles?.proofBoundary).toContain("private execution aids only");
+      expect(report.manualInterventionPlan.packetFiles?.ownerPacketPaths.map((file) => file.owner)).toEqual(
+        expect.arrayContaining(["engineering", "founder/legal", "founder/sales"])
+      );
+      expect(indexMarkdown).toContain("# Manual Intervention Plan");
+      expect(indexMarkdown).toContain("These packets are step-by-step instructions only");
+      expect(indexMarkdown).toContain("founder/legal");
+      expect(engineeringMarkdown).toContain("# Manual Intervention Packet: engineering");
+      expect(engineeringMarkdown).toContain("## Step-by-step Actions");
+      expect(engineeringMarkdown).toContain("Cloud Run");
+      expect(engineeringMarkdown).toContain("/secure/local/cloudrun-render-values.json");
+      expect(founderLegalMarkdown).toContain("XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED");
+      expect(founderLegalMarkdown).toContain("human review");
+      expect(founderSalesMarkdown).toContain("invoice/payment");
+      expect(founderSalesMarkdown).toContain("/secure/local/business-evidence.json");
+      expect([indexMarkdown, engineeringMarkdown, founderLegalMarkdown, founderSalesMarkdown].join("\n")).not.toContain("Bearer ");
+      expect([indexMarkdown, engineeringMarkdown, founderLegalMarkdown, founderSalesMarkdown].join("\n")).not.toContain("password:");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

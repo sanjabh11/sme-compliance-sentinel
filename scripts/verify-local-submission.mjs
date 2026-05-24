@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { Buffer } from "node:buffer";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
 const prohibitedCliPatterns = [
@@ -69,7 +69,8 @@ const gates = [
 function parseArgs(argv) {
   const args = {
     strict: false,
-    outPath: ""
+    outPath: "",
+    manualPacketsDir: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -95,6 +96,20 @@ function parseArgs(argv) {
 
     if (arg.startsWith("--out=")) {
       args.outPath = arg.slice("--out=".length);
+      continue;
+    }
+
+    if (arg === "--manual-packets-dir") {
+      args.manualPacketsDir = argv[index + 1] ?? "";
+      if (!args.manualPacketsDir) {
+        throw new Error("--manual-packets-dir requires a non-secret output directory.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--manual-packets-dir=")) {
+      args.manualPacketsDir = arg.slice("--manual-packets-dir=".length);
       continue;
     }
 
@@ -880,9 +895,157 @@ function writeJson(path, value) {
   writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+function writeManualInterventionPackets(path, report) {
+  const absoluteDir = resolve(path);
+  mkdirSync(absoluteDir, { recursive: true });
+  const packetFiles = report.manualInterventionPlan.ownerPackets.map((packet) => {
+    const fileName = `${slugForOwner(packet.owner)}.md`;
+    const filePath = join(absoluteDir, fileName);
+    writeFileSync(filePath, renderOwnerPacketMarkdown(packet, report), "utf8");
+
+    return {
+      owner: packet.owner,
+      path: filePath,
+      actionCount: packet.openActionCount
+    };
+  });
+  const indexPath = join(absoluteDir, "manual-intervention-index.md");
+  writeFileSync(indexPath, renderManualInterventionIndexMarkdown(report, packetFiles), "utf8");
+
+  return {
+    indexPath,
+    ownerPacketPaths: packetFiles,
+    proofBoundary:
+      "Generated Markdown packets are private execution aids only. They are not hosted proof, revenue proof, human signoff, legal review, or judging evidence until matching artifacts are collected and reviewed."
+  };
+}
+
+function renderManualInterventionIndexMarkdown(report, packetFiles) {
+  const rows = report.manualInterventionPlan.ownerPackets.map((packet) => {
+    const packetFile = packetFiles.find((file) => file.owner === packet.owner);
+
+    return [
+      packet.owner,
+      String(packet.highestPriority),
+      String(packet.openActionCount),
+      Object.entries(packet.buckets)
+        .map(([bucket, count]) => `${bucket}: ${count}`)
+        .join(", "),
+      packetFile ? packetFile.path : "missing",
+      packet.nextAction
+    ];
+  });
+
+  return [
+    "# Manual Intervention Plan",
+    "",
+    report.manualInterventionPlan.confidenceBoundary,
+    "",
+    `Status: ${report.manualInterventionPlan.status}`,
+    `Generated from: ${report.manualInterventionPlan.generatedFrom}`,
+    `Overall remaining: ${report.phaseProgressChart.overallGoalRemainingPercent}%`,
+    `Next owner: ${report.manualInterventionPlan.nextOwner}`,
+    "",
+    markdownTable(["Owner", "Priority", "Open actions", "Buckets", "Private packet", "Next action"], rows),
+    "",
+    "## Stop Conditions",
+    "",
+    markdownList(report.manualInterventionPlan.stopConditions),
+    "",
+    "## Private Handling",
+    "",
+    markdownList(report.manualInterventionPlan.privateHandling),
+    "",
+    "## Proof Boundary",
+    "",
+    "These packets are step-by-step instructions only. Do not set XPRIZE, hosted, revenue, user, judge-access, Cloud Run, Workspace, Gemini, or human-attestation flags from this Markdown alone.",
+    ""
+  ].join("\n");
+}
+
+function renderOwnerPacketMarkdown(packet, report) {
+  return [
+    `# Manual Intervention Packet: ${packet.owner}`,
+    "",
+    report.manualInterventionPlan.confidenceBoundary,
+    "",
+    `Open actions: ${packet.openActionCount}`,
+    `Highest priority: ${packet.highestPriority}`,
+    `Next action: ${packet.nextAction}`,
+    "",
+    "## Private Artifact Paths",
+    "",
+    markdownList(packet.privateArtifactPaths),
+    "",
+    "## Step-by-step Actions",
+    "",
+    ...packet.rows.flatMap((row, index) => [
+      `### ${index + 1}. ${row.phaseLabel}`,
+      "",
+      `- Bucket: ${row.bucket}`,
+      `- Priority: ${row.priority}/5`,
+      `- Status: ${row.status}`,
+      `- Current phase remaining: ${row.currentPhaseRemainingPercent}%`,
+      `- Overall remaining: ${row.overallGoalRemainingPercent}%`,
+      `- Action: ${row.action}`,
+      `- Evidence needed: ${row.evidenceNeeded}`,
+      `- Proof boundary: ${row.proofBoundary}`,
+      `- Stop condition: ${row.stopCondition}`,
+      "",
+      "Commands:",
+      "",
+      markdownList(row.commands.map((command) => `\`${command}\``)),
+      "",
+      "Private artifacts:",
+      "",
+      markdownList(row.privateArtifactPaths),
+      ""
+    ]),
+    "## Owner Checklist",
+    "",
+    markdownList([
+      "Collect the private evidence listed above before changing any attestation or proof flag.",
+      "Keep secrets, credentials, invoices, customer findings, and raw Workspace content out of Git.",
+      "Rerun `npm run verify:local-submission` after completing the owner actions.",
+      "Share only redacted summaries, checksums, and public-safe copy in the judge packet."
+    ]),
+    ""
+  ].join("\n");
+}
+
+function markdownList(values) {
+  if (!values || values.length === 0) {
+    return "- None";
+  }
+
+  return values.map((value) => `- ${value}`).join("\n");
+}
+
+function markdownTable(headers, rows) {
+  return [
+    `| ${headers.map(escapeMarkdownCell).join(" | ")} |`,
+    `| ${headers.map(() => "---").join(" | ")} |`,
+    ...rows.map((row) => `| ${row.map(escapeMarkdownCell).join(" | ")} |`)
+  ].join("\n");
+}
+
+function escapeMarkdownCell(value) {
+  return String(value ?? "")
+    .replaceAll("|", "\\|")
+    .replaceAll("\n", "<br>");
+}
+
+function slugForOwner(owner) {
+  return owner.toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "") || "owner";
+}
+
 try {
   const args = parseArgs(process.argv.slice(2));
   const report = buildReport();
+
+  if (args.manualPacketsDir) {
+    report.manualInterventionPlan.packetFiles = writeManualInterventionPackets(args.manualPacketsDir, report);
+  }
 
   if (args.outPath) {
     writeJson(args.outPath, report);
