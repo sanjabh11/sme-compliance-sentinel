@@ -12,176 +12,51 @@ const defaultRenderedManifestPath = "artifacts/deployment/$SENTINEL_RELEASE_ID/c
 const serviceName = "sme-workspace-sentinel";
 const recommendedRegion = "us-central1";
 
-const requiredNonSecretEnv = [
-  "NEXT_PUBLIC_APP_NAME",
-  "SENTINEL_TENANT_ID",
-  "SENTINEL_MOCK_MODE",
-  "SENTINEL_STORAGE_MODE",
-  "SENTINEL_EVIDENCE_MODE",
-  "SENTINEL_CLOUD_COST_CONTROLS_MODE",
-  "SENTINEL_CLOUD_RUN_SERVICE_NAME",
-  "SENTINEL_CLOUD_RUN_REGION",
-  "SENTINEL_RELEASE_ID",
-  "SENTINEL_SOURCE_COMMIT",
-  "SENTINEL_SOURCE_COMMIT_AT",
-  "SENTINEL_SOURCE_BRANCH",
-  "SENTINEL_PRIVATE_EVIDENCE_BUCKET",
-  "NEXT_PUBLIC_PRODUCT_URL",
-  "XPRIZE_REPOSITORY_URL",
-  "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
-  "XPRIZE_REPOSITORY_ACCESS_MODE",
-  "XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS",
-  "XPRIZE_CATEGORY",
-  "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
-  "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
-  "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED",
-  "XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED",
-  "XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED",
-  "XPRIZE_DEMO_VIDEO_URL",
-  "XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED",
-  "XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED",
-  "XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED",
-  "XPRIZE_DEMO_VIDEO_CUSTOMER_DATA_REDACTED_CONFIRMED",
-  "XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED",
-  "XPRIZE_JUDGE_ACCESS_CONFIGURED",
-  "XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED",
-  "XPRIZE_JUDGING_PERIOD_END_AT",
-  "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED",
-  "XPRIZE_ENTRANT_TYPE",
-  "XPRIZE_GENERAL_ELIGIBILITY_CONFIRMED",
-  "XPRIZE_REPRESENTATIVE_AUTHORIZED",
-  "XPRIZE_ORGANIZATION_UNDER_25_CONFIRMED",
-  "XPRIZE_CORPORATE_ID_CONFIGURED",
-  "XPRIZE_NO_PROMOTION_ENTITY_CONFLICT_CONFIRMED",
-  "XPRIZE_THIRD_PARTY_REVIEW_APPROVED",
-  "XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED",
-  "XPRIZE_EVIDENCE_RESPONSE_READY",
-  "XPRIZE_TESTING_INSTRUCTIONS",
-  "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
-  "XPRIZE_REVENUE_BY_MONTH_EVIDENCE_CONFIGURED",
-  "XPRIZE_TOTAL_COSTS_EVIDENCE_CONFIGURED",
-  "XPRIZE_CAC_SPEND_EVIDENCE_CONFIGURED",
-  "XPRIZE_REAL_USER_EVIDENCE_CONFIGURED",
-  "XPRIZE_TESTIMONIAL_CONSENT_CONFIRMED",
-  "XPRIZE_RELATED_PARTY_REVENUE_REVIEWED",
-  "XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED",
-  "XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED",
-  "GOOGLE_CLOUD_PROJECT",
-  "GOOGLE_CLOUD_PROJECT_NUMBER",
-  "GOOGLE_CLOUD_BILLING_ACCOUNT_ID",
-  "SENTINEL_GCP_BUDGET_ID",
-  "SENTINEL_BUDGET_PUBSUB_TOPIC",
-  "FIRESTORE_DATABASE",
-  "BIGQUERY_DATASET",
-  "BIGQUERY_AUDIT_TABLE",
-  "BIGQUERY_AGENT_RUNS_TABLE",
-  "WORKSPACE_SECRET_PREFIX",
-  "WORKSPACE_GMAIL_TOPIC",
-  "WORKSPACE_GMAIL_SUBSCRIPTION",
-  "SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE",
-  "WORKSPACE_PUBSUB_PUSH_AUDIENCE",
-  "WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL",
-  "GOOGLE_OAUTH_CLIENT_ID",
-  "GOOGLE_OAUTH_REDIRECT_URI",
-  "GEMINI_MODEL",
-  "SENTINEL_GEMINI_MODEL_ALLOWLIST",
-  "SENTINEL_GEMINI_MONTHLY_BUDGET_USD",
-  "SENTINEL_GEMINI_MAX_CONTENT_BYTES_PER_EVENT",
-  "SENTINEL_GEMINI_API_KEY_ID",
-  "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
-  "SENTINEL_GEMINI_DAILY_REQUEST_QUOTA",
-  "SENTINEL_GEMINI_DAILY_TOKEN_QUOTA",
-  "SENTINEL_GEMINI_QUOTA_EVIDENCE_CONFIRMED",
-  "GEMINI_INPUT_PER_1K_USD",
-  "GEMINI_OUTPUT_PER_1K_USD",
-  "SENSITIVE_DATA_PROTECTION_ENABLED"
-];
-
-const requiredSecretEnv = [
-  "SENTINEL_ADMIN_ACTION_TOKEN",
-  "GEMINI_API_KEY",
-  "GOOGLE_OAUTH_CLIENT_SECRET",
-  "SENTINEL_EVIDENCE_SIGNING_SECRET",
-  "WORKSPACE_DRIVE_CHANNEL_TOKEN"
-] as const;
-
+const requiredNonSecretEnv = deploymentContract.requiredNonSecretEnv;
+const requiredSecretEnv = deploymentContract.requiredSecretEnv.map((entry) => entry.envName);
 const requiredSecretEnvSet = new Set<string>(requiredSecretEnv);
+const secretLookupNameByEnvName = Object.fromEntries(
+  deploymentContract.requiredSecretEnv.map((entry) => [entry.envName, entry.secretName])
+) as Record<string, string>;
 
-const secretLookupNameByEnvName: Record<(typeof requiredSecretEnv)[number], string> = {
-  SENTINEL_ADMIN_ACTION_TOKEN: "sentinel-admin-action-token",
-  GEMINI_API_KEY: "gemini-api-key",
-  GOOGLE_OAUTH_CLIENT_SECRET: "google-oauth-client-secret",
-  SENTINEL_EVIDENCE_SIGNING_SECRET: "sentinel-evidence-signing-secret",
-  WORKSPACE_DRIVE_CHANNEL_TOKEN: "workspace-drive-channel-token"
-} as const;
-
-const prohibitedCredentialEnv = [
-  {
-    name: "GOOGLE_CLOUD_ACCESS_TOKEN",
+const prohibitedCredentialMetadata: Record<string, { evidence: string; fix: string }> = {
+  GOOGLE_CLOUD_ACCESS_TOKEN: {
     evidence: "Cloud Run should use the runtime service account and metadata server, not a committed access-token env var.",
     fix: "Remove this env var from cloudrun.service.yaml and grant the Cloud Run service account the required IAM roles."
   },
-  {
-    name: "GOOGLE_APPLICATION_CREDENTIALS",
+  GOOGLE_APPLICATION_CREDENTIALS: {
     evidence: "Cloud Run should use the runtime service account, not a mounted or committed service-account key path.",
     fix: "Remove this env var and deploy with serviceAccountName plus least-privilege IAM."
   },
-  {
-    name: "GOOGLE_OAUTH_REFRESH_TOKEN",
+  GOOGLE_OAUTH_REFRESH_TOKEN: {
     evidence: "Workspace OAuth refresh tokens must be stored per tenant in Secret Manager, not as shared service env vars.",
     fix: "Remove this env var and store tenant OAuth refresh-token payloads under WORKSPACE_SECRET_PREFIX."
   },
-  {
-    name: "WORKSPACE_REFRESH_TOKEN",
+  WORKSPACE_REFRESH_TOKEN: {
     evidence: "Workspace OAuth refresh tokens must be tenant-scoped Secret Manager entries.",
     fix: "Remove this env var and use the OAuth callback Secret Manager storage path."
   },
-  {
-    name: "XPRIZE_JUDGE_CREDENTIALS",
+  XPRIZE_JUDGE_CREDENTIALS: {
     evidence: "Judge credentials belong only in private Devpost testing instructions or an approved private channel.",
     fix: "Remove this env var and keep judge credentials outside source and deployment manifests."
   },
-  {
-    name: "XPRIZE_JUDGE_PASSWORD",
+  XPRIZE_JUDGE_PASSWORD: {
     evidence: "Judge credentials must not be committed or exposed through Cloud Run env metadata.",
     fix: "Remove this env var and provide credentials only through private judging instructions."
   }
-];
+};
 
-const manualReviewEnv = new Set([
-  "XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED",
-  "XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED",
-  "XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED",
-  "XPRIZE_DEMO_VIDEO_CUSTOMER_DATA_REDACTED_CONFIRMED",
-  "XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED",
-  "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
-  "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
-  "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
-  "XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED",
-  "XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED",
-  "XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED",
-  "XPRIZE_JUDGE_ACCESS_CONFIGURED",
-  "XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED",
-  "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED",
-  "XPRIZE_GENERAL_ELIGIBILITY_CONFIRMED",
-  "XPRIZE_REPRESENTATIVE_AUTHORIZED",
-  "XPRIZE_ORGANIZATION_UNDER_25_CONFIRMED",
-  "XPRIZE_CORPORATE_ID_CONFIGURED",
-  "XPRIZE_NO_PROMOTION_ENTITY_CONFLICT_CONFIRMED",
-  "XPRIZE_THIRD_PARTY_REVIEW_APPROVED",
-  "XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED",
-  "XPRIZE_EVIDENCE_RESPONSE_READY",
-  "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
-  "XPRIZE_REVENUE_BY_MONTH_EVIDENCE_CONFIGURED",
-  "XPRIZE_TOTAL_COSTS_EVIDENCE_CONFIGURED",
-  "XPRIZE_CAC_SPEND_EVIDENCE_CONFIGURED",
-  "XPRIZE_REAL_USER_EVIDENCE_CONFIGURED",
-  "XPRIZE_TESTIMONIAL_CONSENT_CONFIRMED",
-  "XPRIZE_RELATED_PARTY_REVENUE_REVIEWED",
-  "XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED",
-  "XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED",
-  "SENTINEL_GEMINI_QUOTA_EVIDENCE_CONFIRMED"
-]);
+const prohibitedCredentialEnv = deploymentContract.prohibitedCredentialEnv.map((name) => ({
+  name,
+  evidence:
+    prohibitedCredentialMetadata[name]?.evidence ??
+    "Cloud Run deployment env must not expose raw credentials, tokens, private customer proof, or judge access material.",
+  fix:
+    prohibitedCredentialMetadata[name]?.fix ??
+    "Remove this env var and store the value only in the approved private evidence or Secret Manager path."
+}));
+
+const manualReviewEnv = new Set(deploymentContract.manualReviewEnv);
 
 const booleanEnv = new Set([
   "SENTINEL_MOCK_MODE",
@@ -437,7 +312,7 @@ function checkNonSecretEnv(name: string, entry?: ParsedEnvEntry): CloudRunDeploy
 }
 
 function checkSecretAnnotation(
-  envName: (typeof requiredSecretEnv)[number],
+  envName: string,
   entry: ParsedEnvEntry | undefined,
   annotations: Map<string, string>,
   projectNumber?: string

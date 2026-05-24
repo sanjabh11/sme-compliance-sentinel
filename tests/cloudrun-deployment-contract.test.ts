@@ -7,6 +7,13 @@ import contract from "../docs/deployment/cloudrun-deployment-contract.json";
 import { buildCloudRunDeploymentEvidence, collectCloudRunDeploymentEvidence } from "@/lib/cloudrun-deployment";
 
 interface CloudRunRenderModule {
+  getCloudRunRenderContractSummary: () => {
+    renderValueKeys: string[];
+    manualReviewValueKeys: string[];
+    secretVersionKeys: string[];
+    secretVersionEnvNames: Record<string, string>;
+    prohibitedRawSecretKeys: string[];
+  };
   writeRenderValuesTemplate: (outputPath?: string) => Promise<{
     keyCount: number;
   }>;
@@ -100,15 +107,26 @@ describe("Cloud Run deployment contract", () => {
   });
 
   it("keeps the private render-values template aligned with manual-review and secret-version contract fields", async () => {
-    const { writeRenderValuesTemplate } = await loadRenderer();
+    const { getCloudRunRenderContractSummary, writeRenderValuesTemplate } = await loadRenderer();
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-cloudrun-contract-"));
     const valuesPath = join(tempDir, "cloudrun-render-values.template.json");
+    const rendererContract = getCloudRunRenderContractSummary();
 
     try {
       const summary = await writeRenderValuesTemplate(valuesPath);
       const values = JSON.parse(readFileSync(valuesPath, "utf8")) as Record<string, string>;
 
       expect(summary.keyCount).toBe(Object.keys(values).length);
+      expect(rendererContract.renderValueKeys).toEqual(contract.requiredNonSecretEnv);
+      expect(rendererContract.manualReviewValueKeys).toEqual(contract.manualReviewEnv);
+      expect(rendererContract.secretVersionKeys).toEqual(contract.requiredSecretEnv.map((entry) => entry.versionKey));
+      expect(rendererContract.secretVersionEnvNames).toEqual(
+        Object.fromEntries(contract.requiredSecretEnv.map((entry) => [entry.versionKey, entry.envName]))
+      );
+      expect(rendererContract.prohibitedRawSecretKeys).toEqual([
+        ...contract.requiredSecretEnv.map((entry) => entry.envName),
+        ...contract.prohibitedCredentialEnv
+      ]);
       for (const name of contract.manualReviewEnv) {
         expect(values[name], `${name} must remain explicitly false until private proof exists`).toBe("false");
       }
