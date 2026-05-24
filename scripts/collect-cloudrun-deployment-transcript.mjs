@@ -294,6 +294,10 @@ function summarizeDescribeJson(rawText) {
       serviceAccountName: "",
       image: "",
       releaseIdEnvValue: "",
+      cloudRunVpcConnectorEnvValue: "",
+      cloudRunVpcEgressEnvValue: "",
+      vpcConnectorAnnotation: "",
+      vpcEgressAnnotation: "",
       envNames: [],
       secretEnvNames: []
     };
@@ -301,6 +305,8 @@ function summarizeDescribeJson(rawText) {
 
   try {
     const parsed = JSON.parse(rawText);
+    const templateMetadata = parsed?.spec?.template?.metadata ?? parsed?.template?.metadata ?? {};
+    const annotations = templateMetadata.annotations ?? {};
     const templateSpec = parsed?.spec?.template?.spec ?? parsed?.template?.spec ?? {};
     const firstContainer = Array.isArray(templateSpec.containers) ? templateSpec.containers[0] ?? {} : {};
     const env = Array.isArray(firstContainer.env) ? firstContainer.env : [];
@@ -315,6 +321,10 @@ function summarizeDescribeJson(rawText) {
       serviceAccountName: String(templateSpec.serviceAccountName ?? ""),
       image: String(firstContainer.image ?? ""),
       releaseIdEnvValue: envValue(envByName.get("SENTINEL_RELEASE_ID")),
+      cloudRunVpcConnectorEnvValue: envValue(envByName.get("SENTINEL_CLOUD_RUN_VPC_CONNECTOR")),
+      cloudRunVpcEgressEnvValue: envValue(envByName.get("SENTINEL_CLOUD_RUN_VPC_EGRESS")),
+      vpcConnectorAnnotation: String(annotations["run.googleapis.com/vpc-access-connector"] ?? ""),
+      vpcEgressAnnotation: String(annotations["run.googleapis.com/vpc-access-egress"] ?? ""),
       envNames: env.map((entry) => String(entry?.name ?? "")).filter(Boolean).sort(),
       secretEnvNames: env
         .filter(hasSecretRef)
@@ -333,6 +343,10 @@ function summarizeDescribeJson(rawText) {
       serviceAccountName: "",
       image: "",
       releaseIdEnvValue: "",
+      cloudRunVpcConnectorEnvValue: "",
+      cloudRunVpcEgressEnvValue: "",
+      vpcConnectorAnnotation: "",
+      vpcEgressAnnotation: "",
       envNames: [],
       secretEnvNames: []
     };
@@ -392,6 +406,36 @@ function buildDeploymentContractChecks({ releaseId, describeSummary }) {
       describeSummary.serviceAccountName
         ? "Cloud Run revision uses the dedicated sentinel-runtime service account."
         : "Cloud Run describe JSON is missing the runtime service account."
+    ),
+    check(
+      "cloudrun-static-egress-connector-present",
+      Boolean(describeSummary.vpcConnectorAnnotation),
+      describeSummary.vpcConnectorAnnotation
+        ? "Cloud Run revision includes a Serverless VPC Access connector annotation."
+        : "Cloud Run describe JSON is missing run.googleapis.com/vpc-access-connector."
+    ),
+    check(
+      "cloudrun-static-egress-connector-env-matches",
+      Boolean(describeSummary.cloudRunVpcConnectorEnvValue) &&
+        describeSummary.cloudRunVpcConnectorEnvValue === describeSummary.vpcConnectorAnnotation,
+      describeSummary.cloudRunVpcConnectorEnvValue && describeSummary.vpcConnectorAnnotation
+        ? "SENTINEL_CLOUD_RUN_VPC_CONNECTOR matches the deployed connector annotation."
+        : "Cloud Run connector env value or annotation is missing."
+    ),
+    check(
+      "cloudrun-static-egress-all-traffic",
+      describeSummary.vpcEgressAnnotation === "all-traffic",
+      describeSummary.vpcEgressAnnotation
+        ? "Cloud Run revision routes all egress through the configured VPC path."
+        : "Cloud Run describe JSON is missing run.googleapis.com/vpc-access-egress."
+    ),
+    check(
+      "cloudrun-static-egress-env-matches",
+      describeSummary.cloudRunVpcEgressEnvValue === "all-traffic" &&
+        describeSummary.cloudRunVpcEgressEnvValue === describeSummary.vpcEgressAnnotation,
+      describeSummary.cloudRunVpcEgressEnvValue && describeSummary.vpcEgressAnnotation
+        ? "SENTINEL_CLOUD_RUN_VPC_EGRESS matches the deployed all-traffic annotation."
+        : "Cloud Run egress env value or annotation is missing."
     )
   ];
 }
@@ -474,6 +518,8 @@ function renderMarkdown(packet) {
     `- Runtime service account: ${packet.describeSummary.serviceAccountName || "missing"}`,
     `- Image: ${packet.describeSummary.image || "missing"}`,
     `- Deployed release id env: ${packet.describeSummary.releaseIdEnvValue || "missing"}`,
+    `- VPC connector annotation: ${packet.describeSummary.vpcConnectorAnnotation || "missing"}`,
+    `- VPC egress annotation: ${packet.describeSummary.vpcEgressAnnotation || "missing"}`,
     "",
     "## Deployment Contract Checks",
     ...packet.deploymentContractChecks.map((item) => `- ${item.id}: ${item.status}; ${item.evidence}`),

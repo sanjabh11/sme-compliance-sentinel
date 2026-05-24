@@ -25,6 +25,10 @@ interface CloudRunDeploymentTranscriptModule {
       serviceAccountName: string;
       image: string;
       releaseIdEnvValue: string;
+      cloudRunVpcConnectorEnvValue: string;
+      cloudRunVpcEgressEnvValue: string;
+      vpcConnectorAnnotation: string;
+      vpcEgressAnnotation: string;
       secretEnvNames: string[];
     };
     deploymentContractChecks: Array<{ id: string; status: string; evidence: string }>;
@@ -80,6 +84,10 @@ describe("Cloud Run deployment transcript collector", () => {
       expect(packet.describeSummary.url).toBe("https://sme-workspace-sentinel-example.a.run.app");
       expect(packet.describeSummary.latestReadyRevisionName).toBe("sme-workspace-sentinel-00001-abc");
       expect(packet.describeSummary.releaseIdEnvValue).toBe("release-20260524");
+      expect(packet.describeSummary.cloudRunVpcConnectorEnvValue).toBe("sentinel-egress");
+      expect(packet.describeSummary.cloudRunVpcEgressEnvValue).toBe("all-traffic");
+      expect(packet.describeSummary.vpcConnectorAnnotation).toBe("sentinel-egress");
+      expect(packet.describeSummary.vpcEgressAnnotation).toBe("all-traffic");
       expect(packet.describeSummary.secretEnvNames).toEqual(
         expect.arrayContaining(contract.requiredSecretEnv.map((entry) => entry.envName))
       );
@@ -133,6 +141,10 @@ describe("Cloud Run deployment transcript collector", () => {
           releaseId: "release-old",
           serviceAccountName: "default@example-project.iam.gserviceaccount.com",
           image: "us-central1-docker.pkg.dev/example-project/sentinel/web:release-old",
+          annotations: {
+            "run.googleapis.com/vpc-access-connector": "wrong-egress",
+            "run.googleapis.com/vpc-access-egress": "private-ranges-only"
+          },
           env: driftedEnv
         }),
         null,
@@ -164,6 +176,9 @@ describe("Cloud Run deployment transcript collector", () => {
       expect(checksById["cloudrun-release-id-env-matches"]).toMatchObject({ status: "blocked" });
       expect(checksById["cloudrun-image-release-bound"]).toMatchObject({ status: "blocked" });
       expect(checksById["cloudrun-runtime-service-account-dedicated"]).toMatchObject({ status: "blocked" });
+      expect(checksById["cloudrun-static-egress-connector-env-matches"]).toMatchObject({ status: "blocked" });
+      expect(checksById["cloudrun-static-egress-all-traffic"]).toMatchObject({ status: "blocked" });
+      expect(checksById["cloudrun-static-egress-env-matches"]).toMatchObject({ status: "blocked" });
       expect(packet.blockers.join(" ")).toContain("cloudrun-required-env-present");
       expect(JSON.stringify(packet)).not.toContain("AIza" + "1".repeat(36));
     } finally {
@@ -222,6 +237,7 @@ function buildDescribeService(input: {
   image?: string;
   serviceAccountName?: string;
   env?: Array<Record<string, unknown>>;
+  annotations?: Record<string, string>;
 } = {}) {
   const releaseId = input.releaseId ?? "release-20260524";
 
@@ -231,6 +247,12 @@ function buildDescribeService(input: {
     },
     spec: {
       template: {
+        metadata: {
+          annotations: input.annotations ?? {
+            "run.googleapis.com/vpc-access-connector": "sentinel-egress",
+            "run.googleapis.com/vpc-access-egress": "all-traffic"
+          }
+        },
         spec: {
           serviceAccountName: input.serviceAccountName ?? "sentinel-runtime@example-project.iam.gserviceaccount.com",
           containers: [
@@ -286,6 +308,10 @@ function nonSecretValue(name: string, releaseId: string) {
       return "2";
     case "XPRIZE_ENTRANT_TYPE":
       return "team";
+    case "SENTINEL_CLOUD_RUN_VPC_CONNECTOR":
+      return "sentinel-egress";
+    case "SENTINEL_CLOUD_RUN_VPC_EGRESS":
+      return "all-traffic";
     default:
       return name.endsWith("_CONFIGURED") ||
         name.endsWith("_CONFIRMED") ||
