@@ -79,6 +79,8 @@ describe("deployment execution checklist", () => {
           entries: deploymentImportRequiredCommandIds.map((commandId) => ({
             commandId,
             status: "passed",
+            releaseId: "release-1",
+            sourceUrl: "https://sentinel.example.com",
             recordedAt: "2026-05-23T12:00:00.000Z",
             evidencePath: `gs://sentinel-private/releases/release-1/${commandId}.json`,
             evidenceSha256: "a".repeat(64),
@@ -112,6 +114,8 @@ describe("deployment execution checklist", () => {
       releaseId: "release-1",
       sourceUrl: "https://sentinel.example.com",
       status: "passed",
+      resultReleaseId: "release-1",
+      resultSourceUrl: "https://sentinel.example.com",
       expectedArtifactPath: `gs://sentinel-private/releases/release-1/${deploymentImportRequiredCommandIds[0]}.json`,
       evidencePath: `gs://sentinel-private/releases/release-1/${deploymentImportRequiredCommandIds[0]}.json`,
       blockers: []
@@ -131,6 +135,50 @@ describe("deployment execution checklist", () => {
         strict: true
       })
     ).rejects.toThrow(/Deployment execution checklist is blocked/u);
+  });
+
+  it("blocks stale command results that do not match release, URL, evidence path, or checksum", async () => {
+    const { deploymentImportRequiredCommandIds, prepareDeploymentExecutionChecklist } = await loadChecklist();
+    const bundleDir = await makeBundle(deploymentImportRequiredCommandIds);
+    const [firstCommandId, secondCommandId, thirdCommandId] = deploymentImportRequiredCommandIds;
+    const resultsPath = join(bundleDir, "stale-results.json");
+    await writeFile(
+      resultsPath,
+      `${JSON.stringify(
+        {
+          entries: deploymentImportRequiredCommandIds.map((commandId) => ({
+            commandId,
+            status: "passed",
+            releaseId: commandId === firstCommandId ? "release-old" : "release-1",
+            sourceUrl: commandId === secondCommandId ? "https://old.example.com" : "https://sentinel.example.com",
+            recordedAt: "2026-05-23T12:00:00.000Z",
+            evidencePath:
+              commandId === thirdCommandId
+                ? "gs://sentinel-private/releases/release-old/stale.json"
+                : `gs://sentinel-private/releases/release-1/${commandId}.json`,
+            evidenceSha256: commandId === thirdCommandId ? "not-a-sha" : "a".repeat(64),
+            note: "Recorded from private operator transcript."
+          }))
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+
+    const checklist = await prepareDeploymentExecutionChecklist({
+      bundleDir,
+      resultsPath
+    });
+    const entriesById = Object.fromEntries(checklist.entries.map((entry) => [entry.commandId, entry]));
+
+    expect(checklist.overallStatus).toBe("blocked");
+    expect(entriesById[firstCommandId].blockers.join(" ")).toContain("releaseId release-old does not match release-1");
+    expect(entriesById[secondCommandId].blockers.join(" ")).toContain(
+      "sourceUrl https://old.example.com does not match https://sentinel.example.com"
+    );
+    expect(entriesById[thirdCommandId].blockers.join(" ")).toContain("evidencePath must match expectedArtifactPath");
+    expect(entriesById[thirdCommandId].blockers.join(" ")).toContain("valid evidenceSha256");
   });
 });
 

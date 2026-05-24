@@ -251,6 +251,27 @@ describe("hosted proof bundle Evidence Vault importer", () => {
     ).rejects.toThrow(/Deployment execution checklist is blocked/u);
   });
 
+  it("rejects hosted proof import when the execution checklist contains stale release evidence", async () => {
+    const { importHostedProofBundle } = await loadImporter();
+    const staleChecklistBundle = await makeBundle("https://sentinel.example.com");
+    const checklistPath = join(staleChecklistBundle, "deployment-execution-checklist.json");
+    const checklist = JSON.parse(await readFile(checklistPath, "utf8"));
+    checklist.entries[0] = {
+      ...checklist.entries[0],
+      resultReleaseId: "release-old",
+      evidenceSha256: "not-a-sha"
+    };
+    await writeFile(checklistPath, `${JSON.stringify(checklist, null, 2)}\n`, "utf8");
+
+    await expect(
+      importHostedProofBundle({
+        bundleDir: staleChecklistBundle,
+        confirmImport: true,
+        adminToken: "private-admin-token"
+      })
+    ).rejects.toThrow(/incomplete or stale entries/u);
+  });
+
   it("rejects local, non-verifier, or unredacted source files before import", async () => {
     const { importHostedProofBundle } = await loadImporter();
     const localBundle = await makeBundle("http://127.0.0.1:3000");
@@ -351,10 +372,13 @@ async function makeBundle(
             commandId,
             releaseId,
             sourceUrl: baseUrl,
+            resultReleaseId: releaseId,
+            resultSourceUrl: baseUrl,
             status: executionChecklistStatus === "passed" ? "passed" : "blocked",
             recordedAt: "2026-05-23T12:01:00.000Z",
             expectedArtifactPath: `gs://private/releases/${releaseId}/${commandId}.json`,
-            evidencePath: `artifacts/hosted-proof/${releaseId}/${commandId}.json`
+            evidencePath: `gs://private/releases/${releaseId}/${commandId}.json`,
+            evidenceSha256: "a".repeat(64)
           }))
         },
         null,

@@ -161,6 +161,8 @@ function buildEntry(input) {
   const expectedArtifactId = cleanString(input.command?.expectedArtifactId);
   const expectedArtifactPath = cleanString(input.artifactById.get(expectedArtifactId)?.privateStorePath);
   const status = cleanString(result.status) || "blocked";
+  const resultReleaseId = cleanString(result.releaseId);
+  const resultSourceUrl = cleanString(result.sourceUrl);
   const recordedAt = cleanString(result.recordedAt);
   const evidencePath = cleanString(result.evidencePath);
   const evidenceSha256 = cleanString(result.evidenceSha256);
@@ -170,8 +172,15 @@ function buildEntry(input) {
     ...(expectedArtifactId ? [] : [`${input.commandId} is missing an expectedArtifactId.`]),
     ...(expectedArtifactPath ? [] : [`${input.commandId} is missing an expected artifact path.`]),
     ...(status === "passed" ? [] : [`${input.commandId} status is ${status || "missing"}, not passed.`]),
+    ...(resultReleaseId === input.releaseId ? [] : [`${input.commandId} releaseId ${resultReleaseId || "missing"} does not match ${input.releaseId || "missing"}.`]),
+    ...(resultSourceUrl === input.sourceUrl ? [] : [`${input.commandId} sourceUrl ${resultSourceUrl || "missing"} does not match ${input.sourceUrl || "missing"}.`]),
     ...(recordedAt ? [] : [`${input.commandId} is missing recordedAt.`]),
+    ...(isIsoTimestamp(recordedAt) ? [] : [`${input.commandId} recordedAt must be an ISO timestamp.`]),
     ...(evidencePath ? [] : [`${input.commandId} is missing evidencePath.`]),
+    ...(evidencePath && expectedArtifactPath && evidencePath === expectedArtifactPath
+      ? []
+      : [`${input.commandId} evidencePath must match expectedArtifactPath.`]),
+    ...(isSha256(evidenceSha256) ? [] : [`${input.commandId} is missing a valid evidenceSha256.`]),
     ...(hasUnsafeText(`${evidencePath} ${note}`) ? [`${input.commandId} evidence fields contain secret-shaped text.`] : [])
   ];
 
@@ -180,6 +189,8 @@ function buildEntry(input) {
     label: cleanString(input.command?.label) || input.commandId,
     releaseId: input.releaseId,
     sourceUrl: input.sourceUrl,
+    resultReleaseId,
+    resultSourceUrl,
     status: blockers.length ? "blocked" : "passed",
     operatorStatus: status || "missing",
     recordedAt,
@@ -301,6 +312,19 @@ function sha256(value) {
 
 function cleanString(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function isIsoTimestamp(value) {
+  if (!value) {
+    return false;
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+}
+
+function isSha256(value) {
+  return /^[a-f0-9]{64}$/u.test(value);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -368,11 +368,21 @@ function assertDeploymentExecutionChecklist(input) {
 
   const blockedEntries = deploymentImportRequiredCommandIds
     .map((commandId) => entriesByCommandId.get(commandId))
-    .filter((entry) => cleanString(entry?.status) !== "passed" || !cleanString(entry?.recordedAt) || !cleanString(entry?.expectedArtifactPath));
+    .filter(
+      (entry) =>
+        cleanString(entry?.status) !== "passed" ||
+        cleanString(entry?.releaseId) !== releaseId ||
+        cleanString(entry?.sourceUrl) !== input.baseUrl ||
+        cleanString(entry?.resultReleaseId) !== releaseId ||
+        cleanString(entry?.resultSourceUrl) !== input.baseUrl ||
+        !cleanString(entry?.recordedAt) ||
+        cleanString(entry?.evidencePath) !== cleanString(entry?.expectedArtifactPath) ||
+        !/^[a-f0-9]{64}$/u.test(cleanString(entry?.evidenceSha256))
+    );
 
   if (blockedEntries.length) {
     throw new Error(
-      `Deployment execution checklist has incomplete entries: ${blockedEntries.map((entry) => cleanString(entry?.commandId) || "unknown").join(", ")}.`
+      `Deployment execution checklist has incomplete or stale entries: ${blockedEntries.map((entry) => cleanString(entry?.commandId) || "unknown").join(", ")}.`
     );
   }
 }
