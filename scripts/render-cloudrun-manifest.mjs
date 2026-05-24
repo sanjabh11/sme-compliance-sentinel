@@ -444,6 +444,16 @@ export async function auditCloudRunRenderValues(options = {}) {
     versionKey,
     status: isMissingStrictValue(renderValues[versionKey]) ? "needs-value" : "version-set"
   }));
+  const renderValueIntake = buildRenderValueIntake({
+    fileValues,
+    renderValues,
+    missingStrictKeys,
+    placeholderKeys,
+    valueConsistencyBlockers,
+    manualReviewFlags,
+    secretVersionKeysStatus
+  });
+  const renderValueIntakeSummary = summarizeRenderValueIntake(renderValueIntake);
   const releaseId = String(options.releaseId || renderValues.SENTINEL_RELEASE_ID || "release-candidate");
   const status = releaseIdConsistency.blocking
     ? "release-id-mismatch"
@@ -469,6 +479,8 @@ export async function auditCloudRunRenderValues(options = {}) {
     derivedValues,
     manualReviewFlags,
     secretVersionKeys: secretVersionKeysStatus,
+    renderValueIntakeSummary,
+    renderValueIntake,
     stopConditions: buildAuditStopConditions({ missingStrictKeys, placeholderKeys, releaseIdConsistency, valueConsistencyBlockers }),
     redactionChecklist: [
       "Keep the filled render-values file private; it can expose project ids, URLs, budget ids, and evidence-state decisions.",
@@ -480,6 +492,315 @@ export async function auditCloudRunRenderValues(options = {}) {
     disclaimer:
       "This audit validates the private render-values input before rendering a Cloud Run manifest. It does not deploy Cloud Run, call Gemini, prove Workspace sync, or prove XPRIZE business evidence."
   };
+}
+
+function buildRenderValueIntake({
+  fileValues,
+  renderValues,
+  missingStrictKeys,
+  placeholderKeys,
+  valueConsistencyBlockers,
+  manualReviewFlags,
+  secretVersionKeysStatus
+}) {
+  const blockerByKey = new Map(valueConsistencyBlockers.map((check) => [check.key, check]));
+  const manualFlagByKey = new Map(manualReviewFlags.map((flag) => [flag.key, flag]));
+  const secretVersionByKey = new Map(secretVersionKeysStatus.map((item) => [item.versionKey, item]));
+  const keys = unique([
+    ...strictRequiredValueKeys,
+    ...manualReviewValueKeys,
+    ...secretVersionKeys,
+    ...Object.keys(fileValues),
+    ...Object.keys(renderValues)
+  ]).sort();
+
+  return keys.map((key) => {
+    const blocker = blockerByKey.get(key);
+    const manualFlag = manualFlagByKey.get(key);
+    const secretVersion = secretVersionByKey.get(key);
+    const metadata = intakeMetadataForKey(key);
+    const source = Object.prototype.hasOwnProperty.call(fileValues, key)
+      ? "values-file"
+      : renderValues[key] !== undefined
+        ? "derived-or-env"
+        : "missing";
+    const valuePreview = previewRenderValue(key, renderValues[key]);
+    const status = renderValueIntakeStatus({
+      key,
+      value: renderValues[key],
+      blocker,
+      manualFlag,
+      secretVersion,
+      missingStrictKeys,
+      placeholderKeys
+    });
+
+    return {
+      key,
+      label: metadata.label,
+      category: metadata.category,
+      owner: metadata.owner,
+      status,
+      source,
+      valuePreview,
+      safeToStoreInValuesFile: !prohibitedRawSecretKeys.includes(key),
+      requiredBeforeDryRun: strictRequiredValueKeys.includes(key),
+      requiredBeforePublicClaim: Boolean(manualFlag),
+      acceptedProof: metadata.acceptedProof,
+      privateHandling: metadata.privateHandling,
+      fix: renderValueIntakeFix({ key, status, blocker, manualFlag, secretVersion, metadata })
+    };
+  });
+}
+
+function renderValueIntakeStatus({ key, value, blocker, manualFlag, secretVersion, missingStrictKeys, placeholderKeys }) {
+  if (blocker) {
+    return "blocked";
+  }
+
+  if (placeholderKeys.includes(key) || hasTemplatePlaceholder(String(value ?? ""))) {
+    return "placeholder";
+  }
+
+  if (missingStrictKeys.includes(key) || secretVersion?.status === "needs-value") {
+    return "missing";
+  }
+
+  if (manualFlag) {
+    return manualFlag.status === "attested" ? "attested" : "manual-review";
+  }
+
+  return "ready";
+}
+
+function renderValueIntakeFix({ key, status, blocker, manualFlag, secretVersion, metadata }) {
+  if (blocker) {
+    return blocker.fix;
+  }
+
+  if (secretVersion?.status === "needs-value") {
+    return `Create or verify the Secret Manager secret for ${secretVersion.envName}, then record only the positive numeric version in ${key}.`;
+  }
+
+  if (status === "missing" || status === "placeholder") {
+    return `Fill ${key} in the private render-values file with reviewed ${metadata.valueKind}.`;
+  }
+
+  if (manualFlag?.status === "not-attested") {
+    return `Keep ${key}=false until ${metadata.owner} attaches private proof and approves the matching evidence flag.`;
+  }
+
+  if (manualFlag?.status === "attested") {
+    return `Preserve the private proof that justified ${key}=true before using it in judge or public claims.`;
+  }
+
+  return "No action.";
+}
+
+function summarizeRenderValueIntake(items) {
+  const byStatus = Object.fromEntries(
+    ["ready", "attested", "manual-review", "missing", "placeholder", "blocked"].map((status) => [
+      status,
+      items.filter((item) => item.status === status).length
+    ])
+  );
+  const byCategory = items.reduce((summary, item) => {
+    summary[item.category] = (summary[item.category] ?? 0) + 1;
+    return summary;
+  }, {});
+  const pendingItems = items.filter((item) => item.status !== "ready" && item.status !== "attested");
+
+  return {
+    total: items.length,
+    ready: byStatus.ready,
+    attested: byStatus.attested,
+    manualReview: byStatus["manual-review"],
+    missing: byStatus.missing,
+    placeholder: byStatus.placeholder,
+    blocked: byStatus.blocked,
+    pending: pendingItems.length,
+    byCategory,
+    readyForStrictRender: byStatus.missing === 0 && byStatus.placeholder === 0 && byStatus.blocked === 0,
+    claimFlagsPending: items.filter((item) => item.requiredBeforePublicClaim && item.status === "manual-review").length
+  };
+}
+
+function intakeMetadataForKey(key) {
+  const category = intakeCategoryForKey(key);
+  const owner = intakeOwnerForCategory(category);
+
+  return {
+    label: key.replace(/_/gu, " ").toLowerCase(),
+    category,
+    owner,
+    valueKind: valueKindForCategory(category),
+    acceptedProof: acceptedProofForCategory(category),
+    privateHandling: privateHandlingForCategory(category)
+  };
+}
+
+function intakeCategoryForKey(key) {
+  const explicitCategories = {
+    XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED: "google-cloud-proof",
+    XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED: "hosted-product-proof",
+    XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED: "ai-native-operations",
+    XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED: "ai-native-operations",
+    XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED: "category-impact",
+    XPRIZE_CATEGORY: "category-impact",
+    XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED: "judge-access"
+  };
+
+  if (explicitCategories[key]) {
+    return explicitCategories[key];
+  }
+
+  if (secretVersionKeys.includes(key)) {
+    return "secret-manager-version";
+  }
+
+  if (key.includes("BILLING") || key.includes("BUDGET") || key.includes("COST") || key.includes("CAC")) {
+    return "cost-controls";
+  }
+
+  if (key.startsWith("GOOGLE_CLOUD_") || key.startsWith("SENTINEL_CLOUD_RUN_") || key === "SENTINEL_PRIVATE_EVIDENCE_BUCKET") {
+    return "gcp-foundation";
+  }
+
+  if (key.startsWith("SENTINEL_SOURCE_") || key === "SENTINEL_RELEASE_ID") {
+    return "release-integrity";
+  }
+
+  if (key.includes("GEMINI")) {
+    return "gemini-controls";
+  }
+
+  if (key.startsWith("GOOGLE_OAUTH_") || key.startsWith("WORKSPACE_")) {
+    return "workspace-oauth";
+  }
+
+  if (
+    key.includes("DEMO") ||
+    key.includes("JUDGE") ||
+    key.includes("TESTING") ||
+    key.includes("REPOSITORY") ||
+    key.includes("WORKING_PROJECT") ||
+    key === "NEXT_PUBLIC_PRODUCT_URL"
+  ) {
+    return "judge-access";
+  }
+
+  if (key.includes("REVENUE") || key.includes("BUSINESS") || key.includes("USER") || key.includes("TESTIMONIAL") || key.includes("RELATED_PARTY")) {
+    return "business-evidence";
+  }
+
+  if (key.startsWith("XPRIZE_")) {
+    return "xprize-attestation";
+  }
+
+  return "deployment-value";
+}
+
+function intakeOwnerForCategory(category) {
+  if (["business-evidence", "category-impact"].includes(category)) {
+    return "founder/sales";
+  }
+
+  if (["xprize-attestation", "judge-access"].includes(category)) {
+    return "founder/legal";
+  }
+
+  return "engineering";
+}
+
+function valueKindForCategory(category) {
+  if (category === "secret-manager-version") {
+    return "positive numeric Secret Manager version metadata, not the secret value";
+  }
+
+  if (category === "business-evidence" || category === "xprize-attestation") {
+    return "evidence-backed boolean or non-secret submission metadata";
+  }
+
+  if (category === "judge-access") {
+    return "non-secret hosted URL, repository, demo, or access-state metadata";
+  }
+
+  if (category === "google-cloud-proof" || category === "hosted-product-proof" || category === "ai-native-operations") {
+    return "evidence-backed production proof flag or non-secret runtime metadata";
+  }
+
+  return "non-secret production infrastructure metadata";
+}
+
+function acceptedProofForCategory(category) {
+  const proofByCategory = {
+    "gcp-foundation": "Reviewed Google Cloud project, project number, region, service account, VPC connector, and private evidence bucket metadata.",
+    "release-integrity": "Git commit, release id, source timestamp, branch, image tag, and build provenance for the exact deployment.",
+    "cost-controls": "Cloud Billing budget id, budget-alert topic, cost records, and CAC/hosting/AI API cost evidence.",
+    "gemini-controls": "Gemini API key resource id, server-IP allowlist, quota/usage proof, and hosted provider=gemini-api agent-run evidence.",
+    "workspace-oauth": "OAuth consent configuration, requested/deferred scopes, redirect URL, Pub/Sub topic/subscription, and Workspace watch renewal proof.",
+    "judge-access": "Hosted product URL, repository access review, public demo URL, private testing instructions, and free judging-period access proof.",
+    "google-cloud-proof": "Cloud Run service URL, revision, service account, Cloud Billing, Secret Manager, Firestore/BigQuery, and deployment transcript evidence.",
+    "hosted-product-proof": "Hosted product smoke output, signed-out browser proof, production write-through verification, and release-bound hosted proof bundle.",
+    "ai-native-operations": "Hosted Gemini provider logs, agent execution rows, AI-operation timeline, and production workflow evidence.",
+    "category-impact": "Small Business Services category rationale, customer workflow impact, buyer proof points, and market-positioning evidence.",
+    "business-evidence": "Private invoices/payment exports, revenue-by-month, active-user logs, testimonial consent, and related-party review.",
+    "xprize-attestation": "Private human-review packet for eligibility, IP/API terms, project-newness, evidence response, and submission claims.",
+    "secret-manager-version": "Secret Manager resource and numeric version captured without exposing the secret value.",
+    "deployment-value": "Reviewed non-secret deployment value from the private operator runbook."
+  };
+
+  return proofByCategory[category] ?? proofByCategory["deployment-value"];
+}
+
+function privateHandlingForCategory(category) {
+  if (category === "secret-manager-version") {
+    return "Store only the Secret Manager version number in render values; keep secret payloads in Secret Manager.";
+  }
+
+  if (category === "business-evidence") {
+    return "Keep customer, invoice, payment, testimonial, and active-user artifacts in the private evidence store with redaction and consent.";
+  }
+
+  if (category === "google-cloud-proof" || category === "hosted-product-proof" || category === "ai-native-operations") {
+    return "Keep production logs, API usage records, screenshots, and hosted proof JSON in the private evidence store until redacted.";
+  }
+
+  if (category === "judge-access") {
+    return "Keep credentials and detailed testing instructions out of source; place them only in private Devpost testing instructions.";
+  }
+
+  return "Keep filled render values in a private ignored path and share only redacted evidence packets.";
+}
+
+function previewRenderValue(key, value) {
+  if (value === undefined || value === "") {
+    return "missing";
+  }
+
+  if (secretVersionKeys.includes(key)) {
+    return /^[1-9][0-9]*$/u.test(String(value)) ? "version-set" : "version-missing";
+  }
+
+  if (key === "XPRIZE_TESTING_INSTRUCTIONS") {
+    return hasTemplatePlaceholder(String(value)) ? "placeholder" : "instructions-present";
+  }
+
+  const text = String(value);
+
+  if (text === "true" || text === "false") {
+    return text;
+  }
+
+  if (hasTemplatePlaceholder(text)) {
+    return "placeholder";
+  }
+
+  if (text.length <= 32) {
+    return text;
+  }
+
+  return `${text.slice(0, 16)}...${text.slice(-8)}`;
 }
 
 async function loadValuesFile(valuesPath) {
@@ -1191,6 +1512,10 @@ function parseCsv(value) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function isValidIpv4OrCidr(value) {

@@ -124,6 +124,23 @@ function renderMarkdown(packet) {
     `- Value consistency blockers: ${packet.valueConsistencyBlockers.length}`,
     `- Manual review flags: ${packet.manualReviewFlags.length}`,
     "",
+    "## Render Value Intake",
+    `- Total rows: ${packet.renderValueIntakeSummary.total}`,
+    `- Ready rows: ${packet.renderValueIntakeSummary.ready}`,
+    `- Missing rows: ${packet.renderValueIntakeSummary.missing}`,
+    `- Placeholder rows: ${packet.renderValueIntakeSummary.placeholder}`,
+    `- Blocked rows: ${packet.renderValueIntakeSummary.blocked}`,
+    `- Manual-review claim flags: ${packet.renderValueIntakeSummary.manualReview}`,
+    `- Claim flags pending: ${packet.renderValueIntakeSummary.claimFlagsPending}`,
+    "",
+    "## Intake Rows Requiring Action",
+    ...(packet.renderValueIntake.filter((item) => !["ready", "attested"].includes(item.status)).length
+      ? packet.renderValueIntake
+          .filter((item) => !["ready", "attested"].includes(item.status))
+          .slice(0, 40)
+          .map((item) => `- ${item.key} [${item.status}/${item.category}/${item.owner}]: ${item.fix}`)
+      : ["- none"]),
+    "",
     "## Value Consistency",
     ...(packet.valueConsistencyChecks.length
       ? packet.valueConsistencyChecks.map((check) => `- ${check.key}: ${check.status}; ${check.fix}`)

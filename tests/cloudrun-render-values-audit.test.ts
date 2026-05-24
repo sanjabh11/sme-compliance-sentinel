@@ -28,6 +28,34 @@ interface CloudRunRenderValuesAuditModule {
     derivedValues: Array<{ key: string; status: string }>;
     manualReviewFlags: Array<{ key: string; status: string }>;
     secretVersionKeys: Array<{ envName: string; versionKey: string; status: string }>;
+    renderValueIntakeSummary: {
+      total: number;
+      ready: number;
+      attested: number;
+      manualReview: number;
+      missing: number;
+      placeholder: number;
+      blocked: number;
+      pending: number;
+      byCategory: Record<string, number>;
+      readyForStrictRender: boolean;
+      claimFlagsPending: number;
+    };
+    renderValueIntake: Array<{
+      key: string;
+      label: string;
+      category: string;
+      owner: string;
+      status: string;
+      source: string;
+      valuePreview: string;
+      safeToStoreInValuesFile: boolean;
+      requiredBeforeDryRun: boolean;
+      requiredBeforePublicClaim: boolean;
+      acceptedProof: string;
+      privateHandling: string;
+      fix: string;
+    }>;
     releaseIdConsistency: {
       status: string;
       blocking: boolean;
@@ -118,10 +146,103 @@ describe("Cloud Run render-values audit", () => {
     expect(packet.manualReviewFlags.find((item) => item.key === "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED")).toMatchObject({
       status: "not-attested"
     });
+    expect(packet.renderValueIntakeSummary).toMatchObject({
+      missing: 0,
+      placeholder: 0,
+      blocked: 0,
+      readyForStrictRender: true
+    });
+    expect(packet.renderValueIntakeSummary.manualReview).toBeGreaterThan(0);
+    expect(packet.renderValueIntakeSummary.claimFlagsPending).toBeGreaterThan(0);
+    expect(packet.renderValueIntake).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "GOOGLE_CLOUD_PROJECT",
+          category: "gcp-foundation",
+          owner: "engineering",
+          status: "ready",
+          source: "values-file",
+          valuePreview: "sentinel-prod",
+          requiredBeforeDryRun: true
+        }),
+        expect.objectContaining({
+          key: "GEMINI_API_KEY_VERSION",
+          category: "secret-manager-version",
+          status: "ready",
+          valuePreview: "version-set",
+          safeToStoreInValuesFile: true
+        }),
+        expect.objectContaining({
+          key: "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
+          category: "business-evidence",
+          owner: "founder/sales",
+          status: "manual-review",
+          requiredBeforePublicClaim: true
+        }),
+        expect.objectContaining({
+          key: "GOOGLE_CLOUD_BILLING_ACCOUNT_ID",
+          category: "cost-controls",
+          owner: "engineering"
+        }),
+        expect.objectContaining({
+          key: "XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED",
+          category: "judge-access",
+          owner: "founder/legal"
+        }),
+        expect.objectContaining({
+          key: "XPRIZE_TESTING_INSTRUCTIONS",
+          category: "judge-access",
+          valuePreview: "instructions-present"
+        }),
+        expect.objectContaining({
+          key: "XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED",
+          category: "judge-access",
+          valuePreview: "missing"
+        }),
+        expect.objectContaining({
+          key: "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
+          category: "google-cloud-proof",
+          owner: "engineering",
+          status: "manual-review"
+        }),
+        expect.objectContaining({
+          key: "XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED",
+          category: "hosted-product-proof",
+          owner: "engineering",
+          status: "manual-review"
+        }),
+        expect.objectContaining({
+          key: "XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED",
+          category: "ai-native-operations",
+          owner: "engineering",
+          status: "manual-review"
+        }),
+        expect.objectContaining({
+          key: "XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED",
+          category: "ai-native-operations",
+          owner: "engineering",
+          status: "manual-review"
+        }),
+        expect.objectContaining({
+          key: "XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED",
+          category: "category-impact",
+          owner: "founder/sales",
+          status: "manual-review"
+        }),
+        expect.objectContaining({
+          key: "XPRIZE_CATEGORY",
+          category: "category-impact",
+          owner: "founder/sales",
+          status: "ready"
+        })
+      ])
+    );
     expect(packet.redactionChecklist.join(" ")).toContain("filled render-values file");
     expect(packet.nextActions.join(" ")).toContain("render:cloudrun-manifest");
     expect(packetJson.status).toBe("ready-to-render");
     expect(markdown).toContain("Ready for strict render: yes");
+    expect(markdown).toContain("## Render Value Intake");
+    expect(markdown).toContain("XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED [manual-review/business-evidence/founder/sales]");
     expect(markdown).toContain("Status: matched");
     expect(markdown).toContain("Value consistency blockers: 0");
     expect(JSON.stringify(packet)).not.toContain("AIza");
@@ -179,6 +300,30 @@ describe("Cloud Run render-values audit", () => {
       ])
     );
     expect(packet.placeholderKeys).toEqual(expect.arrayContaining(["GOOGLE_CLOUD_PROJECT", "SENTINEL_RELEASE_ID"]));
+    expect(packet.renderValueIntakeSummary).toMatchObject({
+      readyForStrictRender: false
+    });
+    expect(packet.renderValueIntakeSummary.placeholder).toBeGreaterThan(0);
+    expect(packet.renderValueIntake).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "GOOGLE_CLOUD_PROJECT",
+          category: "gcp-foundation",
+          status: "placeholder",
+          fix: expect.stringContaining("Fill GOOGLE_CLOUD_PROJECT")
+        }),
+        expect.objectContaining({
+          key: "NEXT_PUBLIC_PRODUCT_URL",
+          category: "judge-access",
+          status: "placeholder"
+        }),
+        expect.objectContaining({
+          key: "SENTINEL_RELEASE_ID",
+          category: "release-integrity",
+          status: "placeholder"
+        })
+      ])
+    );
     expect(packet.nextActions.join(" ")).toContain("Fill the missing non-secret values");
     expect(packet.auditPath).toContain("cloudrun-render-values-audit.json");
   });
@@ -228,6 +373,29 @@ describe("Cloud Run render-values audit", () => {
         expect.objectContaining({ id: "gemini-api-key-project-number", key: "SENTINEL_GEMINI_API_KEY_ID" }),
         expect.objectContaining({ id: "gemini-ip-allowlist", key: "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS" }),
         expect.objectContaining({ id: "secret-version-gemini_api_key_version", key: "GEMINI_API_KEY_VERSION" })
+      ])
+    );
+    expect(packet.renderValueIntakeSummary.blocked).toBeGreaterThan(0);
+    expect(packet.renderValueIntake).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "NEXT_PUBLIC_PRODUCT_URL",
+          category: "judge-access",
+          status: "blocked",
+          fix: expect.stringContaining("public HTTPS Cloud Run")
+        }),
+        expect.objectContaining({
+          key: "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
+          category: "gemini-controls",
+          status: "blocked",
+          fix: expect.stringContaining("comma-separated allowlist")
+        }),
+        expect.objectContaining({
+          key: "GEMINI_API_KEY_VERSION",
+          category: "secret-manager-version",
+          status: "blocked",
+          fix: expect.stringContaining("positive numeric Secret Manager version")
+        })
       ])
     );
     expect(packet.stopConditions.join(" ")).toContain("stale, mismatched, or invalid");
@@ -292,6 +460,7 @@ function safeRenderValues() {
     XPRIZE_CATEGORY: "Small Business Services",
     XPRIZE_JUDGING_PERIOD_END_AT: "2026-09-15T17:00:00-07:00",
     XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS: "2",
+    XPRIZE_TESTING_INSTRUCTIONS: "Use the private Devpost testing instructions; do not place credentials in source.",
     GOOGLE_CLOUD_BILLING_ACCOUNT_ID: "000000-111111-222222",
     SENTINEL_GCP_BUDGET_SHORT_ID: "budget-123",
     GOOGLE_OAUTH_CLIENT_ID: "123456789012-abcdef.apps.googleusercontent.com",
