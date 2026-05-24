@@ -14,6 +14,7 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "node scripts/run-vitest.mjs",
+    "verify:local-submission": "node scripts/verify-local-submission.mjs",
     "verify:source-release": "node scripts/verify-source-release.mjs",
     "verify:provenance": "node scripts/verify-project-provenance.mjs",
     "verify:license-manifest": "node scripts/verify-license-manifest.mjs",
