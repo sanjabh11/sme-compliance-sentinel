@@ -2,7 +2,7 @@
 /* global console, process */
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 const defaultBundleDir = "artifacts/hosted-proof/RELEASE_ID";
@@ -324,6 +324,20 @@ async function verifyEvidenceFile(input) {
   }
 
   try {
+    const localFileBoundary = await verifyLocalEvidenceFileBoundary(input);
+    if (localFileBoundary.blockers.length) {
+      return {
+        status: "blocked",
+        local: true,
+        path: input.evidencePath,
+        expectedSha256: input.evidenceSha256,
+        actualSha256: "",
+        byteLength: 0,
+        fileType: localFileBoundary.fileType,
+        blockers: localFileBoundary.blockers
+      };
+    }
+
     const buffer = await readFile(input.evidencePath);
     const actualSha256 = sha256(buffer);
     const contentPreview = buffer.toString("utf8");
@@ -341,6 +355,7 @@ async function verifyEvidenceFile(input) {
       expectedSha256: input.evidenceSha256,
       actualSha256,
       byteLength: buffer.length,
+      fileType: "regular-file",
       blockers
     };
   } catch (error) {
@@ -351,6 +366,37 @@ async function verifyEvidenceFile(input) {
       expectedSha256: input.evidenceSha256,
       actualSha256: "",
       byteLength: 0,
+      fileType: "unreadable",
+      blockers: [`${input.commandId} local evidence file is not readable: ${error instanceof Error ? error.message : "unknown error"}.`]
+    };
+  }
+}
+
+async function verifyLocalEvidenceFileBoundary(input) {
+  try {
+    const stats = await lstat(input.evidencePath);
+
+    if (stats.isSymbolicLink()) {
+      return {
+        fileType: "symbolic-link",
+        blockers: [`${input.commandId} local evidence file is a symbolic link; copy the reviewed artifact into a regular private file before hosted proof import.`]
+      };
+    }
+
+    if (!stats.isFile()) {
+      return {
+        fileType: "not-regular-file",
+        blockers: [`${input.commandId} local evidence path is not a regular file.`]
+      };
+    }
+
+    return {
+      fileType: "regular-file",
+      blockers: []
+    };
+  } catch (error) {
+    return {
+      fileType: "unreadable",
       blockers: [`${input.commandId} local evidence file is not readable: ${error instanceof Error ? error.message : "unknown error"}.`]
     };
   }

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -53,6 +53,7 @@ interface DeploymentExecutionChecklistModule {
         expectedSha256: string;
         actualSha256: string;
         byteLength: number;
+        fileType?: string;
         blockers: string[];
       };
       commandSha256: string;
@@ -265,16 +266,24 @@ describe("deployment execution checklist", () => {
     );
   });
 
-  it("blocks local private evidence files that are missing, checksum-drifted, or secret-shaped", async () => {
+  it("blocks local private evidence files that are missing, checksum-drifted, secret-shaped, symlinked, or non-regular", async () => {
     const {
       deploymentImportRequiredCommandIds,
       prepareDeploymentExecutionChecklist,
       writeDeploymentCommandResultsTemplate
     } = await loadChecklist();
     const bundleDir = await makeBundle(deploymentImportRequiredCommandIds, { localArtifacts: true });
-    const [missingCommandId, checksumCommandId, secretCommandId] = deploymentImportRequiredCommandIds;
+    const [missingCommandId, checksumCommandId, secretCommandId, symlinkCommandId, directoryCommandId] =
+      deploymentImportRequiredCommandIds;
     const secretContent = "Bearer abcdefghijklmnopqrstuvwxyz123456\n";
+    const symlinkContent = localEvidenceContent(symlinkCommandId);
+    const symlinkTargetPath = join(bundleDir, "private-evidence", "reviewed-symlink-target.json");
     await writeFile(localEvidencePath(bundleDir, secretCommandId), secretContent, "utf8");
+    await writeFile(symlinkTargetPath, symlinkContent, "utf8");
+    await rm(localEvidencePath(bundleDir, symlinkCommandId), { force: true });
+    await symlink(symlinkTargetPath, localEvidencePath(bundleDir, symlinkCommandId));
+    await rm(localEvidencePath(bundleDir, directoryCommandId), { force: true });
+    await mkdir(localEvidencePath(bundleDir, directoryCommandId));
     const resultsPath = await writeFilledResultsTemplate({
       bundleDir,
       commandIds: deploymentImportRequiredCommandIds,
@@ -286,6 +295,10 @@ describe("deployment execution checklist", () => {
             ? "b".repeat(64)
             : entry.commandId === secretCommandId
               ? sha256(secretContent)
+              : entry.commandId === symlinkCommandId
+                ? sha256(symlinkContent)
+                : entry.commandId === directoryCommandId
+                  ? "c".repeat(64)
               : sha256(localEvidenceContent(String(entry.commandId)))
       })
     });
@@ -302,6 +315,16 @@ describe("deployment execution checklist", () => {
     expect(entriesById[missingCommandId].blockers.join(" ")).toContain("local evidence file is not readable");
     expect(entriesById[checksumCommandId].blockers.join(" ")).toContain("local evidence SHA-256");
     expect(entriesById[secretCommandId].blockers.join(" ")).toContain("local evidence file contains secret-shaped text");
+    expect(entriesById[symlinkCommandId].evidenceFileVerification).toMatchObject({
+      status: "blocked",
+      fileType: "symbolic-link"
+    });
+    expect(entriesById[symlinkCommandId].blockers.join(" ")).toContain("local evidence file is a symbolic link");
+    expect(entriesById[directoryCommandId].evidenceFileVerification).toMatchObject({
+      status: "blocked",
+      fileType: "not-regular-file"
+    });
+    expect(entriesById[directoryCommandId].blockers.join(" ")).toContain("local evidence path is not a regular file");
   });
 
   it("blocks strict mode when operator results are missing", async () => {
