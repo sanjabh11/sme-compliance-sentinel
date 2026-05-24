@@ -280,6 +280,10 @@ function nonSecretValue(name: string, releaseId: string) {
       return "origin/main";
     case "NEXT_PUBLIC_PRODUCT_URL":
       return "https://sme-workspace-sentinel-example.a.run.app";
+    case "XPRIZE_SUBMISSION_CLOSE_AT":
+      return "2026-08-17T13:00:00-07:00";
+    case "XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS":
+      return "2";
     case "XPRIZE_ENTRANT_TYPE":
       return "team";
     default:

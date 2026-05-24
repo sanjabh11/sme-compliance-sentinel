@@ -61,6 +61,10 @@ spec:
               value: "private-shared"
             - name: XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS
               value: "testing@devpost.com,judging@hacker.fund"
+            - name: XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED
+              value: "false"
+            - name: XPRIZE_SUBMISSION_CLOSE_AT
+              value: "2026-08-17T13:00:00-07:00"
             - name: XPRIZE_CATEGORY
               value: "Small Business Services"
             - name: XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED
@@ -84,6 +88,10 @@ spec:
             - name: XPRIZE_DEMO_VIDEO_CUSTOMER_DATA_REDACTED_CONFIRMED
               value: "false"
             - name: XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED
+              value: "false"
+            - name: XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED
+              value: "false"
+            - name: XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED
               value: "false"
             - name: XPRIZE_JUDGE_ACCESS_CONFIGURED
               value: "false"
@@ -110,6 +118,10 @@ spec:
             - name: XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED
               value: "false"
             - name: XPRIZE_EVIDENCE_RESPONSE_READY
+              value: "false"
+            - name: XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS
+              value: "2"
+            - name: XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED
               value: "false"
             - name: XPRIZE_TESTING_INSTRUCTIONS
               value: "Provide hosted URL and private judge credentials in Devpost testing instructions; do not commit credentials."

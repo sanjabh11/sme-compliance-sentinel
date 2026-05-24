@@ -72,7 +72,9 @@ const fixedProductionEnvValues = {
 const allowedEntrantTypes = new Set(["individual", "team", "organization"]);
 const allowedRepositoryAccessModes = new Set(["public", "private-shared"]);
 const requiredRepositoryJudgeEmails = ["testing@devpost.com", "judging@hacker.fund"];
+const requiredSubmissionCloseAt = "2026-08-17T13:00:00-07:00";
 const requiredJudgingPeriodEndAt = "2026-09-15T17:00:00-07:00";
+const requiredEvidenceResponseSlaBusinessDays = 2;
 const requiredPilotOauthScopes = [
   "https://www.googleapis.com/auth/drive.metadata.readonly",
   "https://www.googleapis.com/auth/gmail.metadata"
@@ -353,7 +355,9 @@ function checkProductionValueInvariants(envByName, image, runtimeServiceAccount)
   const repositoryJudgeAccessEmails = cleanEnvValue(envByName, "XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS");
   const judgeAccessConfigured = cleanEnvValue(envByName, "XPRIZE_JUDGE_ACCESS_CONFIGURED");
   const freeJudgeAccessConfirmed = cleanEnvValue(envByName, "XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED");
+  const submissionCloseAt = cleanEnvValue(envByName, "XPRIZE_SUBMISSION_CLOSE_AT");
   const judgingPeriodEndAt = cleanEnvValue(envByName, "XPRIZE_JUDGING_PERIOD_END_AT");
+  const evidenceResponseSlaBusinessDays = cleanEnvValue(envByName, "XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS");
 
   for (const [name, expectedValue] of Object.entries(fixedProductionEnvValues)) {
     const value = cleanEnvValue(envByName, name);
@@ -465,6 +469,38 @@ function checkProductionValueInvariants(envByName, image, runtimeServiceAccount)
           judgingPeriodEndAt,
           "XPRIZE_JUDGING_PERIOD_END_AT must cover the official judging period end.",
           `Set XPRIZE_JUDGING_PERIOD_END_AT to ${requiredJudgingPeriodEndAt} or later if official rules change.`
+        )
+      );
+    }
+  }
+
+  if (submissionCloseAt) {
+    const submissionCloseTimestamp = Date.parse(submissionCloseAt);
+
+    if (!Number.isFinite(submissionCloseTimestamp) || submissionCloseTimestamp !== Date.parse(requiredSubmissionCloseAt)) {
+      checks.push(
+        check(
+          "INVALID_XPRIZE_SUBMISSION_CLOSE_AT",
+          "blocked",
+          submissionCloseAt,
+          "XPRIZE_SUBMISSION_CLOSE_AT must match the official submission deadline used for deployment freeze planning.",
+          `Set XPRIZE_SUBMISSION_CLOSE_AT to ${requiredSubmissionCloseAt} unless official rules change and the verifier is updated.`
+        )
+      );
+    }
+  }
+
+  if (evidenceResponseSlaBusinessDays) {
+    const slaDays = Number(evidenceResponseSlaBusinessDays);
+
+    if (!Number.isInteger(slaDays) || slaDays < 1 || slaDays > requiredEvidenceResponseSlaBusinessDays) {
+      checks.push(
+        check(
+          "INVALID_XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS",
+          "blocked",
+          evidenceResponseSlaBusinessDays,
+          "XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS must be a positive integer no greater than the official response window.",
+          `Set XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS to ${requiredEvidenceResponseSlaBusinessDays} or less.`
         )
       );
     }

@@ -18,6 +18,9 @@ const summaryFileName = "cloudrun-render-summary.json";
 const dryRunCommandFileName = "cloudrun-dry-run-command.txt";
 const deployCommandFileName = "cloudrun-deploy-command.txt";
 const defaultValuesTemplatePath = "docs/deployment/cloudrun-render-values.template.json";
+const requiredSubmissionCloseAt = "2026-08-17T13:00:00-07:00";
+const requiredJudgingPeriodEndAt = "2026-09-15T17:00:00-07:00";
+const requiredEvidenceResponseSlaBusinessDays = 2;
 
 const renderValueKeys = deploymentContract.requiredNonSecretEnv ?? [];
 
@@ -95,6 +98,8 @@ const renderValuesTemplate = {
   XPRIZE_REPOSITORY_ACCESS_CONFIGURED: "false",
   XPRIZE_REPOSITORY_ACCESS_MODE: "private-shared",
   XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS: "testing@devpost.com,judging@hacker.fund",
+  XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED: "false",
+  XPRIZE_SUBMISSION_CLOSE_AT: requiredSubmissionCloseAt,
   XPRIZE_CATEGORY: "Small Business Services",
   XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED: "false",
   XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED: "false",
@@ -107,9 +112,11 @@ const renderValuesTemplate = {
   XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED: "false",
   XPRIZE_DEMO_VIDEO_CUSTOMER_DATA_REDACTED_CONFIRMED: "false",
   XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED: "false",
+  XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED: "false",
+  XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED: "false",
   XPRIZE_JUDGE_ACCESS_CONFIGURED: "false",
   XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED: "false",
-  XPRIZE_JUDGING_PERIOD_END_AT: "2026-09-15T17:00:00-07:00",
+  XPRIZE_JUDGING_PERIOD_END_AT: requiredJudgingPeriodEndAt,
   XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED: "false",
   XPRIZE_GENERAL_ELIGIBILITY_CONFIRMED: "false",
   XPRIZE_REPRESENTATIVE_AUTHORIZED: "false",
@@ -119,6 +126,8 @@ const renderValuesTemplate = {
   XPRIZE_THIRD_PARTY_REVIEW_APPROVED: "false",
   XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED: "false",
   XPRIZE_EVIDENCE_RESPONSE_READY: "false",
+  XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS: String(requiredEvidenceResponseSlaBusinessDays),
+  XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED: "false",
   XPRIZE_TESTING_INSTRUCTIONS: "Provide hosted URL and private judge credentials in Devpost testing instructions; do not commit credentials.",
   XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED: "false",
   XPRIZE_REVENUE_BY_MONTH_EVIDENCE_CONFIGURED: "false",
@@ -568,7 +577,6 @@ function buildValueConsistencyChecks(values, releaseIdConsistency) {
   const repositoryAccessMode = String(values.XPRIZE_REPOSITORY_ACCESS_MODE ?? "");
   const repositoryJudgeAccessEmails = parseCsv(values.XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS).map((email) => email.toLowerCase());
   const requiredRepositoryJudgeEmails = ["testing@devpost.com", "judging@hacker.fund"];
-  const requiredJudgingPeriodEndAt = "2026-09-15T17:00:00-07:00";
 
   return [
     valueCheck(
@@ -613,6 +621,18 @@ function buildValueConsistencyChecks(values, releaseIdConsistency) {
       "XPRIZE_JUDGING_PERIOD_END_AT",
       isTimestampAtOrAfter(values.XPRIZE_JUDGING_PERIOD_END_AT, requiredJudgingPeriodEndAt),
       `Keep judge access available through ${requiredJudgingPeriodEndAt} or later if official rules change.`
+    ),
+    valueCheck(
+      "submission-close",
+      "XPRIZE_SUBMISSION_CLOSE_AT",
+      isSameTimestamp(values.XPRIZE_SUBMISSION_CLOSE_AT, requiredSubmissionCloseAt),
+      `Keep the deployment submission-freeze timestamp aligned to ${requiredSubmissionCloseAt}.`
+    ),
+    valueCheck(
+      "evidence-response-sla",
+      "XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS",
+      isBusinessDaySlaAtOrBelow(values.XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS, requiredEvidenceResponseSlaBusinessDays),
+      `Use ${requiredEvidenceResponseSlaBusinessDays} business days or less for evidence-response ownership.`
     ),
     valueCheck(
       "category-fit",
@@ -1079,6 +1099,19 @@ function isTimestampAtOrAfter(value, minimumValue) {
   const minimumTimestamp = Date.parse(String(minimumValue));
 
   return Number.isFinite(timestamp) && timestamp >= minimumTimestamp;
+}
+
+function isSameTimestamp(value, expectedValue) {
+  const timestamp = Date.parse(String(value ?? ""));
+  const expectedTimestamp = Date.parse(String(expectedValue));
+
+  return Number.isFinite(timestamp) && timestamp === expectedTimestamp;
+}
+
+function isBusinessDaySlaAtOrBelow(value, maximumDays) {
+  const days = Number(value);
+
+  return Number.isInteger(days) && days > 0 && days <= maximumDays;
 }
 
 function isPublicHttpsUrl(value) {

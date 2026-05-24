@@ -53,6 +53,13 @@ describe("Cloud Run deployment evidence verifier", () => {
       status: "passed",
       currentValue: "private-shared"
     });
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED")?.status).toBe(
+      "manual-review"
+    );
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_SUBMISSION_CLOSE_AT")).toMatchObject({
+      status: "passed",
+      currentValue: "2026-08-17T13:00:00-07:00"
+    });
     expect(evidence.envChecks.find((check) => check.name === "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED")?.status).toBe(
       "manual-review"
     );
@@ -65,10 +72,23 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(evidence.envChecks.find((check) => check.name === "XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED")?.status).toBe(
       "manual-review"
     );
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED")?.status).toBe(
+      "manual-review"
+    );
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED")?.status).toBe(
+      "manual-review"
+    );
     expect(evidence.envChecks.find((check) => check.name === "XPRIZE_JUDGING_PERIOD_END_AT")).toMatchObject({
       status: "passed",
       currentValue: "2026-09-15T17:00:00-07:00"
     });
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS")).toMatchObject({
+      status: "passed",
+      currentValue: "2"
+    });
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED")?.status).toBe(
+      "manual-review"
+    );
     expect(evidence.blockers).toEqual([]);
     expect(evidence.dryRunCommand).toContain("artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml");
     expect(evidence.nextActions[0]).toContain("Replace all template placeholders");
@@ -87,10 +107,14 @@ describe("Cloud Run deployment evidence verifier", () => {
       expect.arrayContaining([
         "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED",
         "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
+        "XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED",
         "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
         "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
+        "XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED",
+        "XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED",
         "GOOGLE_OAUTH_SCOPE_REVIEW_CONFIRMED",
         "XPRIZE_THIRD_PARTY_REVIEW_APPROVED",
+        "XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED",
         "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
         "XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED"
       ])
@@ -209,6 +233,10 @@ describe("Cloud Run deployment evidence verifier", () => {
         'name: XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED\n              value: "true"'
       )
       .replace(
+        'name: XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED\n              value: "false"',
+        'name: XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED\n              value: "true"'
+      )
+      .replace(
         'name: XPRIZE_EVIDENCE_RESPONSE_READY\n              value: "false"',
         'name: XPRIZE_EVIDENCE_RESPONSE_READY\n              value: "true"'
       );
@@ -227,6 +255,10 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(checksByName.INCONSISTENT_XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED).toMatchObject({
       status: "blocked",
       currentValue: expect.stringContaining("XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED")
+    });
+    expect(checksByName.INCONSISTENT_XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED).toMatchObject({
+      status: "blocked",
+      currentValue: expect.stringContaining("XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED")
     });
     expect(checksByName.INCONSISTENT_XPRIZE_EVIDENCE_RESPONSE_READY).toMatchObject({
       status: "blocked",
@@ -296,6 +328,8 @@ describe("Cloud Run deployment evidence verifier", () => {
       .replace('name: SENTINEL_MOCK_MODE\n              value: "false"', 'name: SENTINEL_MOCK_MODE\n              value: "true"')
       .replace("https://youtu.be/sentinel-demo", "https://example.com/sentinel-demo")
       .replace('name: XPRIZE_ENTRANT_TYPE\n              value: "team"', 'name: XPRIZE_ENTRANT_TYPE\n              value: "vendor"')
+      .replace('name: XPRIZE_SUBMISSION_CLOSE_AT\n              value: "2026-08-17T13:00:00-07:00"', 'name: XPRIZE_SUBMISSION_CLOSE_AT\n              value: "2026-08-18T13:00:00-07:00"')
+      .replace('name: XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS\n              value: "2"', 'name: XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS\n              value: "3"')
       .replace("123456789012-abcdef.apps.googleusercontent.com", "client-id")
       .replace('name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS\n              value: "34.10.10.10"', 'name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS\n              value: "0.0.0.0/0"')
       .replace('name: SENTINEL_GEMINI_MONTHLY_BUDGET_USD\n              value: "50"', 'name: SENTINEL_GEMINI_MONTHLY_BUDGET_USD\n              value: "0"')
@@ -336,6 +370,8 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(checksByName.MISSING_GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_XPRIZE_DEMO_VIDEO_URL_HOST).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_XPRIZE_ENTRANT_TYPE).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_XPRIZE_SUBMISSION_CLOSE_AT).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_GOOGLE_OAUTH_CLIENT_ID).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_NUMBER_SENTINEL_GEMINI_MONTHLY_BUDGET_USD).toMatchObject({ status: "blocked" });
