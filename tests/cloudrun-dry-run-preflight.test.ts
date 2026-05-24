@@ -25,6 +25,7 @@ interface CloudRunDryRunPreflightModule {
     releaseId: string;
     verifierPath: string;
     dryRunCommand: string;
+    deployCommand: string;
     verification: {
       overallStatus: string;
       blockerCount: number;
@@ -90,6 +91,7 @@ interface CloudRunDryRunPreflightModule {
     structuralCheckCount: number;
     passedStructuralCheckCount: number;
     failedStructuralCheckCount: number;
+    dryRunCommand: string;
     structuralChecks: Array<{
       id: string;
       status: string;
@@ -151,6 +153,8 @@ describe("Cloud Run dry-run preflight packet", () => {
       await readFile(join(packet.outputDirectory, "cloudrun-dry-run-preflight-packet.json"), "utf8")
     ) as { status: string; evidenceFileDigests: Array<{ role: string; sha256: string; byteLength: number }> };
     const packetMarkdown = await readFile(join(packet.outputDirectory, "cloudrun-dry-run-preflight-packet.md"), "utf8");
+    const dryRunCommandFile = await readFile(join(packet.outputDirectory, "cloudrun-dry-run-command.txt"), "utf8");
+    const deployCommandFile = await readFile(join(packet.outputDirectory, "cloudrun-deploy-command.txt"), "utf8");
 
     expect(packet.status).toBe("ready-to-dry-run");
     expect(packet.readyForDryRun).toBe(true);
@@ -180,6 +184,10 @@ describe("Cloud Run dry-run preflight packet", () => {
       "cloudrun-describe",
       "collect-cloudrun-deployment"
     ]);
+    expect(packet.dryRunCommand).toBe(dryRunCommandFile.trim());
+    expect(packet.deployCommand).toBe(deployCommandFile.trim());
+    expect(packet.operatorHandoff.commandSequence.find((command) => command.id === "cloudrun-dry-run")?.command).toBe(packet.dryRunCommand);
+    expect(packet.operatorHandoff.commandSequence.find((command) => command.id === "cloudrun-deploy")?.command).toBe(packet.deployCommand);
     expect(packet.operatorHandoff.commandSequence.find((command) => command.id === "cloudrun-deploy")).toMatchObject({
       mutatesCloudRun: true,
       expectedPrivateArtifact: expect.stringContaining("cloudrun-deploy.log")
@@ -267,7 +275,8 @@ describe("Cloud Run dry-run preflight packet", () => {
       digestCount: 5,
       matchedDigestCount: 5,
       failedDigestCount: 0,
-      failedStructuralCheckCount: 0
+      failedStructuralCheckCount: 0,
+      dryRunCommand: packet.dryRunCommand
     });
     expect(verified.digestChecks.every((check) => check.status === "matched")).toBe(true);
     expect(verified.structuralCheckCount).toBeGreaterThan(10);
@@ -425,6 +434,56 @@ describe("Cloud Run dry-run preflight packet", () => {
         "operator-proof-boundary",
         "operator-cloudrun-deploy-mutates",
         "packet-markdown-regenerated"
+      ])
+    );
+    expect(verified.stopConditions.join(" ")).toContain("handoff or proof-boundary checks failed");
+  });
+
+  it("blocks command text drift between the packet, hashed command files, and operator handoff", async () => {
+    const { prepareCloudRunDryRunPacket, verifyCloudRunDryRunPacket } = await loadPreflight();
+    const tempDir = await makeTempDir();
+    const valuesPath = await writeValues(tempDir, safeRenderValues());
+    const packet = await prepareCloudRunDryRunPacket({
+      valuesPath,
+      outDir: tempDir,
+      releaseId: "release-20260523-001",
+      strict: true
+    });
+    const packetPath = join(packet.outputDirectory, "cloudrun-dry-run-preflight-packet.json");
+    const packetJson = JSON.parse(await readFile(packetPath, "utf8")) as {
+      dryRunCommand: string;
+      deployCommand: string;
+      operatorHandoff: {
+        commandSequence: Array<{
+          id: string;
+          command: string;
+        }>;
+      };
+    };
+    const dryRunCommand = packetJson.operatorHandoff.commandSequence.find((command) => command.id === "cloudrun-dry-run");
+    const deployCommand = packetJson.operatorHandoff.commandSequence.find((command) => command.id === "cloudrun-deploy");
+
+    if (!dryRunCommand || !deployCommand) {
+      throw new Error("Test setup expected Cloud Run dry-run and deploy commands.");
+    }
+
+    packetJson.dryRunCommand = "gcloud run services delete sme-workspace-sentinel --region us-central1 --project sentinel-prod --dry-run";
+    packetJson.deployCommand = `${packet.deployCommand} --dry-run`;
+    dryRunCommand.command = packetJson.dryRunCommand;
+    deployCommand.command = packetJson.deployCommand;
+    await writeFile(packetPath, `${JSON.stringify(packetJson, null, 2)}\n`, "utf8");
+
+    const verified = await verifyCloudRunDryRunPacket(packetPath);
+    const blockedChecks = verified.structuralChecks.filter((check) => check.status === "blocked").map((check) => check.id);
+
+    expect(verified.status).toBe("blocked");
+    expect(verified.dryRunCommand).toBe("");
+    expect(blockedChecks).toEqual(
+      expect.arrayContaining([
+        "dry-run-command-file-consistency",
+        "deploy-command-file-consistency",
+        "dry-run-command-shape",
+        "deploy-command-shape"
       ])
     );
     expect(verified.stopConditions.join(" ")).toContain("handoff or proof-boundary checks failed");

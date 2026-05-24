@@ -173,7 +173,7 @@ export async function verifyCloudRunDryRunPacket(packetPath) {
   const structuralChecks = [
     ...packetReadChecks,
     ...(packetRead.ok && packetReadChecks.every((check) => check.status === "passed")
-      ? await verifyPacketStructure({ packet, packetPath: absolutePacketPath })
+      ? await verifyPacketStructure({ packet, packetPath: absolutePacketPath, digestEntries })
       : [])
   ];
   const failedStructuralChecks = structuralChecks.filter((check) => check.status !== "passed");
@@ -181,6 +181,13 @@ export async function verifyCloudRunDryRunPacket(packetPath) {
   const status = packetReady && digestEntries.length > 0 && failedChecks.length === 0 && failedStructuralChecks.length === 0
     ? "verified"
     : "blocked";
+  const verifiedDryRunCommand = structurePassed(structuralChecks, "dry-run-command-file-consistency")
+    ? String(packet.dryRunCommand ?? "")
+    : "";
+  const packetForNextActions = {
+    ...packet,
+    dryRunCommand: verifiedDryRunCommand
+  };
 
   const report = {
     generatedAt: new Date().toISOString(),
@@ -198,9 +205,9 @@ export async function verifyCloudRunDryRunPacket(packetPath) {
     passedStructuralCheckCount: structuralChecks.filter((check) => check.status === "passed").length,
     failedStructuralCheckCount: failedStructuralChecks.length,
     structuralChecks,
-    dryRunCommand: packet.dryRunCommand ?? "",
+    dryRunCommand: verifiedDryRunCommand,
     stopConditions: buildVerificationStopConditions({ packetReady, digestEntries, failedChecks, failedStructuralChecks }),
-    nextActions: buildVerificationNextActions({ status, packet }),
+    nextActions: buildVerificationNextActions({ status, packet: packetForNextActions }),
     disclaimer:
       "This verifies local preflight artifact digests, operator handoff structure, and proof-boundary language only. It does not run Cloud Run dry-run, deploy Cloud Run, or prove hosted production readiness."
   };
@@ -592,7 +599,7 @@ async function verifyDigestEntry(entry) {
   };
 }
 
-async function verifyPacketStructure({ packet, packetPath }) {
+async function verifyPacketStructure({ packet, packetPath, digestEntries = [] }) {
   const releaseId = String(packet.releaseId ?? "");
   const operatorHandoff = packet.operatorHandoff ?? {};
   const commandSequence = Array.isArray(operatorHandoff.commandSequence) ? operatorHandoff.commandSequence : [];
@@ -607,6 +614,14 @@ async function verifyPacketStructure({ packet, packetPath }) {
     ["cloudrun-describe", false],
     ["collect-cloudrun-deployment", false]
   ];
+  const dryRunCommandFileRead = await readDigestTextByRole(digestEntries, "dry-run-command", "Cloud Run dry-run command file");
+  const deployCommandFileRead = await readDigestTextByRole(digestEntries, "deploy-command", "Cloud Run deploy command file");
+  const dryRunCommand = String(packet.dryRunCommand ?? "");
+  const deployCommand = String(packet.deployCommand ?? "");
+  const operatorDryRunCommand = String(commandById.get("cloudrun-dry-run")?.command ?? "");
+  const operatorDeployCommand = String(commandById.get("cloudrun-deploy")?.command ?? "");
+  const operatorDescribeCommand = String(commandById.get("cloudrun-describe")?.command ?? "");
+  const operatorCollectCommand = String(commandById.get("collect-cloudrun-deployment")?.command ?? "");
   const checks = [
     structureCheck("packet-bucket", packet.bucket === "code-controllable", `bucket=${String(packet.bucket ?? "missing")}`),
     structureCheck(
@@ -645,7 +660,62 @@ async function verifyPacketStructure({ packet, packetPath }) {
         operatorHandoff.stopConditions.some((item) => /private operator shell|Do not run gcloud dry-run/iu.test(String(item))),
       `count=${Array.isArray(operatorHandoff.stopConditions) ? operatorHandoff.stopConditions.length : 0}`
     ),
-    structureCheck("dry-run-command-contains-dry-run", /--dry-run\b/u.test(String(packet.dryRunCommand ?? "")), String(packet.dryRunCommand ?? "missing")),
+    structureCheck(
+      "dry-run-command-file-readable",
+      dryRunCommandFileRead.ok,
+      dryRunCommandFileRead.ok ? dryRunCommandFileRead.path : dryRunCommandFileRead.error
+    ),
+    structureCheck(
+      "deploy-command-file-readable",
+      deployCommandFileRead.ok,
+      deployCommandFileRead.ok ? deployCommandFileRead.path : deployCommandFileRead.error
+    ),
+    structureCheck(
+      "dry-run-command-file-consistency",
+      dryRunCommandFileRead.ok && dryRunCommand === dryRunCommandFileRead.content.trim(),
+      dryRunCommandFileRead.ok ? "packet dryRunCommand matches the hashed dry-run command file." : dryRunCommandFileRead.error
+    ),
+    structureCheck(
+      "deploy-command-file-consistency",
+      deployCommandFileRead.ok && deployCommand === deployCommandFileRead.content.trim(),
+      deployCommandFileRead.ok ? "packet deployCommand matches the hashed deploy command file." : deployCommandFileRead.error
+    ),
+    structureCheck(
+      "operator-dry-run-command-consistency",
+      operatorDryRunCommand === dryRunCommand,
+      "operator cloudrun-dry-run command must exactly match packet dryRunCommand."
+    ),
+    structureCheck(
+      "operator-deploy-command-consistency",
+      operatorDeployCommand === deployCommand,
+      "operator cloudrun-deploy command must exactly match packet deployCommand."
+    ),
+    structureCheck("dry-run-command-contains-dry-run", /--dry-run\b/u.test(dryRunCommand), dryRunCommand || "missing"),
+    structureCheck(
+      "dry-run-command-shape",
+      /^gcloud run services replace\b/u.test(dryRunCommand) && /--region\b/u.test(dryRunCommand) && /--project\b/u.test(dryRunCommand),
+      dryRunCommand || "missing"
+    ),
+    structureCheck(
+      "deploy-command-shape",
+      /^gcloud run services replace\b/u.test(deployCommand) && /--region\b/u.test(deployCommand) && /--project\b/u.test(deployCommand) && !/--dry-run\b/u.test(deployCommand),
+      deployCommand || "missing"
+    ),
+    structureCheck(
+      "operator-describe-command-shape",
+      /^gcloud run services describe\b/u.test(operatorDescribeCommand) &&
+        /--region\b/u.test(operatorDescribeCommand) &&
+        /--project\b/u.test(operatorDescribeCommand) &&
+        /--format=json\b/u.test(operatorDescribeCommand),
+      operatorDescribeCommand || "missing"
+    ),
+    structureCheck(
+      "operator-collect-command-shape",
+      operatorCollectCommand.includes("npm run collect:cloudrun-deployment") &&
+        operatorCollectCommand.includes(expectedPrivateBasePath) &&
+        /--strict\b/u.test(operatorCollectCommand),
+      operatorCollectCommand || "missing"
+    ),
     structureCheck("packet-no-raw-secret-shapes", !containsRawSecretShape(JSON.stringify(packet)), "packet JSON raw secret pattern scan")
   ];
 
@@ -709,6 +779,10 @@ function structureCheck(id, passed, evidence) {
   };
 }
 
+function structurePassed(checks, id) {
+  return checks.some((check) => check.id === id && check.status === "passed");
+}
+
 function includesAll(value, fragments) {
   const text = String(value ?? "");
   return fragments.every((fragment) => text.includes(fragment));
@@ -756,6 +830,25 @@ async function readRegularTextFileForVerification(path, label) {
   return {
     ...result,
     content: result.buffer.toString("utf8")
+  };
+}
+
+async function readDigestTextByRole(digestEntries, role, label) {
+  const entry = digestEntries.find((item) => String(item?.role ?? "") === role);
+
+  if (!entry || !entry.path) {
+    return {
+      ok: false,
+      path: "",
+      error: `${label} digest entry is missing from the preflight packet.`
+    };
+  }
+
+  const result = await readRegularTextFileForVerification(entry.path, label);
+
+  return {
+    ...result,
+    path: String(entry.path)
   };
 }
 
