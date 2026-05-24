@@ -63,6 +63,12 @@ spec:
               value: "false"
             - name: XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED
               value: "false"
+            - name: XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED
+              value: "false"
+            - name: XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED
+              value: "false"
+            - name: XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED
+              value: "false"
             - name: XPRIZE_DEMO_VIDEO_URL
               value: "https://youtu.be/YOUR_VIDEO"
             - name: XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED
@@ -94,6 +100,10 @@ spec:
             - name: XPRIZE_NO_PROMOTION_ENTITY_CONFLICT_CONFIRMED
               value: "false"
             - name: XPRIZE_THIRD_PARTY_REVIEW_APPROVED
+              value: "false"
+            - name: XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED
+              value: "false"
+            - name: XPRIZE_EVIDENCE_RESPONSE_READY
               value: "false"
             - name: XPRIZE_TESTING_INSTRUCTIONS
               value: "Provide hosted URL and private judge credentials in Devpost testing instructions; do not commit credentials."
