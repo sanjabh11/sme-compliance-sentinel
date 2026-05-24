@@ -23,6 +23,24 @@ type LocalSubmissionReport = {
   }>;
   remainingBlockers: string[];
   nextActions: string[];
+  phasePlan: {
+    objective: string;
+    confidenceBoundary: string;
+    sourceGateStatus: string;
+    recommendedNextPhaseId: string;
+    phases: Array<{
+      id: string;
+      label: string;
+      priority: number;
+      owner: string;
+      status: string;
+      currentPhaseRemainingPercent: number;
+      relatedGateIds: string[];
+      commands: string[];
+      evidenceNeeded: string[];
+      stopConditions: string[];
+    }>;
+  };
   stopConditions: string[];
   sourceUrls: string[];
   disclaimer: string;
@@ -69,6 +87,16 @@ describe("local XPRIZE submission verifier", () => {
     });
     expect(report.remainingBlockers.join(" ")).toContain("human-attestation");
     expect(report.nextActions.join(" ")).toContain("XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED");
+    expect(report.phasePlan.recommendedNextPhaseId).toBe("human-attestation-review");
+    expect(report.phasePlan.confidenceBoundary).toContain("not a win-probability estimate");
+    expect(report.phasePlan.sourceGateStatus).toMatch(/passed|warning/);
+    expect(report.phasePlan.phases.map((phase) => phase.id)).toEqual([
+      "human-attestation-review",
+      "cloudrun-render-dry-run",
+      "hosted-proof-capture",
+      "business-traction-proof"
+    ]);
+    expect(report.phasePlan.phases.every((phase) => phase.priority >= 1 && phase.priority <= 5)).toBe(true);
     expect(report.stopConditions.join(" ")).toContain("does not deploy Cloud Run");
     expect(report.stopConditions.join(" ")).toContain("does not prove live Gemini API usage");
     expect(report.disclaimer).toContain("not legal advice");
@@ -90,6 +118,29 @@ describe("local XPRIZE submission verifier", () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it("emits a stop-gated execution plan for external evidence without overclaiming proof", () => {
+    const report = runVerifier();
+    const phasesById = Object.fromEntries(report.phasePlan.phases.map((phase) => [phase.id, phase]));
+
+    expect(phasesById["human-attestation-review"].commands.join(" ")).toContain("prepare:xprize-attestation");
+    expect(phasesById["human-attestation-review"].stopConditions.join(" ")).toContain(
+      "Do not set XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED=true"
+    );
+    expect(phasesById["cloudrun-render-dry-run"].commands.join(" ")).toContain("audit:cloudrun-values");
+    expect(phasesById["cloudrun-render-dry-run"].commands.join(" ")).toContain("verify:cloudrun-dry-run-packet");
+    expect(phasesById["cloudrun-render-dry-run"].stopConditions.join(" ")).toContain("Do not run gcloud dry-run");
+    expect(phasesById["hosted-proof-capture"]).toMatchObject({
+      status: "external-required",
+      currentPhaseRemainingPercent: 100
+    });
+    expect(phasesById["hosted-proof-capture"].evidenceNeeded.join(" ")).toContain("provider=gemini-api");
+    expect(phasesById["business-traction-proof"]).toMatchObject({
+      status: "external-required",
+      owner: "founder/sales"
+    });
+    expect(phasesById["business-traction-proof"].stopConditions.join(" ")).toContain("Do not count mock pilots");
   });
 
   it("rejects raw secret-shaped CLI arguments", () => {
