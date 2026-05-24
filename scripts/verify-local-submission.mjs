@@ -389,6 +389,7 @@ function privateArtifactPathsForGate(gateId) {
       "/secure/local/cloudrun-render-values.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.md",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff-verifier.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-values-audit.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet-verifier.json",
@@ -411,6 +412,7 @@ function privateArtifactPathsForPhase(phaseId) {
       "/secure/local/cloudrun-render-values.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.md",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff-verifier.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-values-audit.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet-verifier.json",
@@ -692,6 +694,7 @@ function buildPhasePlan(gateReports) {
       commands: [
         "npm run verify:gemini-model -- --out /secure/local/gemini-model-readiness.json --strict",
         "npm run prepare:cloudrun-render-handoff -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --strict",
+        "npm run verify:cloudrun-render-handoff -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.json --strict",
         "npm run audit:cloudrun-values -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
         "npm run verify:cloudrun-render-evidence -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json --strict",
         "npm run render:cloudrun-manifest -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
@@ -700,6 +703,7 @@ function buildPhasePlan(gateReports) {
       ],
       evidenceNeeded: [
         "cloudrun-render-handoff JSON/Markdown with release-prefilled values and a verified owner packet before private values are filled",
+        "cloudrun-render-handoff-verifier JSON after handoff transfer or owner edits",
         "release-prefilled private render-values file with source metadata and no raw secrets",
         "render-values audit JSON/Markdown plus verified owner-routed render evidence packet",
         "dry-run preflight packet and digest verifier"
@@ -826,7 +830,7 @@ function buildRecommendedNextCodeControllableAction(phases) {
 
 function codeControllableActionForPhase(phase) {
   if (phase.id === "cloudrun-render-dry-run") {
-    return "Prepare the Cloud Run render handoff to generate the release-prefilled private Cloud Run render-values file and verified owner packet, fill the remaining non-secret production values privately, run the render-values audit, verify the render-evidence owner packet, render the ignored manifest, produce and verify the dry-run preflight packet, and review its operator handoff. Stop before gcloud dry-run/deploy until private production values and owner approvals exist.";
+    return "Prepare and verify the Cloud Run render handoff to generate the release-prefilled private Cloud Run render-values file and verified owner packet, fill the remaining non-secret production values privately, run the render-values audit, verify the render-evidence owner packet, render the ignored manifest, produce and verify the dry-run preflight packet, and review its operator handoff. Stop before gcloud dry-run/deploy until private production values and owner approvals exist.";
   }
 
   return `Advance ${phase.label} with local code or generated private handoff artifacts only; stop before claiming hosted, revenue, user, legal, or human-attestation proof.`;

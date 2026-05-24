@@ -108,6 +108,15 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
         "Private non-secret values file prefilled with SENTINEL_RELEASE_ID, source commit, source timestamp, branch, and repository URL plus cloudrun-render-handoff.json/.md, non-strict audit, owner evidence packet, and packet verifier; project ids, hosted URLs, secret versions, and reviewed XPRIZE flags still need operator values."
       ),
       command(
+        "verify-cloudrun-render-handoff",
+        "Verify Cloud Run render handoff",
+        "npm run verify:cloudrun-render-handoff -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.json --strict",
+        "engineering",
+        false,
+        false,
+        "Private cloudrun-render-handoff-verifier.json showing the handoff JSON, regenerated Markdown, owner packet verifier, proof boundary, stop conditions, and secret-shaped text checks still pass after transfer or owner edits."
+      ),
+      command(
         "audit-render-values",
         "Audit private render values",
         `npm run audit:cloudrun-values -- --values ${privateRenderValuesPath} --out-dir ${deploymentArtifactsDir} --release-id $SENTINEL_RELEASE_ID --strict`,

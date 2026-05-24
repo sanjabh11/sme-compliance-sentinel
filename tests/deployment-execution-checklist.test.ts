@@ -100,7 +100,15 @@ describe("deployment execution checklist", () => {
     const bundleDir = await makeBundle(deploymentImportRequiredCommandIds);
     const resultsTemplatePath = join(bundleDir, "deployment-command-results.template.json");
 
+    expect(deploymentImportRequiredCommandIds).toContain("cloudrun-release-values");
+    expect(deploymentImportRequiredCommandIds).toContain("cloudrun-render-handoff-verify");
     expect(deploymentImportRequiredCommandIds).toContain("cloudrun-render-evidence-verify");
+    expect(deploymentImportRequiredCommandIds.indexOf("cloudrun-release-values")).toBeLessThan(
+      deploymentImportRequiredCommandIds.indexOf("cloudrun-render-handoff-verify")
+    );
+    expect(deploymentImportRequiredCommandIds.indexOf("cloudrun-render-handoff-verify")).toBeLessThan(
+      deploymentImportRequiredCommandIds.indexOf("cloudrun-render-values-audit")
+    );
     expect(deploymentImportRequiredCommandIds.indexOf("cloudrun-render-values-audit")).toBeLessThan(
       deploymentImportRequiredCommandIds.indexOf("cloudrun-render-evidence-verify")
     );

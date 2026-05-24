@@ -16,6 +16,8 @@ const placeholderPrivateBucket = "gs://PROJECT_ID-sentinel-private-evidence";
 const privateRenderValuesPath = "/secure/local/cloudrun-render-values.json";
 const prepareCloudRunRenderHandoffCommand =
   `npm run prepare:cloudrun-render-handoff -- --values ${privateRenderValuesPath} --out-dir artifacts/deployment --strict`;
+const verifyCloudRunRenderHandoffCommand =
+  "npm run verify:cloudrun-render-handoff -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.json --strict";
 const cloudRunTranscriptDir = "/secure/local/cloudrun/$SENTINEL_RELEASE_ID";
 const collectCloudRunDeploymentTranscriptCommand =
   `npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log ${cloudRunTranscriptDir}/cloudrun-dry-run.log --deploy-log ${cloudRunTranscriptDir}/cloudrun-deploy.log --describe-json ${cloudRunTranscriptDir}/cloudrun-describe.json --out-dir artifacts/deployment --strict`;
@@ -106,6 +108,7 @@ function buildRunbook(input: {
       ownerRole: "engineering",
       commandIds: commandIds(
         "cloudrun-release-values",
+        "cloudrun-render-handoff-verify",
         "cloudrun-render-values-audit",
         "cloudrun-render-evidence-verify",
         "cloudrun-render-manifest",
@@ -116,6 +119,7 @@ function buildRunbook(input: {
       requiredArtifactIds: [
         "cloudrun-release-values-json",
         "cloudrun-render-handoff-json",
+        "cloudrun-render-handoff-verifier-json",
         "cloudrun-render-values-audit-json",
         "cloudrun-render-evidence-packet-json",
         "cloudrun-render-evidence-packet-verifier-json",
@@ -127,6 +131,7 @@ function buildRunbook(input: {
       proofFiles: proofFiles(
         "cloudrun-release-values-json",
         "cloudrun-render-handoff-json",
+        "cloudrun-render-handoff-verifier-json",
         "cloudrun-render-values-audit-json",
         "cloudrun-render-evidence-packet-json",
         "cloudrun-render-evidence-packet-verifier-json",
@@ -136,7 +141,7 @@ function buildRunbook(input: {
         "cloudrun-dry-run-packet-verifier-json"
       ),
       stopCondition:
-        "Stop unless the render-values audit is ready-to-render, the render evidence packet verifier is verified, the rendered verifier status is ready-to-dry-run, and the dry-run packet verifier status is verified with zero digest drift.",
+        "Stop unless the handoff verifier is verified, the render-values audit is ready-to-render, the render evidence packet verifier is verified, the rendered verifier status is ready-to-dry-run, and the dry-run packet verifier status is verified with zero digest drift.",
       redactionCheck:
         "Keep the filled values file, rendered manifest, and command files private; share only redacted audit/verifier status, Secret Manager lookup names, and release id.",
       nextStep: "Run the generated Cloud Run dry-run command from a private operator shell only after the preflight packet is ready-to-dry-run.",
@@ -289,6 +294,21 @@ function buildArtifactManifest(input: {
       ],
       nextAction:
         "Use the handoff packet to assign private value owners, then rerun the strict audit after production values are filled."
+    }),
+    artifact({
+      id: "cloudrun-render-handoff-verifier-json",
+      label: "Cloud Run render handoff verifier",
+      ownerRole: "engineering",
+      status: localVerifierStatus,
+      sourceCommand: verifyCloudRunRenderHandoffCommand,
+      privateStorePath: `${basePath}/cloudrun-render-handoff-verifier.json`,
+      evidenceVaultTarget: "cloud-run-proof",
+      redactionRules: [
+        "Keep local paths and owner notes private until redacted.",
+        "Share only verifier status, digest coverage, stop-condition coverage, and proof-boundary status after human review."
+      ],
+      nextAction:
+        "Verify the handoff immediately after transfer or owner edits; stop before values audit, render, or dry-run if the verifier is not verified."
     }),
     artifact({
       id: "cloudrun-render-values-audit-json",
@@ -615,6 +635,15 @@ function buildCommandSequence(input: {
       false,
       "cloudrun-render-handoff-json",
       "Prefills release id, source commit, commit timestamp, branch, and repository URL from Git, writes the non-strict audit and owner packet, then verifies the packet before private production values are filled."
+    ),
+    command(
+      "cloudrun-render-handoff-verify",
+      "Verify Cloud Run render handoff",
+      verifyCloudRunRenderHandoffCommand,
+      false,
+      false,
+      "cloudrun-render-handoff-verifier-json",
+      "Rechecks the handoff JSON, regenerated Markdown, owner packet verifier path, proof boundary, stop conditions, and secret-shaped text checks after transfer or owner edits."
     ),
     command(
       "cloudrun-render-values-audit",

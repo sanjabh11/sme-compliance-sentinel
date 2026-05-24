@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ interface CloudRunRenderHandoffModule {
     valuesPath: string;
     outDir: string;
     releaseId: string;
+    verifyHandoffPath: string;
     strict: boolean;
   };
   prepareCloudRunRenderHandoff: (options: {
@@ -41,6 +42,20 @@ interface CloudRunRenderHandoffModule {
     stopConditions: string[];
     proofBoundary: string;
   }>;
+  verifyCloudRunRenderHandoff: (path: string) => Promise<{
+    overallStatus: string;
+    handoffPath: string;
+    verificationPath: string;
+    releaseId: string;
+    renderEvidenceVerifierStatus: string;
+    summary: {
+      passed: number;
+      blocked: number;
+    };
+    blockers: string[];
+    proofBoundary: string;
+    stopConditions: string[];
+  }>;
 }
 
 const tempDirs: string[] = [];
@@ -60,12 +75,15 @@ describe("Cloud Run render handoff", () => {
         "--out-dir=/secure/local/deployment",
         "--release-id",
         "release-20260524-0123456",
+        "--verify-handoff",
+        "/secure/local/cloudrun-render-handoff.json",
         "--strict"
       ])
     ).toMatchObject({
       valuesPath: "/secure/local/cloudrun-render-values.json",
       outDir: "/secure/local/deployment",
       releaseId: "release-20260524-0123456",
+      verifyHandoffPath: "/secure/local/cloudrun-render-handoff.json",
       strict: true
     });
     expect(parseArgs(["/secure/local/custom-values.json"])).toMatchObject({
@@ -75,7 +93,7 @@ describe("Cloud Run render handoff", () => {
   });
 
   it("writes a release-prefilled values starter and verified render evidence handoff without claiming hosted proof", async () => {
-    const { prepareCloudRunRenderHandoff } = await loadHandoff();
+    const { prepareCloudRunRenderHandoff, verifyCloudRunRenderHandoff } = await loadHandoff();
     const tempDir = await makeTempDir();
     const valuesPath = join(tempDir, "cloudrun-render-values.json");
     const outDir = join(tempDir, "deployment");
@@ -113,6 +131,7 @@ describe("Cloud Run render handoff", () => {
     expect(handoff.stopConditions.join(" ")).toContain("Do not run strict render");
     expect(handoff.proofBoundary).toContain("does not deploy Cloud Run");
     expect(handoff.proofBoundary).toContain("prove revenue");
+    expect(handoff.proofBoundary).toContain("guarantee judging outcome");
     expect(handoffMarkdown).toContain("Cloud Run Render Handoff");
     expect(handoffMarkdown).toContain("ready-for-private-values");
     expect(handoffJson).toMatchObject({
@@ -122,6 +141,43 @@ describe("Cloud Run render handoff", () => {
     expect(JSON.stringify(handoff)).not.toContain("AIza");
     expect(JSON.stringify(handoff)).not.toContain("GOCSPX");
     expect(JSON.stringify(handoff)).not.toContain("private-admin-token");
+
+    const verified = await verifyCloudRunRenderHandoff(handoff.handoffPath);
+    const verifierJson = JSON.parse(await readFile(verified.verificationPath, "utf8")) as typeof verified;
+
+    expect(verified).toMatchObject({
+      overallStatus: "verified",
+      releaseId: "release-20260524-0123456",
+      renderEvidenceVerifierStatus: "verified"
+    });
+    expect(verified.summary.blocked).toBe(0);
+    expect(verified.proofBoundary).toContain("does not deploy Cloud Run");
+    expect(verified.stopConditions.join(" ")).toContain("Do not run Cloud Run dry-run");
+    expect(verifierJson).toMatchObject({ overallStatus: "verified" });
+  });
+
+  it("verifies handoff integrity and blocks tampered Markdown or claim boundaries", async () => {
+    const { prepareCloudRunRenderHandoff, verifyCloudRunRenderHandoff } = await loadHandoff();
+    const tempDir = await makeTempDir();
+    const clean = await prepareCloudRunRenderHandoff({
+      valuesPath: join(tempDir, "values.json"),
+      outDir: join(tempDir, "deployment"),
+      gitRunner: makeFakeGitRunner()
+    });
+
+    await writeFile(clean.handoffMarkdownPath, "# stale handoff\n", "utf8");
+    const tamperedMarkdown = await verifyCloudRunRenderHandoff(clean.handoffPath);
+
+    expect(tamperedMarkdown.overallStatus).toBe("blocked");
+    expect(tamperedMarkdown.blockers.join(" ")).toContain("handoff-markdown-regenerated");
+
+    const handoffJson = JSON.parse(await readFile(clean.handoffPath, "utf8")) as Record<string, unknown>;
+    handoffJson.proofBoundary = "Ready for production.";
+    await writeFile(clean.handoffPath, `${JSON.stringify(handoffJson, null, 2)}\n`, "utf8");
+    const tamperedBoundary = await verifyCloudRunRenderHandoff(clean.handoffPath);
+
+    expect(tamperedBoundary.overallStatus).toBe("blocked");
+    expect(tamperedBoundary.blockers.join(" ")).toContain("handoff-proof-boundary");
   });
 
   it("blocks mismatched release ids before private handoff proceeds", async () => {

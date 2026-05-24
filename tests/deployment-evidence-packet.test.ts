@@ -32,6 +32,7 @@ describe("deployment evidence packet", () => {
         "local-quality-gates-log",
         "cloudrun-release-values-json",
         "cloudrun-render-handoff-json",
+        "cloudrun-render-handoff-verifier-json",
         "cloudrun-render-values-audit-json",
         "cloudrun-render-evidence-packet-json",
         "cloudrun-render-evidence-packet-verifier-json",
@@ -59,6 +60,7 @@ describe("deployment evidence packet", () => {
     expect(packet.commandSequence.map((command) => command.id)).toEqual(
       expect.arrayContaining([
         "cloudrun-release-values",
+        "cloudrun-render-handoff-verify",
         "cloudrun-render-values-audit",
         "cloudrun-render-evidence-verify",
         "cloudrun-render-manifest",
@@ -85,7 +87,16 @@ describe("deployment evidence packet", () => {
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-release-values")?.expectedArtifactId).toBe(
       "cloudrun-render-handoff-json"
     );
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-render-handoff-verify")?.command).toContain(
+      "npm run verify:cloudrun-render-handoff"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-render-handoff-verify")?.expectedArtifactId).toBe(
+      "cloudrun-render-handoff-verifier-json"
+    );
     expect(packet.commandSequence.findIndex((command) => command.id === "cloudrun-release-values")).toBeLessThan(
+      packet.commandSequence.findIndex((command) => command.id === "cloudrun-render-handoff-verify")
+    );
+    expect(packet.commandSequence.findIndex((command) => command.id === "cloudrun-render-handoff-verify")).toBeLessThan(
       packet.commandSequence.findIndex((command) => command.id === "cloudrun-render-values-audit")
     );
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-render-values-audit")?.command).toContain(
@@ -198,6 +209,7 @@ describe("deployment evidence packet", () => {
       requiredArtifactIds: [
         "cloudrun-release-values-json",
         "cloudrun-render-handoff-json",
+        "cloudrun-render-handoff-verifier-json",
         "cloudrun-render-values-audit-json",
         "cloudrun-render-evidence-packet-json",
         "cloudrun-render-evidence-packet-verifier-json",
@@ -211,6 +223,7 @@ describe("deployment evidence packet", () => {
       expect.arrayContaining([
         "/secure/local/cloudrun-render-values.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-handoff.json",
+        "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-handoff-verifier.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-values-audit.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-evidence-packet.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-evidence-packet-verifier.json",
