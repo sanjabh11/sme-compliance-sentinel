@@ -173,6 +173,22 @@ type ManualManifestVerificationReport = {
   stopConditions: string[];
 };
 
+type LocalBundleVerificationReport = {
+  overallStatus: "verified" | "blocked";
+  generatedFrom: string;
+  manifestPath: string;
+  digestAlgorithm: string;
+  summary: {
+    passed: number;
+    blocked: number;
+    fileCount: number;
+  };
+  checks: Array<{ id: string; status: "passed" | "blocked"; evidence: string }>;
+  blockers: string[];
+  proofBoundary: string;
+  stopConditions: string[];
+};
+
 const localSubmissionEnv = {
   ...process.env,
   XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED: "false",
@@ -453,6 +469,47 @@ describe("local XPRIZE submission verifier", () => {
     }
   });
 
+  it("verifies local-submission bundle integrity and blocks tampered handoff files", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-bundle-verify-"));
+    const bundleManifestPath = join(tempDir, "local-submission-bundle-manifest.json");
+
+    try {
+      const report = runVerifier(["--bundle-dir", tempDir]);
+      const verification = runLocalBundleVerifier(bundleManifestPath);
+
+      expect(report.localSubmissionBundle?.bundleManifestPath).toBe(bundleManifestPath);
+      expect(verification).toMatchObject({
+        overallStatus: "verified",
+        generatedFrom: "verify-local-submission --verify-bundle",
+        manifestPath: bundleManifestPath,
+        digestAlgorithm: "sha256"
+      });
+      expect(verification.summary.fileCount).toBeGreaterThanOrEqual(7);
+      expect(verification.summary.blocked).toBe(0);
+      expect(verification.checks.map((check) => check.id)).toEqual(
+        expect.arrayContaining([
+          "bundle-readiness-status-match",
+          "bundle-readiness-proof-boundary",
+          "bundle-manual-manifest-verifies",
+          "bundle-stored-manual-verification-status"
+        ])
+      );
+      expect(verification.proofBoundary).toContain("does not prove hosted Cloud Run");
+      expect(verification.proofBoundary).toContain("live Gemini");
+      expect(verification.stopConditions.join(" ")).toContain("Do not set XPRIZE");
+      expect(verification.stopConditions.join(" ")).toContain("Regenerate the local-submission bundle");
+
+      writeFileSync(join(tempDir, "local-submission-summary.md"), `${readFileSync(join(tempDir, "local-submission-summary.md"), "utf8")}\nTampered after bundle manifest.\n`);
+      const tampered = runLocalBundleVerifier(bundleManifestPath);
+
+      expect(tampered.overallStatus).toBe("blocked");
+      expect(tampered.blockers.join(" ")).toContain("bundle-file-2-sha256");
+      expect(() => runLocalBundleVerifier(bundleManifestPath, ["--strict"])).toThrow();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("verifies manual-intervention packet manifest integrity and blocks tampered packets", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-manual-manifest-"));
     const manifestPath = join(tempDir, "manual-intervention-manifest.json");
@@ -592,4 +649,15 @@ function runManualManifestVerifier(manifestPath: string, args: string[] = []) {
   });
 
   return JSON.parse(output) as ManualManifestVerificationReport;
+}
+
+function runLocalBundleVerifier(bundleManifestPath: string, args: string[] = []) {
+  const output = execFileSync(process.execPath, ["scripts/verify-local-submission.mjs", "--verify-bundle", bundleManifestPath, ...args], {
+    cwd: process.cwd(),
+    env: localSubmissionEnv,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  return JSON.parse(output) as LocalBundleVerificationReport;
 }

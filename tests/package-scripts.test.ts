@@ -22,6 +22,7 @@ describe("package verification scripts", () => {
     expect(packageJson.scripts["prepare:submission-summary"]).toBe("node scripts/verify-local-submission.mjs --markdown-out");
     expect(packageJson.scripts["prepare:manual-intervention"]).toBe("node scripts/verify-local-submission.mjs --manual-packets-dir");
     expect(packageJson.scripts["verify:manual-intervention"]).toBe("node scripts/verify-local-submission.mjs --verify-manifest");
+    expect(packageJson.scripts["verify:local-submission-bundle"]).toBe("node scripts/verify-local-submission.mjs --verify-bundle");
     expect(packageJson.scripts["prepare:xprize-attestation"]).toBe("node scripts/prepare-xprize-attestation-packet.mjs");
   });
 

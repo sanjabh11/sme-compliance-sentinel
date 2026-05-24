@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
 const prohibitedCliPatterns = [
@@ -81,6 +81,7 @@ function parseArgs(argv) {
     outPath: "",
     manualPacketsDir: "",
     verifyManifestPath: "",
+    verifyBundlePath: "",
     markdownOutPath: "",
     bundleDir: ""
   };
@@ -164,6 +165,20 @@ function parseArgs(argv) {
 
     if (arg.startsWith("--verify-manifest=")) {
       args.verifyManifestPath = arg.slice("--verify-manifest=".length);
+      continue;
+    }
+
+    if (arg === "--verify-bundle") {
+      args.verifyBundlePath = argv[index + 1] ?? "";
+      if (!args.verifyBundlePath) {
+        throw new Error("--verify-bundle requires a non-secret bundle manifest path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--verify-bundle=")) {
+      args.verifyBundlePath = arg.slice("--verify-bundle=".length);
       continue;
     }
 
@@ -968,6 +983,7 @@ function writeManualInterventionPackets(path, report) {
     return {
       owner: packet.owner,
       path: filePath,
+      relativePath: relative(absoluteDir, filePath),
       actionCount: packet.openActionCount,
       sha256: sha256Hex(markdown),
       bytes: Buffer.byteLength(markdown, "utf8")
@@ -979,6 +995,7 @@ function writeManualInterventionPackets(path, report) {
   const indexFile = {
     owner: "index",
     path: indexPath,
+    relativePath: relative(absoluteDir, indexPath),
     actionCount: report.manualInterventionPlan.summary.total,
     sha256: sha256Hex(indexMarkdown),
     bytes: Buffer.byteLength(indexMarkdown, "utf8")
@@ -1016,12 +1033,12 @@ function writeLocalSubmissionBundle(path, report) {
   writeJson(manifestVerificationPath, manifestVerification);
 
   const files = [
-    bundleFileRecord("local-submission-readiness", reportPath),
-    bundleFileRecord("local-submission-summary", markdownSummaryPath),
-    bundleFileRecord("manual-intervention-index", packetFiles.indexPath),
-    ...packetFiles.ownerPacketPaths.map((file) => bundleFileRecord(`manual-packet:${file.owner}`, file.path)),
-    bundleFileRecord("manual-intervention-manifest", packetFiles.manifestPath),
-    bundleFileRecord("manual-intervention-manifest-verification", manifestVerificationPath)
+    bundleFileRecord("local-submission-readiness", reportPath, absoluteDir),
+    bundleFileRecord("local-submission-summary", markdownSummaryPath, absoluteDir),
+    bundleFileRecord("manual-intervention-index", packetFiles.indexPath, absoluteDir),
+    ...packetFiles.ownerPacketPaths.map((file) => bundleFileRecord(`manual-packet:${file.owner}`, file.path, absoluteDir)),
+    bundleFileRecord("manual-intervention-manifest", packetFiles.manifestPath, absoluteDir),
+    bundleFileRecord("manual-intervention-manifest-verification", manifestVerificationPath, absoluteDir)
   ];
   const bundleManifest = {
     generatedAt: report.generatedAt,
@@ -1070,13 +1087,14 @@ function writeLocalSubmissionBundle(path, report) {
   };
 }
 
-function bundleFileRecord(id, path) {
+function bundleFileRecord(id, path, baseDir) {
   const content = readFileSync(path, "utf8");
   const stat = statSync(path);
 
   return {
     id,
     path,
+    relativePath: baseDir ? relative(baseDir, path) : undefined,
     sha256: sha256Hex(content),
     bytes: stat.size
   };
@@ -1147,7 +1165,7 @@ function verifyManualInterventionManifest(path) {
     );
 
     for (const [index, file] of files.entries()) {
-      checks.push(...verifyManifestFileEntry(file, index));
+      checks.push(...verifyManifestFileEntry(file, index, dirname(manifestPath)));
     }
   }
 
@@ -1176,10 +1194,328 @@ function verifyManualInterventionManifest(path) {
   };
 }
 
-function verifyManifestFileEntry(file, index) {
+function verifyLocalSubmissionBundleManifest(path) {
+  const manifestPath = resolve(path);
+  const manifestDir = dirname(manifestPath);
+  const requiredIds = [
+    "local-submission-readiness",
+    "local-submission-summary",
+    "manual-intervention-index",
+    "manual-intervention-manifest",
+    "manual-intervention-manifest-verification"
+  ];
+  const checks = [];
+  let manifest;
+
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    checks.push(verificationCheck("bundle-manifest-json", "passed", `Bundle manifest parsed from ${manifestPath}.`));
+  } catch (error) {
+    checks.push(
+      verificationCheck(
+        "bundle-manifest-json",
+        "blocked",
+        `Bundle manifest could not be parsed from ${manifestPath}: ${error instanceof Error ? error.message : String(error)}`
+      )
+    );
+  }
+
+  if (manifest) {
+    checks.push(
+      verificationCheck(
+        "bundle-digest-algorithm",
+        manifest.digestAlgorithm === "sha256" ? "passed" : "blocked",
+        `digestAlgorithm=${String(manifest.digestAlgorithm ?? "missing")}.`
+      )
+    );
+    checks.push(
+      verificationCheck(
+        "bundle-status",
+        manifest.status === "ready-for-private-owner-review" || manifest.status === "blocked" ? "passed" : "blocked",
+        `status=${String(manifest.status ?? "missing")}.`
+      )
+    );
+    checks.push(
+      verificationCheck(
+        "bundle-proof-boundary",
+        bundleProofBoundaryIsExplicit(manifest.proofBoundary) ? "passed" : "blocked",
+        "Bundle manifest must state that local artifacts are not hosted Cloud Run, live Gemini, Workspace, revenue, human-attestation, organizer, or judging proof."
+      )
+    );
+    checks.push(
+      verificationCheck(
+        "bundle-stop-conditions",
+        Array.isArray(manifest.stopConditions) &&
+          manifest.stopConditions.join(" ").includes("Do not set XPRIZE") &&
+          manifest.stopConditions.join(" ").includes("Do not upload raw bundle files publicly")
+          ? "passed"
+          : "blocked",
+        "Bundle stop conditions must block proof-flag changes and public raw-bundle sharing."
+      )
+    );
+    checks.push(
+      verificationCheck(
+        "bundle-private-handling",
+        Array.isArray(manifest.privateHandling) && manifest.privateHandling.join(" ").includes("/secure/local") ? "passed" : "blocked",
+        "Bundle private-handling guidance must keep generated artifacts under private or ignored paths."
+      )
+    );
+
+    const files = Array.isArray(manifest.files) ? manifest.files : [];
+    const fileIds = files.map((file) => String(file?.id ?? ""));
+    checks.push(
+      verificationCheck(
+        "bundle-file-register",
+        files.length >= requiredIds.length && manifest.fileCount === files.length ? "passed" : "blocked",
+        `${files.length} file entry/entries found; manifest fileCount=${String(manifest.fileCount ?? "missing")}; expected at least ${requiredIds.length}.`
+      )
+    );
+
+    for (const requiredId of requiredIds) {
+      checks.push(
+        verificationCheck(
+          `bundle-required-${requiredId}`,
+          fileIds.includes(requiredId) ? "passed" : "blocked",
+          fileIds.includes(requiredId) ? `${requiredId} is present.` : `${requiredId} is missing from bundle manifest.`
+        )
+      );
+    }
+
+    for (const [index, file] of files.entries()) {
+      checks.push(...verifyBundleFileEntry(file, index, manifestDir));
+    }
+
+    const readinessEntry = files.find((file) => file?.id === "local-submission-readiness");
+    const readiness = readBundleJsonEntry(readinessEntry, manifestDir);
+    checks.push(
+      verificationCheck(
+        "bundle-readiness-json",
+        readiness.ok ? "passed" : "blocked",
+        readiness.ok ? "Readiness JSON parsed from bundle." : readiness.error
+      )
+    );
+
+    if (readiness.value) {
+      checks.push(
+        verificationCheck(
+          "bundle-readiness-status-match",
+          readiness.value.overallStatus === manifest.localSubmissionStatus ? "passed" : "blocked",
+          `readiness overallStatus=${String(readiness.value.overallStatus ?? "missing")}; bundle localSubmissionStatus=${String(manifest.localSubmissionStatus ?? "missing")}.`
+        )
+      );
+      checks.push(
+        verificationCheck(
+          "bundle-readiness-proof-boundary",
+          Array.isArray(readiness.value.stopConditions) &&
+            readiness.value.stopConditions.join(" ").includes("does not deploy Cloud Run") &&
+            readiness.value.stopConditions.join(" ").includes("does not prove live Gemini API usage") &&
+            String(readiness.value.disclaimer ?? "").includes("not legal advice")
+            ? "passed"
+            : "blocked",
+          "Readiness report must preserve local-only, no-legal-advice, no-hosted-proof boundaries."
+        )
+      );
+    }
+
+    const manualManifestEntry = files.find((file) => file?.id === "manual-intervention-manifest");
+    const manualManifestPath = resolveBundleEntryPath(manualManifestEntry, manifestDir).path;
+    const manualManifestVerification = manualManifestPath ? verifyManualInterventionManifest(manualManifestPath) : undefined;
+    checks.push(
+      verificationCheck(
+        "bundle-manual-manifest-verifies",
+        manualManifestVerification?.overallStatus === "verified" ? "passed" : "blocked",
+        manualManifestVerification
+          ? `manual-intervention manifest status=${manualManifestVerification.overallStatus}.`
+          : "manual-intervention manifest path is missing."
+      )
+    );
+
+    const storedManualVerificationEntry = files.find((file) => file?.id === "manual-intervention-manifest-verification");
+    const storedManualVerification = readBundleJsonEntry(storedManualVerificationEntry, manifestDir);
+    checks.push(
+      verificationCheck(
+        "bundle-stored-manual-verification-json",
+        storedManualVerification.ok ? "passed" : "blocked",
+        storedManualVerification.ok ? "Stored manual-intervention verification JSON parsed from bundle." : storedManualVerification.error
+      )
+    );
+
+    if (storedManualVerification.value) {
+      checks.push(
+        verificationCheck(
+          "bundle-stored-manual-verification-status",
+          storedManualVerification.value.overallStatus === "verified" ? "passed" : "blocked",
+          `stored manual-intervention verification status=${String(storedManualVerification.value.overallStatus ?? "missing")}.`
+        )
+      );
+    }
+  }
+
+  const blockers = checks.filter((check) => check.status === "blocked");
+
+  return {
+    generatedAt: new Date().toISOString(),
+    generatedFrom: "verify-local-submission --verify-bundle",
+    overallStatus: blockers.length ? "blocked" : "verified",
+    manifestPath,
+    digestAlgorithm: manifest?.digestAlgorithm ?? "unknown",
+    summary: {
+      passed: checks.filter((check) => check.status === "passed").length,
+      blocked: blockers.length,
+      fileCount: Array.isArray(manifest?.files) ? manifest.files.length : 0
+    },
+    checks,
+    blockers: blockers.map((check) => `${check.id}: ${check.evidence}`),
+    proofBoundary:
+      "This verifies private local-submission bundle integrity only. It does not prove hosted Cloud Run, live Gemini, Workspace OAuth, revenue, active users, judge access, legal/IP review, organizer approval, or human attestation.",
+    stopConditions: [
+      "Do not set XPRIZE, hosted, revenue, judge-access, Gemini, Cloud Run, Workspace, or human-attestation flags from this bundle alone.",
+      "Regenerate the local-submission bundle and rerun this verifier after any owner packet, summary, readiness, or manifest edit.",
+      "Keep bundle files private or ignored until a human owner completes redaction review."
+    ]
+  };
+}
+
+function bundleProofBoundaryIsExplicit(value) {
+  const text = String(value ?? "");
+
+  return (
+    text.includes("not hosted Cloud Run proof") &&
+    text.includes("live Gemini proof") &&
+    text.includes("Workspace proof") &&
+    text.includes("revenue proof") &&
+    text.includes("human attestation") &&
+    text.includes("organizer approval") &&
+    text.includes("judging evidence")
+  );
+}
+
+function verifyBundleFileEntry(file, index, bundleDir) {
+  const idPrefix = `bundle-file-${index + 1}`;
+  const checks = [];
+  const id = typeof file?.id === "string" ? file.id : "";
+  const expectedSha256 = typeof file?.sha256 === "string" ? file.sha256 : "";
+  const expectedBytes = Number(file?.bytes ?? 0);
+  const resolved = resolveBundleEntryPath(file, bundleDir);
+
+  checks.push(
+    verificationCheck(
+      `${idPrefix}-metadata`,
+      id && resolved.path && /^[a-f0-9]{64}$/u.test(expectedSha256) && Number.isInteger(expectedBytes) && expectedBytes > 0
+        ? "passed"
+        : "blocked",
+      `id=${id || "missing"}; path=${resolved.evidence}; sha256=${expectedSha256 || "missing"}; bytes=${expectedBytes || "missing"}.`
+    )
+  );
+
+  if (resolved.status === "blocked") {
+    checks.push(verificationCheck(`${idPrefix}-path-boundary`, "blocked", resolved.evidence));
+    return checks;
+  }
+
+  let content = "";
+  let stat;
+
+  try {
+    content = readFileSync(resolved.path, "utf8");
+    stat = statSync(resolved.path);
+    checks.push(verificationCheck(`${idPrefix}-exists`, "passed", `${resolved.path} is readable.`));
+  } catch (error) {
+    checks.push(
+      verificationCheck(`${idPrefix}-exists`, "blocked", `${resolved.path} is not readable: ${error instanceof Error ? error.message : String(error)}.`)
+    );
+    return checks;
+  }
+
+  const actualSha256 = sha256Hex(content);
+  checks.push(
+    verificationCheck(
+      `${idPrefix}-sha256`,
+      actualSha256 === expectedSha256 ? "passed" : "blocked",
+      `id=${id}; expected=${expectedSha256}; actual=${actualSha256}.`
+    )
+  );
+  checks.push(
+    verificationCheck(
+      `${idPrefix}-bytes`,
+      stat.size === expectedBytes ? "passed" : "blocked",
+      `id=${id}; expected=${expectedBytes}; actual=${stat.size}.`
+    )
+  );
+  checks.push(
+    verificationCheck(
+      `${idPrefix}-secret-shape`,
+      prohibitedPacketContentPatterns.some((pattern) => pattern.test(content)) ? "blocked" : "passed",
+      `${resolved.path} ${prohibitedPacketContentPatterns.some((pattern) => pattern.test(content)) ? "contains" : "does not contain"} obvious secret-shaped bundle text.`
+    )
+  );
+
+  return checks;
+}
+
+function readBundleJsonEntry(file, bundleDir) {
+  const resolved = resolveBundleEntryPath(file, bundleDir);
+
+  if (!resolved.path || resolved.status === "blocked") {
+    return { ok: false, error: resolved.evidence };
+  }
+
+  try {
+    return { ok: true, value: JSON.parse(readFileSync(resolved.path, "utf8")) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: `${resolved.path} could not be parsed as JSON: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+function resolveBundleEntryPath(file, bundleDir) {
+  const relativePath = typeof file?.relativePath === "string" ? file.relativePath : "";
+
+  if (relativePath) {
+    const candidate = resolve(bundleDir, relativePath);
+
+    if (!pathIsInside(bundleDir, candidate)) {
+      return {
+        status: "blocked",
+        path: candidate,
+        evidence: `relativePath=${relativePath} escapes bundle directory ${bundleDir}.`
+      };
+    }
+
+    return {
+      status: "passed",
+      path: candidate,
+      evidence: `relativePath=${relativePath}`
+    };
+  }
+
+  const rawPath = typeof file?.path === "string" ? file.path : "";
+
+  if (!rawPath) {
+    return { status: "blocked", path: "", evidence: "missing path and relativePath" };
+  }
+
+  return {
+    status: "passed",
+    path: isAbsolute(rawPath) ? rawPath : resolve(bundleDir, rawPath),
+    evidence: rawPath
+  };
+}
+
+function pathIsInside(baseDir, candidate) {
+  const relativePath = relative(baseDir, candidate);
+
+  return relativePath !== "" && !relativePath.startsWith("..") && !isAbsolute(relativePath);
+}
+
+function verifyManifestFileEntry(file, index, manifestDir = "") {
   const idPrefix = `file-${index + 1}`;
   const checks = [];
-  const path = typeof file?.path === "string" ? file.path : "";
+  const rawPath = typeof file?.path === "string" ? file.path : "";
+  const relativePath = typeof file?.relativePath === "string" ? file.relativePath : "";
+  const path = relativePath && manifestDir ? resolve(manifestDir, relativePath) : rawPath;
   const expectedSha256 = typeof file?.sha256 === "string" ? file.sha256 : "";
   const expectedBytes = Number(file?.bytes ?? 0);
 
@@ -1192,6 +1528,11 @@ function verifyManifestFileEntry(file, index) {
   );
 
   if (!path) {
+    return checks;
+  }
+
+  if (relativePath && manifestDir && !pathIsInside(manifestDir, path)) {
+    checks.push(verificationCheck(`${idPrefix}-path-boundary`, "blocked", `relativePath=${relativePath} escapes manifest directory ${manifestDir}.`));
     return checks;
   }
 
@@ -1451,7 +1792,14 @@ function slugForOwner(owner) {
 try {
   const args = parseArgs(process.argv.slice(2));
 
-  if (args.verifyManifestPath) {
+  if (args.verifyBundlePath) {
+    const verificationReport = verifyLocalSubmissionBundleManifest(args.verifyBundlePath);
+    console.log(JSON.stringify(verificationReport, null, 2));
+
+    if (args.strict && verificationReport.overallStatus !== "verified") {
+      process.exitCode = 1;
+    }
+  } else if (args.verifyManifestPath) {
     const verificationReport = verifyManualInterventionManifest(args.verifyManifestPath);
     console.log(JSON.stringify(verificationReport, null, 2));
 
