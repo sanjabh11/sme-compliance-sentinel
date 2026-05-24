@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const packageJson = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as {
   scripts: Record<string, string>;
 };
+const runVitestScript = readFileSync(join(process.cwd(), "scripts/run-vitest.mjs"), "utf8");
 
 describe("package verification scripts", () => {
   it("keeps standard verification commands on stable local runner paths", () => {
@@ -18,5 +19,11 @@ describe("package verification scripts", () => {
     expect(packageJson.scripts["verify:judge-access"]).toBe("node scripts/verify-judge-access-pack.mjs");
     expect(packageJson.scripts["verify:business-evidence"]).toBe("node scripts/verify-business-evidence.mjs");
     expect(packageJson.scripts["prepare:xprize-attestation"]).toBe("node scripts/prepare-xprize-attestation-packet.mjs");
+  });
+
+  it("keeps Vitest temp files in an ignored repo-local directory", () => {
+    expect(runVitestScript).toContain('join(process.cwd(), ".tmp", "vitest")');
+    expect(runVitestScript).toContain("process.env.TMPDIR = testTempDir");
+    expect(readFileSync(join(process.cwd(), ".gitignore"), "utf8")).toContain(".tmp/");
   });
 });

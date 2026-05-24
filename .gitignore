@@ -3,6 +3,7 @@ node_modules/
 out/
 coverage/
 dist/
+.tmp/
 artifacts/hosted-proof/
 artifacts/deployment/
 *.tsbuildinfo
