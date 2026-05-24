@@ -234,6 +234,7 @@ describe("hosted proof bundle Evidence Vault importer", () => {
     const { importHostedProofBundle } = await loadImporter();
     const missingChecklistBundle = await makeBundle("https://sentinel.example.com", {}, { includeExecutionChecklist: false });
     const blockedChecklistBundle = await makeBundle("https://sentinel.example.com", {}, { executionChecklistStatus: "blocked" });
+    const missingTemplateLineageBundle = await makeBundle("https://sentinel.example.com", {}, { includeResultsTemplateLineage: false });
 
     await expect(
       importHostedProofBundle({
@@ -249,6 +250,13 @@ describe("hosted proof bundle Evidence Vault importer", () => {
         adminToken: "private-admin-token"
       })
     ).rejects.toThrow(/Deployment execution checklist is blocked/u);
+    await expect(
+      importHostedProofBundle({
+        bundleDir: missingTemplateLineageBundle,
+        confirmImport: true,
+        adminToken: "private-admin-token"
+      })
+    ).rejects.toThrow(/command-results template lineage/u);
   });
 
   it("rejects hosted proof import when the execution checklist contains stale release evidence", async () => {
@@ -306,6 +314,8 @@ async function makeBundle(
     proofFlagChecks?: Array<Record<string, unknown>>;
     includeExecutionChecklist?: boolean;
     executionChecklistStatus?: string;
+    includeResultsTemplateLineage?: boolean;
+    resultsTemplateStatus?: string;
   } = {}
 ) {
   const bundleDir = await mkdtemp(join(tmpdir(), "sentinel-import-"));
@@ -315,6 +325,7 @@ async function makeBundle(
   const releaseIntegrityStatus = metadataOverrides.releaseIntegrityStatus ?? "passed";
   const proofFlagStatus = metadataOverrides.proofFlagStatus ?? "passed";
   const executionChecklistStatus = metadataOverrides.executionChecklistStatus ?? "passed";
+  const resultsTemplateStatus = metadataOverrides.resultsTemplateStatus ?? "passed";
   const proofFlagChecks = metadataOverrides.proofFlagChecks ?? [
     {
       envName: "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
@@ -368,6 +379,19 @@ async function makeBundle(
           releaseId,
           sourceUrl: baseUrl,
           overallStatus: executionChecklistStatus,
+          ...(metadataOverrides.includeResultsTemplateLineage === false
+            ? {}
+            : {
+                resultsTemplate: {
+                  status: resultsTemplateStatus,
+                  generatedAt: "2026-05-23T12:00:30.000Z",
+                  releaseId,
+                  sourceUrl: baseUrl,
+                  entryCount: deploymentImportRequiredCommandIds.length,
+                  expectedCommandCount: deploymentImportRequiredCommandIds.length,
+                  blockers: resultsTemplateStatus === "passed" ? [] : ["Results template lineage is blocked."]
+                }
+              }),
           entries: deploymentImportRequiredCommandIds.map((commandId) => ({
             commandId,
             releaseId,

@@ -345,6 +345,9 @@ function assertDeploymentExecutionChecklist(input) {
   const checklistReleaseId = cleanString(checklist.releaseId);
   const sourceUrl = cleanString(checklist.sourceUrl);
   const overallStatus = cleanString(checklist.overallStatus);
+  const resultsTemplate = checklist.resultsTemplate && typeof checklist.resultsTemplate === "object" && !Array.isArray(checklist.resultsTemplate)
+    ? checklist.resultsTemplate
+    : null;
   const entries = Array.isArray(checklist.entries) ? checklist.entries : [];
   const entriesByCommandId = new Map(entries.map((entry) => [cleanString(entry?.commandId), entry]));
 
@@ -358,6 +361,21 @@ function assertDeploymentExecutionChecklist(input) {
 
   if (overallStatus !== "passed") {
     throw new Error(`Deployment execution checklist is ${overallStatus || "missing"}; every required command must pass before hosted proof import.`);
+  }
+
+  if (!resultsTemplate || cleanString(resultsTemplate.status) !== "passed") {
+    throw new Error(
+      "Deployment execution checklist is missing passed command-results template lineage. Run npm run prepare:deployment-execution-checklist -- --write-results-template, fill the private template, then rerun --results --strict before --confirm-import."
+    );
+  }
+
+  if (
+    cleanString(resultsTemplate.releaseId) !== releaseId ||
+    cleanString(resultsTemplate.sourceUrl) !== input.baseUrl ||
+    Number(resultsTemplate.entryCount) !== deploymentImportRequiredCommandIds.length ||
+    Number(resultsTemplate.expectedCommandCount) !== deploymentImportRequiredCommandIds.length
+  ) {
+    throw new Error("Deployment execution checklist command-results template lineage is stale or incomplete for this release.");
   }
 
   const missingEntries = deploymentImportRequiredCommandIds.filter((commandId) => !entriesByCommandId.has(commandId));

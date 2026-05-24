@@ -48,6 +48,14 @@ interface DeploymentExecutionChecklistModule {
       commandSha256: string;
       blockers: string[];
     }>;
+    resultsTemplate: {
+      status: string;
+      releaseId: string;
+      sourceUrl: string;
+      entryCount: number;
+      expectedCommandCount: number;
+      blockers: string[];
+    };
     blockers: string[];
   }>;
 }
@@ -144,29 +152,17 @@ describe("deployment execution checklist", () => {
   });
 
   it("writes a passed checklist from private command results", async () => {
-    const { deploymentImportRequiredCommandIds, prepareDeploymentExecutionChecklist } = await loadChecklist();
+    const {
+      deploymentImportRequiredCommandIds,
+      prepareDeploymentExecutionChecklist,
+      writeDeploymentCommandResultsTemplate
+    } = await loadChecklist();
     const bundleDir = await makeBundle(deploymentImportRequiredCommandIds);
-    const resultsPath = join(bundleDir, "operator-results.json");
-    await writeFile(
-      resultsPath,
-      `${JSON.stringify(
-        {
-          entries: deploymentImportRequiredCommandIds.map((commandId) => ({
-            commandId,
-            status: "passed",
-            releaseId: "release-1",
-            sourceUrl: "https://sentinel.example.com",
-            recordedAt: "2026-05-23T12:00:00.000Z",
-            evidencePath: `gs://sentinel-private/releases/release-1/${commandId}.json`,
-            evidenceSha256: "a".repeat(64),
-            note: "Recorded from private operator transcript."
-          }))
-        },
-        null,
-        2
-      )}\n`,
-      "utf8"
-    );
+    const resultsPath = await writeFilledResultsTemplate({
+      bundleDir,
+      commandIds: deploymentImportRequiredCommandIds,
+      writeDeploymentCommandResultsTemplate
+    });
 
     const checklist = await prepareDeploymentExecutionChecklist({
       bundleDir,
@@ -183,6 +179,14 @@ describe("deployment execution checklist", () => {
       total: deploymentImportRequiredCommandIds.length,
       passed: deploymentImportRequiredCommandIds.length,
       blocked: 0
+    });
+    expect(checklist.resultsTemplate).toMatchObject({
+      status: "passed",
+      releaseId: "release-1",
+      sourceUrl: "https://sentinel.example.com",
+      entryCount: deploymentImportRequiredCommandIds.length,
+      expectedCommandCount: deploymentImportRequiredCommandIds.length,
+      blockers: []
     });
     expect(checklist.entries[0]).toMatchObject({
       commandId: deploymentImportRequiredCommandIds[0],
@@ -213,33 +217,28 @@ describe("deployment execution checklist", () => {
   });
 
   it("blocks stale command results that do not match release, URL, evidence path, or checksum", async () => {
-    const { deploymentImportRequiredCommandIds, prepareDeploymentExecutionChecklist } = await loadChecklist();
+    const {
+      deploymentImportRequiredCommandIds,
+      prepareDeploymentExecutionChecklist,
+      writeDeploymentCommandResultsTemplate
+    } = await loadChecklist();
     const bundleDir = await makeBundle(deploymentImportRequiredCommandIds);
     const [firstCommandId, secondCommandId, thirdCommandId] = deploymentImportRequiredCommandIds;
-    const resultsPath = join(bundleDir, "stale-results.json");
-    await writeFile(
-      resultsPath,
-      `${JSON.stringify(
-        {
-          entries: deploymentImportRequiredCommandIds.map((commandId) => ({
-            commandId,
-            status: "passed",
-            releaseId: commandId === firstCommandId ? "release-old" : "release-1",
-            sourceUrl: commandId === secondCommandId ? "https://old.example.com" : "https://sentinel.example.com",
-            recordedAt: "2026-05-23T12:00:00.000Z",
-            evidencePath:
-              commandId === thirdCommandId
-                ? "gs://sentinel-private/releases/release-old/stale.json"
-                : `gs://sentinel-private/releases/release-1/${commandId}.json`,
-            evidenceSha256: commandId === thirdCommandId ? "not-a-sha" : "a".repeat(64),
-            note: "Recorded from private operator transcript."
-          }))
-        },
-        null,
-        2
-      )}\n`,
-      "utf8"
-    );
+    const resultsPath = await writeFilledResultsTemplate({
+      bundleDir,
+      commandIds: deploymentImportRequiredCommandIds,
+      writeDeploymentCommandResultsTemplate,
+      mutateEntry: (entry) => ({
+        ...entry,
+        releaseId: entry.commandId === firstCommandId ? "release-old" : entry.releaseId,
+        sourceUrl: entry.commandId === secondCommandId ? "https://old.example.com" : entry.sourceUrl,
+        evidencePath:
+          entry.commandId === thirdCommandId
+            ? "gs://sentinel-private/releases/release-old/stale.json"
+            : entry.evidencePath,
+        evidenceSha256: entry.commandId === thirdCommandId ? "not-a-sha" : entry.evidenceSha256
+      })
+    });
 
     const checklist = await prepareDeploymentExecutionChecklist({
       bundleDir,
@@ -254,6 +253,41 @@ describe("deployment execution checklist", () => {
     );
     expect(entriesById[thirdCommandId].blockers.join(" ")).toContain("evidencePath must match expectedArtifactPath");
     expect(entriesById[thirdCommandId].blockers.join(" ")).toContain("valid evidenceSha256");
+  });
+
+  it("blocks passed-looking results that did not come from the generated results template", async () => {
+    const { deploymentImportRequiredCommandIds, prepareDeploymentExecutionChecklist } = await loadChecklist();
+    const bundleDir = await makeBundle(deploymentImportRequiredCommandIds);
+    const resultsPath = join(bundleDir, "handwritten-results.json");
+    await writeFile(
+      resultsPath,
+      `${JSON.stringify(
+        {
+          entries: deploymentImportRequiredCommandIds.map((commandId) => ({
+            commandId,
+            status: "passed",
+            releaseId: "release-1",
+            sourceUrl: "https://sentinel.example.com",
+            recordedAt: "2026-05-23T12:00:00.000Z",
+            evidencePath: `gs://sentinel-private/releases/release-1/${commandId}.json`,
+            evidenceSha256: "a".repeat(64)
+          }))
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+
+    const checklist = await prepareDeploymentExecutionChecklist({
+      bundleDir,
+      resultsPath
+    });
+
+    expect(checklist.overallStatus).toBe("blocked");
+    expect(checklist.resultsTemplate).toMatchObject({ status: "blocked" });
+    expect(checklist.resultsTemplate.blockers.join(" ")).toContain("generatedAt");
+    expect(checklist.resultsTemplate.blockers.join(" ")).toContain("instructions are missing");
   });
 });
 
@@ -293,4 +327,35 @@ async function makeBundle(commandIds: string[]) {
   );
 
   return bundleDir;
+}
+
+async function writeFilledResultsTemplate(input: {
+  bundleDir: string;
+  commandIds: string[];
+  writeDeploymentCommandResultsTemplate: DeploymentExecutionChecklistModule["writeDeploymentCommandResultsTemplate"];
+  mutateEntry?: (entry: Record<string, unknown>) => Record<string, unknown>;
+}) {
+  const resultsPath = join(input.bundleDir, "deployment-command-results.json");
+  await input.writeDeploymentCommandResultsTemplate({
+    bundleDir: input.bundleDir,
+    outputPath: resultsPath
+  });
+  const template = JSON.parse(await readFile(resultsPath, "utf8")) as {
+    entries: Array<Record<string, unknown>>;
+  };
+
+  template.entries = template.entries.map((entry) => {
+    const filledEntry = {
+      ...entry,
+      status: "passed",
+      recordedAt: "2026-05-23T12:00:00.000Z",
+      evidenceSha256: "a".repeat(64),
+      note: "Recorded from private operator transcript."
+    };
+
+    return input.mutateEntry ? input.mutateEntry(filledEntry) : filledEntry;
+  });
+  await writeFile(resultsPath, `${JSON.stringify(template, null, 2)}\n`, "utf8");
+
+  return resultsPath;
 }

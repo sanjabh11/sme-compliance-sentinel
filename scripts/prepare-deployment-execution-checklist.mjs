@@ -167,7 +167,9 @@ export async function prepareDeploymentExecutionChecklist(options) {
   const bundleDir = options.bundleDir || defaultBundleDir;
   const manifest = await readJson(join(bundleDir, "manifest.json"));
   const deploymentPacket = await readJson(join(bundleDir, "deployment-packet.json"));
-  const results = options.resultsPath ? normalizeResults(await readJson(options.resultsPath)) : new Map();
+  const resultsPayload = options.resultsPath ? await readJson(options.resultsPath) : null;
+  const normalizedResults = normalizeResults(resultsPayload);
+  const results = normalizedResults.rowsByCommandId;
   const releaseId = cleanString(manifest.releaseId || deploymentPacket.releaseId);
   const sourceUrl = cleanString(manifest.baseUrl || deploymentPacket.productUrl);
   const commandById = new Map((Array.isArray(deploymentPacket.commandSequence) ? deploymentPacket.commandSequence : []).map((command) => [cleanString(command.id), command]));
@@ -182,7 +184,14 @@ export async function prepareDeploymentExecutionChecklist(options) {
       sourceUrl
     })
   );
-  const blockers = buildBlockers({ releaseId, sourceUrl, entries });
+  const resultsTemplate = buildResultsTemplateLineage({
+    payload: resultsPayload,
+    releaseId,
+    sourceUrl,
+    expectedCommandCount: deploymentImportRequiredCommandIds.length,
+    rowCount: normalizedResults.rowCount
+  });
+  const blockers = buildBlockers({ releaseId, sourceUrl, entries, resultsTemplate });
   const summary = entries.reduce(
     (accumulator, entry) => ({
       total: accumulator.total + 1,
@@ -200,6 +209,7 @@ export async function prepareDeploymentExecutionChecklist(options) {
     bundleDir,
     requiredBeforeHostedProofImport: true,
     summary,
+    resultsTemplate,
     entries,
     blockers,
     nextActions: buildNextActions(blockers),
@@ -285,6 +295,7 @@ function buildBlockers(input) {
   return [
     ...(input.releaseId ? [] : ["Release id is missing from manifest.json or deployment-packet.json."]),
     ...(input.sourceUrl ? [] : ["Source URL is missing from manifest.json or deployment-packet.json."]),
+    ...input.resultsTemplate.blockers,
     ...input.entries.flatMap((entry) => entry.blockers)
   ];
 }
@@ -314,7 +325,41 @@ function normalizeResults(payload) {
         ? payload.results
         : Object.entries(payload ?? {}).map(([commandId, value]) => ({ commandId, ...(value && typeof value === "object" ? value : {}) }));
 
-  return new Map(rows.map((row) => [cleanString(row.commandId), row]).filter(([commandId]) => commandId));
+  return {
+    rowCount: rows.length,
+    rowsByCommandId: new Map(rows.map((row) => [cleanString(row.commandId), row]).filter(([commandId]) => commandId))
+  };
+}
+
+function buildResultsTemplateLineage(input) {
+  const payload = input.payload && typeof input.payload === "object" && !Array.isArray(input.payload) ? input.payload : {};
+  const generatedAt = cleanString(payload.generatedAt);
+  const templateReleaseId = cleanString(payload.releaseId);
+  const templateSourceUrl = cleanString(payload.sourceUrl);
+  const instructions = Array.isArray(payload.instructions) ? payload.instructions.map(cleanString).filter(Boolean) : [];
+  const instructionText = instructions.join(" ");
+  const blockers = [
+    ...(input.payload ? [] : ["Deployment command results template is missing. Run --write-results-template before filling results."]),
+    ...(generatedAt && isIsoTimestamp(generatedAt) ? [] : ["Deployment command results template generatedAt must be an ISO timestamp."]),
+    ...(templateReleaseId === input.releaseId ? [] : [`Deployment command results template releaseId ${templateReleaseId || "missing"} does not match ${input.releaseId || "missing"}.`]),
+    ...(templateSourceUrl === input.sourceUrl ? [] : [`Deployment command results template sourceUrl ${templateSourceUrl || "missing"} does not match ${input.sourceUrl || "missing"}.`]),
+    ...(input.rowCount === input.expectedCommandCount
+      ? []
+      : [`Deployment command results template must contain ${input.expectedCommandCount} command entries; found ${input.rowCount}.`]),
+    ...(instructionText.includes("Change status from pending to passed")
+      ? []
+      : ["Deployment command results template instructions are missing; regenerate with --write-results-template."])
+  ];
+
+  return {
+    status: blockers.length ? "blocked" : "passed",
+    generatedAt,
+    releaseId: templateReleaseId,
+    sourceUrl: templateSourceUrl,
+    entryCount: input.rowCount,
+    expectedCommandCount: input.expectedCommandCount,
+    blockers
+  };
 }
 
 async function readJson(path) {
@@ -343,6 +388,11 @@ function renderMarkdown(checklist) {
     `- Passed: ${checklist.summary.passed}`,
     `- Blocked: ${checklist.summary.blocked}`,
     `- Needs review: ${checklist.summary.needsReview}`,
+    "",
+    "## Results Template",
+    `- Status: ${checklist.resultsTemplate.status}`,
+    `- Generated: ${checklist.resultsTemplate.generatedAt || "missing"}`,
+    `- Entries: ${checklist.resultsTemplate.entryCount}/${checklist.resultsTemplate.expectedCommandCount}`,
     "",
     "## Required Commands",
     ...checklist.entries.map((entry) => `- ${entry.commandId}: ${entry.status}; recordedAt=${entry.recordedAt || "missing"}; evidence=${entry.evidencePath || "missing"}`),
