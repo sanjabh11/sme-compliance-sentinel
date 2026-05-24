@@ -47,6 +47,14 @@ const gates = [
     script: "scripts/verify-cloudrun-deployment.mjs",
     priority: 5,
     summarize: summarizeCloudRunDeployment
+  },
+  {
+    id: "judge-access-readiness",
+    label: "Judge access and testing packet",
+    command: "npm run verify:judge-access",
+    script: "scripts/verify-judge-access-pack.mjs",
+    priority: 5,
+    summarize: summarizeJudgeAccess
   }
 ];
 
@@ -168,7 +176,7 @@ function buildPhasePlan(gateReports) {
       owner: "engineering",
       status: cloudRunGate?.status === "blocked" ? "blocked" : cloudRunReady ? "ready-to-dry-run" : "needs-values",
       currentPhaseRemainingPercent: cloudRunGate?.status === "blocked" ? 100 : cloudRunReady ? 25 : 60,
-      relatedGateIds: ["cloudrun-deployment-template"],
+      relatedGateIds: ["cloudrun-deployment-template", "judge-access-readiness"],
       commands: [
         "npm run write:cloudrun-release-values -- /secure/local/cloudrun-render-values.json",
         "npm run audit:cloudrun-values -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
@@ -193,20 +201,22 @@ function buildPhasePlan(gateReports) {
       owner: "engineering",
       status: "external-required",
       currentPhaseRemainingPercent: 100,
-      relatedGateIds: ["cloudrun-deployment-template"],
+      relatedGateIds: ["cloudrun-deployment-template", "judge-access-readiness"],
       commands: [
         "gcloud run services replace artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml --region $SENTINEL_CLOUD_RUN_REGION --dry-run",
         "gcloud run services replace artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml --region $SENTINEL_CLOUD_RUN_REGION",
         "gcloud run services describe $SENTINEL_CLOUD_RUN_SERVICE_NAME --region $SENTINEL_CLOUD_RUN_REGION --format=json",
         "npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log /secure/local/cloudrun-dry-run.log --deploy-log /secure/local/cloudrun-deploy.log --describe-json /secure/local/cloudrun-describe.json --out-dir artifacts/deployment --strict",
         "npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --strict --include-write-checks",
+        "npm run verify:judge-access -- --out /secure/local/judge-access-readiness.json --strict",
         "npm run collect:hosted-proof -- --url $NEXT_PUBLIC_PRODUCT_URL --release-id $SENTINEL_RELEASE_ID",
         "npm run import:hosted-proof -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --url $NEXT_PUBLIC_PRODUCT_URL --dry-run"
       ],
       evidenceNeeded: [
         "Cloud Run service URL, revision, release id, service account, and redacted deployment transcript",
         "hosted live Gemini API call evidence with provider=gemini-api",
-        "hosted GCP persistence and Workspace OAuth/sync proof"
+        "hosted GCP persistence and Workspace OAuth/sync proof",
+        "judge-access readiness packet with private testing instructions withheld"
       ],
       stopConditions: [
         "Do not set Google Cloud, Gemini, repository, product-running, or AI-native proof flags until hosted artifacts exist.",
@@ -220,7 +230,7 @@ function buildPhasePlan(gateReports) {
       owner: "founder/sales",
       status: "external-required",
       currentPhaseRemainingPercent: 100,
-      relatedGateIds: ["project-provenance", "license-ip-review"],
+      relatedGateIds: ["project-provenance", "license-ip-review", "judge-access-readiness"],
       commands: [
         "GET /api/pilots/consent-packet",
         "GET /api/pilots/conversion-kit",
@@ -380,12 +390,36 @@ function summarizeCloudRunDeployment(report) {
   };
 }
 
+function summarizeJudgeAccess(report) {
+  const status = normalizeStatus(report.overallStatus);
+  const blockers = report.blockers ?? [];
+  const missingChecks = report.accessChecks?.filter((check) => check.status === "missing" || check.status === "blocked").length ?? 0;
+
+  return {
+    rawStatus: report.overallStatus ?? "unknown",
+    status,
+    externalRequired: true,
+    evidence: `Product URL ${report.productUrl ?? "missing"}; repository ${report.repositoryUrl ?? "missing"}; demo ${report.demoVideoUrl ?? "missing"}; ${missingChecks} missing or blocked access check(s).`,
+    blockers,
+    nextActions:
+      report.nextActions?.length > 0
+        ? report.nextActions
+        : ["Run hosted judge-access smoke checks, store private proof, and keep credentials outside source."]
+  };
+}
+
 function normalizeStatus(status) {
-  if (status === "passed" || status === "published") {
+  if (status === "passed" || status === "published" || status === "ready") {
     return "passed";
   }
 
-  if (status === "warning" || status === "ready-to-commit" || status === "template-needs-values" || status === "ready-to-dry-run") {
+  if (
+    status === "warning" ||
+    status === "needs-review" ||
+    status === "ready-to-commit" ||
+    status === "template-needs-values" ||
+    status === "ready-to-dry-run"
+  ) {
     return "warning";
   }
 

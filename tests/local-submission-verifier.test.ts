@@ -62,9 +62,15 @@ describe("local XPRIZE submission verifier", () => {
     expect(report.overallStatus).toBe("blocked");
     expect(report.summary.blocked).toBeGreaterThanOrEqual(1);
     expect(report.summary.warning).toBeGreaterThanOrEqual(2);
-    expect(report.summary.externalRequired).toBeGreaterThanOrEqual(3);
+    expect(report.summary.externalRequired).toBeGreaterThanOrEqual(4);
     expect(Object.keys(gatesById)).toEqual(
-      expect.arrayContaining(["source-release", "project-provenance", "license-ip-review", "cloudrun-deployment-template"])
+      expect.arrayContaining([
+        "source-release",
+        "project-provenance",
+        "license-ip-review",
+        "cloudrun-deployment-template",
+        "judge-access-readiness"
+      ])
     );
     expect(["published", "ready-to-commit"]).toContain(gatesById["source-release"].rawStatus);
     expect(["passed", "warning"]).toContain(gatesById["source-release"].status);
@@ -85,6 +91,12 @@ describe("local XPRIZE submission verifier", () => {
       status: "warning",
       externalRequired: true
     });
+    expect(gatesById["judge-access-readiness"]).toMatchObject({
+      rawStatus: "blocked",
+      status: "blocked",
+      externalRequired: true
+    });
+    expect(gatesById["judge-access-readiness"].evidence).toContain("Product URL");
     expect(report.remainingBlockers.join(" ")).toContain("human-attestation");
     expect(report.nextActions.join(" ")).toContain("XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED");
     expect(report.phasePlan.recommendedNextPhaseId).toBe("human-attestation-review");
@@ -135,7 +147,10 @@ describe("local XPRIZE submission verifier", () => {
       status: "external-required",
       currentPhaseRemainingPercent: 100
     });
+    expect(phasesById["hosted-proof-capture"].commands.join(" ")).toContain("verify:judge-access");
+    expect(phasesById["hosted-proof-capture"].relatedGateIds).toContain("judge-access-readiness");
     expect(phasesById["hosted-proof-capture"].evidenceNeeded.join(" ")).toContain("provider=gemini-api");
+    expect(phasesById["hosted-proof-capture"].evidenceNeeded.join(" ")).toContain("judge-access readiness packet");
     expect(phasesById["business-traction-proof"]).toMatchObject({
       status: "external-required",
       owner: "founder/sales"
