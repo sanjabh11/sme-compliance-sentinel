@@ -87,6 +87,15 @@ interface CloudRunDryRunPreflightModule {
       actualByteLength: number;
       fix: string;
     }>;
+    structuralCheckCount: number;
+    passedStructuralCheckCount: number;
+    failedStructuralCheckCount: number;
+    structuralChecks: Array<{
+      id: string;
+      status: string;
+      evidence: string;
+      fix: string;
+    }>;
     stopConditions: string[];
     nextActions: string[];
   }>;
@@ -257,9 +266,12 @@ describe("Cloud Run dry-run preflight packet", () => {
       packetStatus: "ready-to-dry-run",
       digestCount: 5,
       matchedDigestCount: 5,
-      failedDigestCount: 0
+      failedDigestCount: 0,
+      failedStructuralCheckCount: 0
     });
     expect(verified.digestChecks.every((check) => check.status === "matched")).toBe(true);
+    expect(verified.structuralCheckCount).toBeGreaterThan(10);
+    expect(verified.structuralChecks.every((check) => check.status === "passed")).toBe(true);
     expect(verified.nextActions.join(" ")).toContain("Run the generated dry-run command");
     expect(verified.nextActions.join(" ")).toContain("cloudrun-dry-run-packet-verifier.json");
     expect(verifierJson).toMatchObject({
@@ -291,6 +303,56 @@ describe("Cloud Run dry-run preflight packet", () => {
       status: "blocked",
       failedDigestCount: 1
     });
+  });
+
+  it("blocks tampered operator handoff and weakened proof boundaries before dry-run", async () => {
+    const { prepareCloudRunDryRunPacket, verifyCloudRunDryRunPacket } = await loadPreflight();
+    const tempDir = await makeTempDir();
+    const valuesPath = await writeValues(tempDir, safeRenderValues());
+    const packet = await prepareCloudRunDryRunPacket({
+      valuesPath,
+      outDir: tempDir,
+      releaseId: "release-20260523-001",
+      strict: true
+    });
+    const packetPath = join(packet.outputDirectory, "cloudrun-dry-run-preflight-packet.json");
+    const packetJson = JSON.parse(await readFile(packetPath, "utf8")) as {
+      proofBoundary: string;
+      operatorHandoff: {
+        proofBoundary: string;
+        commandSequence: Array<{
+          id: string;
+          mutatesCloudRun: boolean;
+        }>;
+      };
+    };
+
+    packetJson.proofBoundary = "Ready for production.";
+    packetJson.operatorHandoff.proofBoundary = "Run gcloud and then publish proof.";
+    const deployCommand = packetJson.operatorHandoff.commandSequence.find((command) => command.id === "cloudrun-deploy");
+    if (!deployCommand) {
+      throw new Error("Test setup expected cloudrun-deploy command.");
+    }
+    deployCommand.mutatesCloudRun = false;
+    await writeFile(packetPath, `${JSON.stringify(packetJson, null, 2)}\n`, "utf8");
+
+    const verified = await verifyCloudRunDryRunPacket(packetPath);
+    const blockedChecks = verified.structuralChecks.filter((check) => check.status === "blocked").map((check) => check.id);
+
+    expect(verified).toMatchObject({
+      status: "blocked",
+      readyForDryRun: false,
+      failedDigestCount: 0
+    });
+    expect(blockedChecks).toEqual(
+      expect.arrayContaining([
+        "packet-proof-boundary",
+        "operator-proof-boundary",
+        "operator-cloudrun-deploy-mutates",
+        "packet-markdown-regenerated"
+      ])
+    );
+    expect(verified.stopConditions.join(" ")).toContain("handoff or proof-boundary checks failed");
   });
 
   it("stops before dry-run when render values are still placeholders", async () => {

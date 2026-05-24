@@ -144,8 +144,12 @@ export async function verifyCloudRunDryRunPacket(packetPath) {
   const digestEntries = Array.isArray(packet.evidenceFileDigests) ? packet.evidenceFileDigests : [];
   const digestChecks = await Promise.all(digestEntries.map(verifyDigestEntry));
   const failedChecks = digestChecks.filter((check) => check.status !== "matched");
+  const structuralChecks = await verifyPacketStructure({ packet, packetPath: absolutePacketPath });
+  const failedStructuralChecks = structuralChecks.filter((check) => check.status !== "passed");
   const packetReady = packet.status === "ready-to-dry-run" && packet.readyForDryRun === true;
-  const status = packetReady && digestEntries.length > 0 && failedChecks.length === 0 ? "verified" : "blocked";
+  const status = packetReady && digestEntries.length > 0 && failedChecks.length === 0 && failedStructuralChecks.length === 0
+    ? "verified"
+    : "blocked";
 
   const report = {
     generatedAt: new Date().toISOString(),
@@ -159,11 +163,15 @@ export async function verifyCloudRunDryRunPacket(packetPath) {
     matchedDigestCount: digestChecks.filter((check) => check.status === "matched").length,
     failedDigestCount: failedChecks.length,
     digestChecks,
+    structuralCheckCount: structuralChecks.length,
+    passedStructuralCheckCount: structuralChecks.filter((check) => check.status === "passed").length,
+    failedStructuralCheckCount: failedStructuralChecks.length,
+    structuralChecks,
     dryRunCommand: packet.dryRunCommand ?? "",
-    stopConditions: buildVerificationStopConditions({ packetReady, digestEntries, failedChecks }),
+    stopConditions: buildVerificationStopConditions({ packetReady, digestEntries, failedChecks, failedStructuralChecks }),
     nextActions: buildVerificationNextActions({ status, packet }),
     disclaimer:
-      "This verifies local preflight artifact digests only. It does not run Cloud Run dry-run, deploy Cloud Run, or prove hosted production readiness."
+      "This verifies local preflight artifact digests, operator handoff structure, and proof-boundary language only. It does not run Cloud Run dry-run, deploy Cloud Run, or prove hosted production readiness."
   };
 
   await writeJson(packetVerifierPath, report);
@@ -551,7 +559,135 @@ async function verifyDigestEntry(entry) {
   }
 }
 
-function buildVerificationStopConditions({ packetReady, digestEntries, failedChecks }) {
+async function verifyPacketStructure({ packet, packetPath }) {
+  const releaseId = String(packet.releaseId ?? "");
+  const operatorHandoff = packet.operatorHandoff ?? {};
+  const commandSequence = Array.isArray(operatorHandoff.commandSequence) ? operatorHandoff.commandSequence : [];
+  const commandById = new Map(commandSequence.map((command) => [String(command?.id ?? ""), command]));
+  const markdownPath = packetPath.endsWith(".json")
+    ? `${packetPath.slice(0, -".json".length)}.md`
+    : join(dirname(packetPath), markdownFileName);
+  const expectedPrivateBasePath = `/secure/local/cloudrun/${releaseId || "$SENTINEL_RELEASE_ID"}`;
+  const expectedCommands = [
+    ["cloudrun-dry-run", false],
+    ["cloudrun-deploy", true],
+    ["cloudrun-describe", false],
+    ["collect-cloudrun-deployment", false]
+  ];
+  const checks = [
+    structureCheck("packet-bucket", packet.bucket === "code-controllable", `bucket=${String(packet.bucket ?? "missing")}`),
+    structureCheck(
+      "packet-proof-boundary",
+      includesAll(packet.proofBoundary, [
+        "local render/digest preflight only",
+        "Cloud Run dry-run",
+        "hosted Gemini evidence",
+        "judge access",
+        "users",
+        "revenue remain external proof"
+      ]),
+      String(packet.proofBoundary ?? "missing")
+    ),
+    structureCheck(
+      "operator-proof-boundary",
+      includesAll(operatorHandoff.proofBoundary, ["does not run gcloud", "prove hosted availability", "create business traction evidence"]),
+      String(operatorHandoff.proofBoundary ?? "missing")
+    ),
+    structureCheck(
+      "operator-private-artifact-base",
+      Array.isArray(operatorHandoff.privateArtifactPaths) &&
+        operatorHandoff.privateArtifactPaths.length >= 4 &&
+        operatorHandoff.privateArtifactPaths.every((path) => String(path).startsWith(expectedPrivateBasePath)),
+      `expected base=${expectedPrivateBasePath}`
+    ),
+    structureCheck(
+      "operator-command-order",
+      commandSequence.map((command) => String(command?.id ?? "")).join(",") === expectedCommands.map(([id]) => id).join(","),
+      commandSequence.map((command) => String(command?.id ?? "missing")).join(",") || "missing"
+    ),
+    structureCheck(
+      "operator-stop-conditions",
+      Array.isArray(operatorHandoff.stopConditions) &&
+        operatorHandoff.stopConditions.length > 0 &&
+        operatorHandoff.stopConditions.some((item) => /private operator shell|Do not run gcloud dry-run/iu.test(String(item))),
+      `count=${Array.isArray(operatorHandoff.stopConditions) ? operatorHandoff.stopConditions.length : 0}`
+    ),
+    structureCheck("dry-run-command-contains-dry-run", /--dry-run\b/u.test(String(packet.dryRunCommand ?? "")), String(packet.dryRunCommand ?? "missing")),
+    structureCheck("packet-no-raw-secret-shapes", !containsRawSecretShape(JSON.stringify(packet)), "packet JSON raw secret pattern scan")
+  ];
+
+  for (const [commandId, mutatesCloudRun] of expectedCommands) {
+    const command = commandById.get(commandId) ?? {};
+    checks.push(
+      structureCheck(
+        `operator-${commandId}-mutates`,
+        Boolean(command.mutatesCloudRun) === mutatesCloudRun,
+        `mutatesCloudRun=${String(command.mutatesCloudRun ?? "missing")}`
+      )
+    );
+    checks.push(
+      structureCheck(
+        `operator-${commandId}-artifact`,
+        String(command.expectedPrivateArtifact ?? "").startsWith(expectedPrivateBasePath),
+        String(command.expectedPrivateArtifact ?? "missing")
+      )
+    );
+    checks.push(
+      structureCheck(
+        `operator-${commandId}-stop-condition`,
+        String(command.stopCondition ?? "").trim().length > 20,
+        String(command.stopCondition ?? "missing")
+      )
+    );
+  }
+
+  try {
+    const markdown = await readFile(markdownPath, "utf8");
+    const expectedMarkdown = renderMarkdown(packet);
+    checks.push(
+      structureCheck(
+        "packet-markdown-regenerated",
+        markdown === expectedMarkdown,
+        markdown === expectedMarkdown
+          ? markdownPath
+          : `${markdownPath} differs from regenerated preflight Markdown; rerun prepare:cloudrun-dry-run.`
+      )
+    );
+    checks.push(structureCheck("packet-markdown-no-raw-secret-shapes", !containsRawSecretShape(markdown), `${markdownPath} raw secret pattern scan`));
+  } catch {
+    checks.push(structureCheck("packet-markdown-regenerated", false, `${markdownPath} is missing or unreadable.`));
+  }
+
+  return checks;
+}
+
+function structureCheck(id, passed, evidence) {
+  return {
+    id,
+    status: passed ? "passed" : "blocked",
+    evidence,
+    fix: passed ? "No action." : "Regenerate the Cloud Run dry-run preflight packet and do not run gcloud dry-run until this check passes."
+  };
+}
+
+function includesAll(value, fragments) {
+  const text = String(value ?? "");
+  return fragments.every((fragment) => text.includes(fragment));
+}
+
+function containsRawSecretShape(text) {
+  const secretPatterns = [
+    /\bAIza[0-9A-Za-z_-]{20,}/u,
+    /\bGOCSPX-[0-9A-Za-z_-]{20,}/u,
+    /\bya29\.[0-9A-Za-z._-]+/u,
+    /Bearer\s+(?!\[REDACTED\])[\w.~+/=-]{20,}/iu,
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----/u
+  ];
+
+  return secretPatterns.some((pattern) => pattern.test(text));
+}
+
+function buildVerificationStopConditions({ packetReady, digestEntries, failedChecks, failedStructuralChecks = [] }) {
   if (!packetReady) {
     return ["Do not run Cloud Run dry-run because the packet itself is not ready-to-dry-run."];
   }
@@ -564,6 +700,13 @@ function buildVerificationStopConditions({ packetReady, digestEntries, failedChe
     return [
       "Do not run Cloud Run dry-run because one or more rendered artifact digests changed after preflight.",
       ...failedChecks.slice(0, 5).map((check) => `${check.role}: ${check.fix}`)
+    ];
+  }
+
+  if (failedStructuralChecks.length) {
+    return [
+      "Do not run Cloud Run dry-run because the preflight packet handoff or proof-boundary checks failed.",
+      ...failedStructuralChecks.slice(0, 5).map((check) => `${check.id}: ${check.fix}`)
     ];
   }
 
