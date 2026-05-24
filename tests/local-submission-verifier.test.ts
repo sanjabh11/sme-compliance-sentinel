@@ -73,6 +73,57 @@ type LocalSubmissionReport = {
       evidence: string;
     }>;
   };
+  manualInterventionPlan: {
+    generatedFrom: string;
+    status: "manual-intervention-required" | "no-open-interventions";
+    confidenceBoundary: string;
+    summary: {
+      total: number;
+      byBucket: Record<string, number>;
+      byOwner: Record<string, number>;
+      byStatus: Record<string, number>;
+      highestPriority: number;
+    };
+    nextOwner: string;
+    ownerPackets: Array<{
+      owner: string;
+      openActionCount: number;
+      buckets: Record<string, number>;
+      highestPriority: number;
+      nextAction: string;
+      privateArtifactPaths: string[];
+      rows: Array<{
+        id: string;
+        phaseId: string;
+        bucket: "code-controllable" | "external-proof" | "human-attestation";
+        owner: string;
+        action: string;
+        privateArtifactPaths: string[];
+        proofBoundary: string;
+      }>;
+    }>;
+    actionRows: Array<{
+      id: string;
+      phaseId: string;
+      phaseLabel: string;
+      bucket: "code-controllable" | "external-proof" | "human-attestation";
+      owner: string;
+      priority: number;
+      phaseRatingOutOf5: number;
+      currentPhaseRemainingPercent: number;
+      overallGoalRemainingPercent: number;
+      source: string;
+      status: string;
+      action: string;
+      evidenceNeeded: string;
+      commands: string[];
+      privateArtifactPaths: string[];
+      stopCondition: string;
+      proofBoundary: string;
+    }>;
+    stopConditions: string[];
+    privateHandling: string[];
+  };
   stopConditions: string[];
   sourceUrls: string[];
   disclaimer: string;
@@ -141,6 +192,15 @@ describe("local XPRIZE submission verifier", () => {
     expect(report.phasePlan.recommendedNextPhaseId).toBe("human-attestation-review");
     expect(report.phasePlan.confidenceBoundary).toContain("not a win-probability estimate");
     expect(report.phasePlan.sourceGateStatus).toMatch(/passed|warning/);
+    expect(report.manualInterventionPlan.status).toBe("manual-intervention-required");
+    expect(report.manualInterventionPlan.generatedFrom).toBe("verify-local-submission");
+    expect(report.manualInterventionPlan.confidenceBoundary).toContain("not proof");
+    expect(report.manualInterventionPlan.summary.total).toBeGreaterThan(0);
+    expect(report.manualInterventionPlan.summary.byBucket["human-attestation"]).toBeGreaterThan(0);
+    expect(report.manualInterventionPlan.summary.byBucket["external-proof"]).toBeGreaterThan(0);
+    expect(report.manualInterventionPlan.summary.byOwner["founder/legal"]).toBeGreaterThan(0);
+    expect(report.manualInterventionPlan.summary.highestPriority).toBe(5);
+    expect(report.manualInterventionPlan.nextOwner).not.toBe("none");
     expect(report.phasePlan.phases.map((phase) => phase.id)).toEqual([
       "human-attestation-review",
       "cloudrun-render-dry-run",
@@ -173,6 +233,8 @@ describe("local XPRIZE submission verifier", () => {
       bucket: "external-proof",
       ratingOutOf5: 1
     });
+    expect(report.manualInterventionPlan.stopConditions.join(" ")).toContain("Do not set manual XPRIZE");
+    expect(report.manualInterventionPlan.privateHandling.join(" ")).toContain("/secure/local");
     expect(report.stopConditions.join(" ")).toContain("does not deploy Cloud Run");
     expect(report.stopConditions.join(" ")).toContain("does not prove live Gemini API usage");
     expect(report.disclaimer).toContain("not legal advice");
@@ -225,6 +287,37 @@ describe("local XPRIZE submission verifier", () => {
     expect(phasesById["business-traction-proof"].commands.join(" ")).toContain("verify:business-evidence");
     expect(phasesById["business-traction-proof"].relatedGateIds).toContain("business-evidence-readiness");
     expect(phasesById["business-traction-proof"].stopConditions.join(" ")).toContain("Do not count mock pilots");
+  });
+
+  it("emits owner-routed manual intervention rows with private artifacts and proof boundaries", () => {
+    const report = runVerifier();
+    const rowsByPhase = report.manualInterventionPlan.actionRows.reduce<Record<string, LocalSubmissionReport["manualInterventionPlan"]["actionRows"]>>(
+      (groups, row) => {
+        groups[row.phaseId] = [...(groups[row.phaseId] ?? []), row];
+        return groups;
+      },
+      {}
+    );
+    const ownerPacketsByOwner = Object.fromEntries(report.manualInterventionPlan.ownerPackets.map((packet) => [packet.owner, packet]));
+    const humanRows = rowsByPhase["human-attestation-review"] ?? [];
+    const cloudRunRows = rowsByPhase["cloudrun-render-dry-run"] ?? [];
+    const hostedRows = rowsByPhase["hosted-proof-capture"] ?? [];
+    const businessRows = rowsByPhase["business-traction-proof"] ?? [];
+
+    expect(humanRows.some((row) => row.action.includes("project-created-after-start"))).toBe(true);
+    expect(humanRows.every((row) => row.proofBoundary.includes("human review"))).toBe(true);
+    expect(cloudRunRows.some((row) => row.privateArtifactPaths.includes("/secure/local/cloudrun-render-values.json"))).toBe(true);
+    expect(cloudRunRows.some((row) => row.commands.join(" ").includes("audit:cloudrun-values"))).toBe(true);
+    expect(hostedRows.some((row) => row.action.includes("Cloud Run service URL"))).toBe(true);
+    expect(hostedRows.every((row) => row.proofBoundary.includes("external artifact evidence"))).toBe(true);
+    expect(businessRows.some((row) => row.action.includes("invoice/payment"))).toBe(true);
+    expect(businessRows.some((row) => row.privateArtifactPaths.includes("/secure/local/business-evidence.json"))).toBe(true);
+    expect(ownerPacketsByOwner.engineering.privateArtifactPaths).toEqual(
+      expect.arrayContaining(["/secure/local/cloudrun-render-values.json"])
+    );
+    expect(ownerPacketsByOwner["founder/sales"].rows.some((row) => row.action.includes("invoice"))).toBe(true);
+    expect(JSON.stringify(report.manualInterventionPlan)).not.toContain("Bearer ");
+    expect(JSON.stringify(report.manualInterventionPlan)).not.toContain("password:");
   });
 
   it("emits a phase progress chart with done, pending, ratings, and remaining percentages", () => {

@@ -126,6 +126,7 @@ function buildReport() {
   ];
   const phasePlan = buildPhasePlan(gateReports);
   const phaseProgressChart = buildPhaseProgressChart(phasePlan, gateReports);
+  const manualInterventionPlan = buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReports });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -136,6 +137,7 @@ function buildReport() {
     nextActions,
     phasePlan,
     phaseProgressChart,
+    manualInterventionPlan,
     stopConditions: [
       "This local verifier does not deploy Cloud Run or prove hosted availability.",
       "This local verifier does not prove live Gemini API usage, GCP persistence, Workspace OAuth sync, paid pilots, revenue, or active users.",
@@ -145,6 +147,259 @@ function buildReport() {
     disclaimer:
       "This is an engineering readiness aggregator for the local repository. It is not legal advice, audit assurance, certification evidence, or a guarantee of judging outcome."
   };
+}
+
+function buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReports }) {
+  const gatesById = new Map(gateReports.map((gate) => [gate.id, gate]));
+  const progressByPhaseId = new Map(phaseProgressChart.rows.map((row) => [row.phaseId, row]));
+  const actionRows = phasePlan.phases.flatMap((phase) => {
+    const phaseProgress = progressByPhaseId.get(phase.id);
+    const gateRows = phase.relatedGateIds
+      .map((gateId) => gatesById.get(gateId))
+      .filter(Boolean)
+      .flatMap((gate) => manualRowsForGate({ phase, phaseProgress, gate }));
+    const evidenceRows = phase.evidenceNeeded
+      .filter(() => phase.status !== "passed")
+      .map((evidence, index) =>
+        manualInterventionRow({
+          id: `${phase.id}-evidence-${index + 1}`,
+          phase,
+          phaseProgress,
+          source: "required-evidence",
+          status: phase.bucket === "external-proof" ? "external-required" : "pending",
+          action: evidence,
+          evidenceNeeded: evidence,
+          commands: phase.commands,
+          stopCondition: phase.stopConditions[0] ?? "Stop until the required evidence exists.",
+          privateArtifactPaths: privateArtifactPathsForPhase(phase.id)
+        })
+      );
+
+    return [...gateRows, ...evidenceRows];
+  });
+  const dedupedActionRows = dedupeManualRows(actionRows);
+  const ownerPackets = buildOwnerPackets(dedupedActionRows);
+
+  return {
+    generatedFrom: "verify-local-submission",
+    status: dedupedActionRows.length ? "manual-intervention-required" : "no-open-interventions",
+    confidenceBoundary:
+      "Manual intervention rows are execution instructions, not proof. They do not change any XPRIZE, revenue, hosted, Gemini, Cloud Run, judge-access, or attestation flags.",
+    summary: {
+      total: dedupedActionRows.length,
+      byBucket: countBy(dedupedActionRows.map((row) => row.bucket)),
+      byOwner: countBy(dedupedActionRows.map((row) => row.owner)),
+      byStatus: countBy(dedupedActionRows.map((row) => row.status)),
+      highestPriority: dedupedActionRows.reduce((highest, row) => Math.max(highest, row.priority), 0)
+    },
+    nextOwner: ownerPackets.find((packet) => packet.openActionCount > 0)?.owner ?? "none",
+    ownerPackets,
+    actionRows: dedupedActionRows,
+    stopConditions: [
+      "Do not set manual XPRIZE or business proof flags while the related action row is still pending, blocked, external-required, or needs-review.",
+      "Do not treat generated local packets, templates, seeded data, or mock output as hosted Cloud Run, live Gemini, Workspace, revenue, active-user, or judge-access proof.",
+      "Do not put private render values, invoices, payment exports, judge credentials, OAuth secrets, API keys, customer findings, or raw Workspace content in Git."
+    ],
+    privateHandling: [
+      "Store generated private packets under /secure/local or ignored artifacts paths.",
+      "Share only redacted summaries, status counts, checksums, and public-safe Devpost copy.",
+      "Keep owner signoff notes and source evidence private until a human reviewer approves a redacted judge packet."
+    ]
+  };
+}
+
+function manualRowsForGate({ phase, phaseProgress, gate }) {
+  if (gate.status === "passed") {
+    return [];
+  }
+
+  const blockerRows = gate.blockers.map((blocker, index) =>
+    manualInterventionRow({
+      id: `${phase.id}-${gate.id}-blocker-${index + 1}`,
+      phase,
+      phaseProgress,
+      source: `gate:${gate.id}`,
+      status: gate.status === "blocked" ? "blocked" : "needs-review",
+      action: blocker,
+      evidenceNeeded: gate.evidence,
+      commands: [gate.command],
+      stopCondition: stopConditionForGate(gate),
+      privateArtifactPaths: privateArtifactPathsForGate(gate.id)
+    })
+  );
+  const nextActionRows = gate.nextActions
+    .filter((action) => !gate.blockers.some((blocker) => blocker.includes(action) || action.includes(blocker)))
+    .map((action, index) =>
+      manualInterventionRow({
+        id: `${phase.id}-${gate.id}-next-${index + 1}`,
+        phase,
+        phaseProgress,
+        source: `gate:${gate.id}`,
+        status: gate.externalRequired ? "external-required" : "needs-review",
+        action,
+        evidenceNeeded: gate.evidence,
+        commands: [gate.command],
+        stopCondition: stopConditionForGate(gate),
+        privateArtifactPaths: privateArtifactPathsForGate(gate.id)
+      })
+    );
+
+  return blockerRows.length ? [...blockerRows, ...nextActionRows] : nextActionRows;
+}
+
+function manualInterventionRow(input) {
+  const owner = ownerForManualRow(input.phase, input.action);
+
+  return {
+    id: input.id,
+    phaseId: input.phase.id,
+    phaseLabel: input.phase.label,
+    bucket: input.phase.bucket ?? bucketForPhase(input.phase),
+    owner,
+    priority: input.phase.priority,
+    phaseRatingOutOf5: input.phaseProgress?.ratingOutOf5 ?? 1,
+    currentPhaseRemainingPercent: input.phase.currentPhaseRemainingPercent,
+    overallGoalRemainingPercent: input.phaseProgress?.overallGoalRemainingPercent ?? 0,
+    source: input.source,
+    status: input.status,
+    action: input.action,
+    evidenceNeeded: input.evidenceNeeded,
+    commands: input.commands,
+    privateArtifactPaths: input.privateArtifactPaths,
+    stopCondition: input.stopCondition,
+    proofBoundary: proofBoundaryForBucket(input.phase.bucket ?? bucketForPhase(input.phase))
+  };
+}
+
+function ownerForManualRow(phase, action) {
+  const text = action.toLowerCase();
+
+  if (text.includes("invoice") || text.includes("revenue") || text.includes("payment") || text.includes("paid pilot") || text.includes("customer") || text.includes("testimonial") || text.includes("cac")) {
+    return "founder/sales";
+  }
+
+  if (text.includes("license") || text.includes("ip") || text.includes("eligibility") || text.includes("representative") || text.includes("attestation") || text.includes("testing instruction") || text.includes("judge") || text.includes("demo") || text.includes("evidence response")) {
+    return "founder/legal";
+  }
+
+  if (text.includes("cloud run") || text.includes("gemini") || text.includes("workspace") || text.includes("oauth") || text.includes("repository") || text.includes("source") || text.includes("secret") || text.includes("gcloud") || text.includes("render")) {
+    return "engineering";
+  }
+
+  return phase.owner;
+}
+
+function privateArtifactPathsForGate(gateId) {
+  const pathsByGate = {
+    "project-provenance": ["/secure/local/xprize-attestation/xprize-human-attestation-packet.json"],
+    "license-ip-review": ["/secure/local/xprize-attestation/xprize-human-attestation-packet.json"],
+    "cloudrun-deployment-template": [
+      "/secure/local/cloudrun-render-values.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json"
+    ],
+    "judge-access-readiness": ["/secure/local/judge-access-readiness.json", "artifacts/hosted-proof/$SENTINEL_RELEASE_ID/judge-access-pack.json"],
+    "business-evidence-readiness": ["/secure/local/business-evidence-template.json", "/secure/local/business-evidence.json"]
+  };
+
+  return pathsByGate[gateId] ?? ["/secure/local/local-submission-readiness.json"];
+}
+
+function privateArtifactPathsForPhase(phaseId) {
+  const pathsByPhase = {
+    "human-attestation-review": ["/secure/local/xprize-attestation/xprize-human-attestation-packet.json"],
+    "cloudrun-render-dry-run": [
+      "/secure/local/cloudrun-render-values.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-packet-verifier.json"
+    ],
+    "hosted-proof-capture": [
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-deployment-transcript-packet.json",
+      "artifacts/hosted-proof/$SENTINEL_RELEASE_ID/manifest.json",
+      "artifacts/hosted-proof/$SENTINEL_RELEASE_ID/release-evidence-manifest.json"
+    ],
+    "business-traction-proof": ["/secure/local/business-evidence-template.json", "/secure/local/business-evidence.json"]
+  };
+
+  return pathsByPhase[phaseId] ?? ["/secure/local/local-submission-readiness.json"];
+}
+
+function stopConditionForGate(gate) {
+  if (gate.id === "project-provenance") {
+    return "Stop before setting project-newness or source-completeness flags until a human owner reviews the provenance packet.";
+  }
+
+  if (gate.id === "license-ip-review") {
+    return "Stop before publishing final Devpost/demo copy until license, Google API, OAuth, IP, demo, and screenshot review is complete.";
+  }
+
+  if (gate.id === "cloudrun-deployment-template") {
+    return "Stop before Cloud Run dry-run while placeholders, missing values, Secret Manager mapping gaps, or digest drift remain.";
+  }
+
+  if (gate.id === "judge-access-readiness") {
+    return "Stop before final submission until hosted product URL, judge access, private testing instructions, demo, repository access, and evidence-response owner are verified.";
+  }
+
+  if (gate.id === "business-evidence-readiness") {
+    return "Stop before business model or category-impact claims until private revenue, user, cost, CAC, related-party, and consent artifacts exist.";
+  }
+
+  return "Stop until this gate is passed or explicitly classified as external proof.";
+}
+
+function proofBoundaryForBucket(bucket) {
+  if (bucket === "external-proof") {
+    return "Requires private external artifact evidence; local code, templates, mock data, or seeded output do not prove this item.";
+  }
+
+  if (bucket === "human-attestation") {
+    return "Requires human review and owner signoff; this verifier can prepare packets but cannot approve flags.";
+  }
+
+  return "Code-controllable preparation only; any private values or cloud execution remain operator evidence until collected.";
+}
+
+function buildOwnerPackets(rows) {
+  const owners = unique(rows.map((row) => row.owner)).sort();
+
+  return owners.map((owner) => {
+    const ownerRows = rows
+      .filter((row) => row.owner === owner)
+      .sort((left, right) => right.priority - left.priority || left.phaseId.localeCompare(right.phaseId) || left.id.localeCompare(right.id));
+
+    return {
+      owner,
+      openActionCount: ownerRows.length,
+      buckets: countBy(ownerRows.map((row) => row.bucket)),
+      highestPriority: ownerRows.reduce((highest, row) => Math.max(highest, row.priority), 0),
+      nextAction: ownerRows[0]?.action ?? "No action.",
+      privateArtifactPaths: unique(ownerRows.flatMap((row) => row.privateArtifactPaths)),
+      rows: ownerRows
+    };
+  });
+}
+
+function dedupeManualRows(rows) {
+  const seen = new Set();
+  const deduped = [];
+
+  for (const row of rows) {
+    const key = `${row.phaseId}:${row.owner}:${row.action}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(row);
+    }
+  }
+
+  return deduped;
+}
+
+function countBy(values) {
+  return values.reduce((counts, value) => {
+    counts[value] = (counts[value] ?? 0) + 1;
+    return counts;
+  }, {});
 }
 
 function buildPhaseProgressChart(phasePlan, gateReports) {
