@@ -99,7 +99,7 @@ function buildReport() {
     packages,
     integrations,
     disclosureText: [
-      "Built with Next.js, React, TypeScript, npm, Google Generative AI SDK, and Google Cloud/Workspace APIs.",
+      "Built with Next.js, React, TypeScript, npm, Google GenAI SDK, and Google Cloud/Workspace APIs.",
       "Disclose frameworks, SDKs, APIs, generated boilerplate, and any starter material in the final Devpost submission.",
       "Keep customer private evidence, judge credentials, API keys, raw invoices, and Workspace content out of the repository."
     ],

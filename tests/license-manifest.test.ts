@@ -15,7 +15,7 @@ describe("third-party license manifest", () => {
     expect(manifest.summary.totalPackages).toBeGreaterThan(10);
     expect(manifest.summary.directRuntimeDependencies).toBeGreaterThanOrEqual(5);
     expect(manifest.packages.some((item) => item.name === "next" && item.direct && item.scope === "runtime")).toBe(true);
-    expect(manifest.packages.some((item) => item.name === "@google/generative-ai" && item.direct)).toBe(true);
+    expect(manifest.packages.some((item) => item.name === "@google/genai" && item.direct)).toBe(true);
     expect(manifest.integrations.map((item) => item.name)).toEqual(
       expect.arrayContaining(["Gemini API", "Google Cloud", "Google Workspace APIs"])
     );

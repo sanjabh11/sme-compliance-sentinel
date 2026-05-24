@@ -19,6 +19,7 @@ describe("package verification scripts", () => {
     expect(packageJson.scripts["verify:cloudrun-render-evidence"]).toBe("node scripts/audit-cloudrun-render-values.mjs --verify-packet");
     expect(packageJson.scripts["verify:judge-access"]).toBe("node scripts/verify-judge-access-pack.mjs");
     expect(packageJson.scripts["verify:business-evidence"]).toBe("node scripts/verify-business-evidence.mjs");
+    expect(packageJson.scripts["verify:gemini-model"]).toBe("node scripts/verify-gemini-model-readiness.mjs");
     expect(packageJson.scripts["prepare:local-submission-bundle"]).toBe("node scripts/verify-local-submission.mjs --bundle-dir");
     expect(packageJson.scripts["prepare:submission-summary"]).toBe("node scripts/verify-local-submission.mjs --markdown-out");
     expect(packageJson.scripts["prepare:manual-intervention"]).toBe("node scripts/verify-local-submission.mjs --manual-packets-dir");

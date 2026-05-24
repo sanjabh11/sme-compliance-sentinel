@@ -18,7 +18,7 @@
 - [ ] Category selected: Small Business Services.
 - [ ] App uses at least one Google Cloud product in production.
 - [ ] Deployed LLM functionality includes at least one Gemini API call.
-- [ ] Gemini model string is verified against current Gemini API model docs before submission.
+- [x] Local repo includes `npm run verify:gemini-model` to verify the configured Gemini model, allowlist, Cloud Run manifest, and maintained `@google/genai` SDK against the reviewed official Gemini model/library docs snapshot before hosted proof collection.
 - [x] Production persistence target is specified for Firestore, BigQuery, and Secret Manager.
 - [x] BigQuery audit persistence contract includes audit-chain sequence and SHA-256 hash fields.
 - [x] Production persistence endpoint exposes the partitioned BigQuery audit table schema plan.

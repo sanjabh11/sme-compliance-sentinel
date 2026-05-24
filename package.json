@@ -21,6 +21,7 @@
     "verify:cloudrun-deployment": "node scripts/verify-cloudrun-deployment.mjs",
     "verify:judge-access": "node scripts/verify-judge-access-pack.mjs",
     "verify:business-evidence": "node scripts/verify-business-evidence.mjs",
+    "verify:gemini-model": "node scripts/verify-gemini-model-readiness.mjs",
     "prepare:local-submission-bundle": "node scripts/verify-local-submission.mjs --bundle-dir",
     "prepare:submission-summary": "node scripts/verify-local-submission.mjs --markdown-out",
     "prepare:manual-intervention": "node scripts/verify-local-submission.mjs --manual-packets-dir",
@@ -41,7 +42,7 @@
     "import:hosted-proof": "node scripts/import-hosted-proof-bundle.mjs"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
+    "@google/genai": "^2.6.0",
     "lucide-react": "^0.468.0",
     "next": "16.2.6",
     "react": "19.2.0",

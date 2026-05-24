@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { sentinelConfig } from "@/lib/config";
 import type { DetectorFinding, GeminiRiskClassification, RecommendationAction, ResourceEvent, Severity } from "@/lib/types";
 
@@ -18,17 +18,20 @@ export async function classifyRiskWithGemini(
   let parsed: Record<string, unknown>;
 
   try {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const generativeModel = genAI.getGenerativeModel({
+    const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const result = await genAI.models.generateContent({
       model,
-      generationConfig: {
+      contents: prompt,
+      config: {
         temperature: 0.1,
         responseMimeType: "application/json"
       }
     });
 
-    const result = await generativeModel.generateContent(prompt);
-    text = result.response.text();
+    text = result.text ?? "";
+    if (!text.trim()) {
+      throw new Error("Gemini response text was empty.");
+    }
     parsed = parseGeminiJson(text);
   } catch (error) {
     return mockGeminiClassification(event, detectorFindings, model, inputTokensEstimated, "api-call-failed", errorClass(error));

@@ -50,6 +50,14 @@ const gates = [
     summarize: summarizeLicenseManifest
   },
   {
+    id: "gemini-model-readiness",
+    label: "Gemini SDK and model readiness",
+    command: "npm run verify:gemini-model",
+    script: "scripts/verify-gemini-model-readiness.mjs",
+    priority: 5,
+    summarize: summarizeGeminiModelReadiness
+  },
+  {
     id: "cloudrun-deployment-template",
     label: "Cloud Run deployment evidence template",
     command: "npm run verify:cloudrun-deployment",
@@ -382,6 +390,7 @@ function privateArtifactPathsForGate(gateId) {
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json"
     ],
+    "gemini-model-readiness": ["/secure/local/gemini-model-readiness.json"],
     "judge-access-readiness": ["/secure/local/judge-access-readiness.json", "artifacts/hosted-proof/$SENTINEL_RELEASE_ID/judge-access-pack.json"],
     "business-evidence-readiness": ["/secure/local/business-evidence-template.json", "/secure/local/business-evidence.json"]
   };
@@ -419,6 +428,10 @@ function stopConditionForGate(gate) {
 
   if (gate.id === "cloudrun-deployment-template") {
     return "Stop before Cloud Run dry-run while placeholders, missing values, Secret Manager mapping gaps, or digest drift remain.";
+  }
+
+  if (gate.id === "gemini-model-readiness") {
+    return "Stop before deployed Gemini proof if the SDK, model allowlist, or official-doc review is stale or blocked.";
   }
 
   if (gate.id === "judge-access-readiness") {
@@ -623,8 +636,10 @@ function buildPhasePlan(gateReports) {
   const provenanceGate = gatesById.get("project-provenance");
   const licenseGate = gatesById.get("license-ip-review");
   const cloudRunGate = gatesById.get("cloudrun-deployment-template");
+  const geminiGate = gatesById.get("gemini-model-readiness");
   const humanReviewPassed = provenanceGate?.status === "passed" && licenseGate?.status === "passed";
-  const cloudRunReady = cloudRunGate?.rawStatus === "ready-to-dry-run";
+  const geminiModelReady = geminiGate?.status === "passed";
+  const cloudRunReady = cloudRunGate?.rawStatus === "ready-to-dry-run" && geminiModelReady;
 
   const phases = [
     {
@@ -655,9 +670,10 @@ function buildPhasePlan(gateReports) {
       bucket: "code-controllable",
       priority: 5,
       owner: "engineering",
-      status: cloudRunGate?.status === "blocked" ? "blocked" : cloudRunReady ? "ready-to-dry-run" : "needs-values",
-      relatedGateIds: ["cloudrun-deployment-template"],
+      status: cloudRunGate?.status === "blocked" || geminiGate?.status === "blocked" ? "blocked" : cloudRunReady ? "ready-to-dry-run" : "needs-values",
+      relatedGateIds: ["cloudrun-deployment-template", "gemini-model-readiness"],
       commands: [
+        "npm run verify:gemini-model -- --out /secure/local/gemini-model-readiness.json --strict",
         "npm run write:cloudrun-release-values -- /secure/local/cloudrun-render-values.json",
         "npm run audit:cloudrun-values -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
         "npm run render:cloudrun-manifest -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
@@ -857,6 +873,22 @@ function summarizeLicenseManifest(report) {
       report.nextActions?.length > 0
         ? report.nextActions
         : ["Review dependency licenses, Google API terms, demo assets, screenshots, and IP ownership before setting approval flags."]
+  };
+}
+
+function summarizeGeminiModelReadiness(report) {
+  const status = normalizeStatus(report.overallStatus);
+
+  return {
+    rawStatus: report.overallStatus ?? "unknown",
+    status,
+    externalRequired: false,
+    evidence: `SDK ${report.sdkPackage ?? "missing"}; model ${report.selectedModel ?? "missing"}; allowlist ${(report.allowlistModels ?? []).join(", ") || "missing"}; official review ${report.officialSourceReview?.reviewedAt ?? "missing"}.`,
+    blockers: report.blockers ?? [],
+    nextActions:
+      report.nextActions?.length > 0
+        ? report.nextActions
+        : ["Review current Gemini model/library/deprecation docs and rerun this verifier before final submission."]
   };
 }
 

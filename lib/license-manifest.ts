@@ -84,7 +84,7 @@ export function buildThirdPartyManifest(generatedAt = new Date().toISOString()):
       integrationsNeedingReview
     }),
     disclosureText: [
-      "Built with Next.js, React, TypeScript, npm, Google Generative AI SDK, and Google Cloud/Workspace APIs.",
+      "Built with Next.js, React, TypeScript, npm, Google GenAI SDK, and Google Cloud/Workspace APIs.",
       "The final Devpost description should disclose these frameworks, SDKs, APIs, and any starter boilerplate used.",
       "No customer private evidence, judge credentials, API keys, raw invoices, or Workspace content belongs in the repository.",
       "This manifest is generated from package.json and package-lock.json; final submission still needs human license and API-terms review."
