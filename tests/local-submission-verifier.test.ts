@@ -123,10 +123,15 @@ type LocalSubmissionReport = {
     }>;
     packetFiles?: {
       indexPath: string;
+      manifestPath: string;
+      digestAlgorithm: string;
+      packetFileCount: number;
       ownerPacketPaths: Array<{
         owner: string;
         path: string;
         actionCount: number;
+        sha256: string;
+        bytes: number;
       }>;
       proofBoundary: string;
     };
@@ -276,11 +281,28 @@ describe("local XPRIZE submission verifier", () => {
       const engineeringMarkdown = readFileSync(join(tempDir, "engineering.md"), "utf8");
       const founderLegalMarkdown = readFileSync(join(tempDir, "founder-legal.md"), "utf8");
       const founderSalesMarkdown = readFileSync(join(tempDir, "founder-sales.md"), "utf8");
+      const manifest = JSON.parse(readFileSync(join(tempDir, "manual-intervention-manifest.json"), "utf8")) as {
+        status: string;
+        digestAlgorithm: string;
+        proofBoundary: string;
+        files: Array<{ owner: string; path: string; sha256: string; bytes: number; actionCount: number }>;
+      };
 
       expect(report.manualInterventionPlan.packetFiles?.proofBoundary).toContain("private execution aids only");
+      expect(report.manualInterventionPlan.packetFiles?.manifestPath).toBe(join(tempDir, "manual-intervention-manifest.json"));
+      expect(report.manualInterventionPlan.packetFiles?.digestAlgorithm).toBe("sha256");
+      expect(report.manualInterventionPlan.packetFiles?.packetFileCount).toBe(4);
       expect(report.manualInterventionPlan.packetFiles?.ownerPacketPaths.map((file) => file.owner)).toEqual(
         expect.arrayContaining(["engineering", "founder/legal", "founder/sales"])
       );
+      expect(report.manualInterventionPlan.packetFiles?.ownerPacketPaths.every((file) => /^[a-f0-9]{64}$/u.test(file.sha256))).toBe(true);
+      expect(report.manualInterventionPlan.packetFiles?.ownerPacketPaths.every((file) => file.bytes > 0)).toBe(true);
+      expect(manifest.status).toBe("manual-intervention-required");
+      expect(manifest.digestAlgorithm).toBe("sha256");
+      expect(manifest.proofBoundary).toContain("private packet integrity only");
+      expect(manifest.files.map((file) => file.owner)).toEqual(expect.arrayContaining(["index", "engineering", "founder/legal", "founder/sales"]));
+      expect(manifest.files.every((file) => /^[a-f0-9]{64}$/u.test(file.sha256))).toBe(true);
+      expect(manifest.files.every((file) => file.bytes > 0 && file.path.startsWith(tempDir))).toBe(true);
       expect(indexMarkdown).toContain("# Manual Intervention Plan");
       expect(indexMarkdown).toContain("These packets are step-by-step instructions only");
       expect(indexMarkdown).toContain("founder/legal");

@@ -3,6 +3,7 @@
 
 import { execFileSync } from "node:child_process";
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
@@ -901,22 +902,56 @@ function writeManualInterventionPackets(path, report) {
   const packetFiles = report.manualInterventionPlan.ownerPackets.map((packet) => {
     const fileName = `${slugForOwner(packet.owner)}.md`;
     const filePath = join(absoluteDir, fileName);
-    writeFileSync(filePath, renderOwnerPacketMarkdown(packet, report), "utf8");
+    const markdown = renderOwnerPacketMarkdown(packet, report);
+    writeFileSync(filePath, markdown, "utf8");
 
     return {
       owner: packet.owner,
       path: filePath,
-      actionCount: packet.openActionCount
+      actionCount: packet.openActionCount,
+      sha256: sha256Hex(markdown),
+      bytes: Buffer.byteLength(markdown, "utf8")
     };
   });
   const indexPath = join(absoluteDir, "manual-intervention-index.md");
-  writeFileSync(indexPath, renderManualInterventionIndexMarkdown(report, packetFiles), "utf8");
+  const indexMarkdown = renderManualInterventionIndexMarkdown(report, packetFiles);
+  writeFileSync(indexPath, indexMarkdown, "utf8");
+  const indexFile = {
+    owner: "index",
+    path: indexPath,
+    actionCount: report.manualInterventionPlan.summary.total,
+    sha256: sha256Hex(indexMarkdown),
+    bytes: Buffer.byteLength(indexMarkdown, "utf8")
+  };
+  const manifest = buildManualInterventionManifest({ report, indexFile, packetFiles });
+  const manifestPath = join(absoluteDir, "manual-intervention-manifest.json");
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
   return {
     indexPath,
+    manifestPath,
+    digestAlgorithm: "sha256",
+    packetFileCount: packetFiles.length + 1,
     ownerPacketPaths: packetFiles,
     proofBoundary:
       "Generated Markdown packets are private execution aids only. They are not hosted proof, revenue proof, human signoff, legal review, or judging evidence until matching artifacts are collected and reviewed."
+  };
+}
+
+function buildManualInterventionManifest({ report, indexFile, packetFiles }) {
+  return {
+    generatedAt: report.generatedAt,
+    generatedFrom: "verify-local-submission",
+    status: report.manualInterventionPlan.status,
+    digestAlgorithm: "sha256",
+    overallGoalRemainingPercent: report.phaseProgressChart.overallGoalRemainingPercent,
+    nextOwner: report.manualInterventionPlan.nextOwner,
+    proofBoundary:
+      "This manifest records private packet integrity only. It is not hosted proof, revenue proof, human signoff, legal review, or judging evidence.",
+    summary: report.manualInterventionPlan.summary,
+    files: [indexFile, ...packetFiles],
+    stopConditions: report.manualInterventionPlan.stopConditions,
+    privateHandling: report.manualInterventionPlan.privateHandling
   };
 }
 
@@ -1033,6 +1068,10 @@ function escapeMarkdownCell(value) {
   return String(value ?? "")
     .replaceAll("|", "\\|")
     .replaceAll("\n", "<br>");
+}
+
+function sha256Hex(value) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
 function slugForOwner(owner) {
