@@ -95,8 +95,14 @@ describe("deployment evidence packet", () => {
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-deployment-transcript-collect")?.command).toContain(
       "npm run collect:cloudrun-deployment"
     );
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-deployment-transcript-collect")?.command).toContain(
+      "/secure/local/cloudrun/$SENTINEL_RELEASE_ID/cloudrun-dry-run.log"
+    );
     expect(packet.commandSequence.find((command) => command.id === "cloudrun-deployment-transcript-collect")?.expectedArtifactId).toBe(
       "cloudrun-deployment-transcript-packet-json"
+    );
+    expect(packet.artifactManifest.find((artifact) => artifact.id === "cloudrun-deployment-transcript-packet-json")?.sourceCommand).toContain(
+      "/secure/local/cloudrun/$SENTINEL_RELEASE_ID/cloudrun-describe.json"
     );
     expect(packet.artifactManifest.find((artifact) => artifact.id === "verify-production-readonly-json")?.sourceCommand).toContain(
       "--out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json"

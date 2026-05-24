@@ -13,6 +13,9 @@ import type {
 const placeholderProductUrl = "https://YOUR-CLOUD-RUN-URL";
 const placeholderReleaseId = "RELEASE_ID";
 const placeholderPrivateBucket = "gs://PROJECT_ID-sentinel-private-evidence";
+const cloudRunTranscriptDir = "/secure/local/cloudrun/$SENTINEL_RELEASE_ID";
+const collectCloudRunDeploymentTranscriptCommand =
+  `npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log ${cloudRunTranscriptDir}/cloudrun-dry-run.log --deploy-log ${cloudRunTranscriptDir}/cloudrun-deploy.log --describe-json ${cloudRunTranscriptDir}/cloudrun-describe.json --out-dir artifacts/deployment --strict`;
 
 export function buildDeploymentEvidencePacket(): DeploymentEvidencePacket {
   const generatedAt = new Date().toISOString();
@@ -365,8 +368,7 @@ function buildArtifactManifest(input: {
       label: "Redacted Cloud Run deployment transcript packet",
       ownerRole: "engineering",
       status: "external-required",
-      sourceCommand:
-        "npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log /secure/local/cloudrun-dry-run.log --deploy-log /secure/local/cloudrun-deploy.log --describe-json /secure/local/cloudrun-describe.json --out-dir artifacts/deployment --strict",
+      sourceCommand: collectCloudRunDeploymentTranscriptCommand,
       privateStorePath: `${basePath}/cloudrun-deployment-transcript-packet.json`,
       evidenceVaultTarget: "cloud-run-proof",
       redactionRules: [
@@ -623,7 +625,7 @@ function buildCommandSequence(input: {
     command(
       "cloudrun-deployment-transcript-collect",
       "Collect redacted Cloud Run deployment transcript packet",
-      "npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log /secure/local/cloudrun-dry-run.log --deploy-log /secure/local/cloudrun-deploy.log --describe-json /secure/local/cloudrun-describe.json --out-dir artifacts/deployment --strict",
+      collectCloudRunDeploymentTranscriptCommand,
       false,
       false,
       "cloudrun-deployment-transcript-packet-json",

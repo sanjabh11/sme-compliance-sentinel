@@ -209,17 +209,17 @@ describe("Cloud Run deployment transcript collector", () => {
         "--release-id",
         "release-20260524",
         "--dry-run-log",
-        "/secure/local/cloudrun-dry-run.log",
-        "--deploy-log=/secure/local/cloudrun-deploy.log",
+        "/secure/local/cloudrun/release-20260524/cloudrun-dry-run.log",
+        "--deploy-log=/secure/local/cloudrun/release-20260524/cloudrun-deploy.log",
         "--describe-json",
-        "/secure/local/cloudrun-describe.json",
+        "/secure/local/cloudrun/release-20260524/cloudrun-describe.json",
         "--strict"
       ])
     ).toMatchObject({
       releaseId: "release-20260524",
-      dryRunLogPath: "/secure/local/cloudrun-dry-run.log",
-      deployLogPath: "/secure/local/cloudrun-deploy.log",
-      describeJsonPath: "/secure/local/cloudrun-describe.json",
+      dryRunLogPath: "/secure/local/cloudrun/release-20260524/cloudrun-dry-run.log",
+      deployLogPath: "/secure/local/cloudrun/release-20260524/cloudrun-deploy.log",
+      describeJsonPath: "/secure/local/cloudrun/release-20260524/cloudrun-describe.json",
       strict: true
     });
 

@@ -10,6 +10,7 @@ const recommendedRegion = sentinelConfig.cloudRunRegion || "us-central1";
 const manifestPath = "cloudrun.service.yaml";
 const renderValuesTemplatePath = "docs/deployment/cloudrun-render-values.template.json";
 const privateRenderValuesPath = "/secure/local/cloudrun-render-values.json";
+const cloudRunTranscriptDir = "/secure/local/cloudrun/$SENTINEL_RELEASE_ID";
 const deploymentArtifactsDir = "artifacts/deployment";
 const renderedManifestPath = "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml";
 const dryRunPreflightPacketPath = "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json";
@@ -154,7 +155,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
       command(
         "collect-cloudrun-deployment-transcript",
         "Collect redacted Cloud Run deployment transcript",
-        "npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log /secure/local/cloudrun-dry-run.log --deploy-log /secure/local/cloudrun-deploy.log --describe-json /secure/local/cloudrun-describe.json --out-dir artifacts/deployment --strict",
+        `npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log ${cloudRunTranscriptDir}/cloudrun-dry-run.log --deploy-log ${cloudRunTranscriptDir}/cloudrun-deploy.log --describe-json ${cloudRunTranscriptDir}/cloudrun-describe.json --out-dir artifacts/deployment --strict`,
         "engineering",
         false,
         false,
@@ -230,7 +231,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
       `Use ${renderValuesTemplatePath} only as a non-secret starting point; filled render values belong in a private path such as ${privateRenderValuesPath}.`,
       "Run npm run audit:cloudrun-values against the filled private values file before rendering; stop if the audit is not ready-to-render.",
       "Run npm run prepare:cloudrun-dry-run and npm run verify:cloudrun-dry-run-packet before gcloud dry-run; preserve both JSON outputs in the private evidence store.",
-      "Run npm run collect:cloudrun-deployment after Cloud Run dry-run, deploy, and describe; keep raw gcloud logs private and share only the redacted transcript packet.",
+      `Run npm run collect:cloudrun-deployment after Cloud Run dry-run, deploy, and describe; save raw gcloud logs under ${cloudRunTranscriptDir}/, keep them private, and share only the redacted transcript packet.`,
       "Run npm run collect:hosted-proof, npm run import:hosted-proof --dry-run, npm run prepare:deployment-execution-checklist -- --write-results-template, and npm run prepare:deployment-execution-checklist -- --results before the final hosted Evidence Vault import; do not bypass release-integrity checks with raw curl.",
       "Use Secret Manager for the runtime secrets and grant access only to the Cloud Run runtime service account.",
       "Use the Serverless VPC Access connector and Cloud NAT static IP path before relying on Gemini API key server-IP restrictions.",

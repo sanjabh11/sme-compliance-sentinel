@@ -618,6 +618,9 @@ describe("local XPRIZE submission verifier", () => {
     expect(phasesById["hosted-proof-capture"].currentPhaseRemainingPercent).toBeGreaterThan(0);
     expect(phasesById["hosted-proof-capture"].commands.join(" ")).toContain("verify:judge-access");
     expect(phasesById["hosted-proof-capture"].commands.join(" ")).toContain("verify:business-evidence");
+    expect(phasesById["hosted-proof-capture"].commands.join(" ")).toContain(
+      "/secure/local/cloudrun/$SENTINEL_RELEASE_ID/cloudrun-dry-run.log"
+    );
     expect(phasesById["hosted-proof-capture"].commands).toContain(
       "npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json"
     );

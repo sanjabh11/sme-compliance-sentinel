@@ -714,7 +714,7 @@ function buildPhasePlan(gateReports) {
         "gcloud run services replace artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml --region $SENTINEL_CLOUD_RUN_REGION --dry-run",
         "gcloud run services replace artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml --region $SENTINEL_CLOUD_RUN_REGION",
         "gcloud run services describe $SENTINEL_CLOUD_RUN_SERVICE_NAME --region $SENTINEL_CLOUD_RUN_REGION --format=json",
-        "npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log /secure/local/cloudrun-dry-run.log --deploy-log /secure/local/cloudrun-deploy.log --describe-json /secure/local/cloudrun-describe.json --out-dir artifacts/deployment --strict",
+        "npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log /secure/local/cloudrun/$SENTINEL_RELEASE_ID/cloudrun-dry-run.log --deploy-log /secure/local/cloudrun/$SENTINEL_RELEASE_ID/cloudrun-deploy.log --describe-json /secure/local/cloudrun/$SENTINEL_RELEASE_ID/cloudrun-describe.json --out-dir artifacts/deployment --strict",
         "npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json",
         "npm run verify:production -- --url $NEXT_PUBLIC_PRODUCT_URL --release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json",
         "npm run verify:business-evidence -- --write-template /secure/local/business-evidence-template.json --out /secure/local/business-evidence-readiness.json",

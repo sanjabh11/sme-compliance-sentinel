@@ -127,6 +127,9 @@ describe("production provisioning pack", () => {
     expect(pack.verificationSequence.find((command) => command.id === "collect-cloudrun-deployment-transcript")?.command).toContain(
       "npm run collect:cloudrun-deployment"
     );
+    expect(pack.verificationSequence.find((command) => command.id === "collect-cloudrun-deployment-transcript")?.command).toContain(
+      "/secure/local/cloudrun/$SENTINEL_RELEASE_ID/cloudrun-dry-run.log"
+    );
     expect(pack.verificationSequence.find((command) => command.id === "collect-cloudrun-deployment-transcript")?.expectedProof).toContain(
       "cloudrun-deployment-transcript-packet.json"
     );
@@ -194,6 +197,7 @@ describe("production provisioning pack", () => {
     expect(pack.privateHandlingRules.join(" ")).toContain("audit:cloudrun-values");
     expect(pack.privateHandlingRules.join(" ")).toContain("verify:cloudrun-dry-run-packet");
     expect(pack.privateHandlingRules.join(" ")).toContain("collect:cloudrun-deployment");
+    expect(pack.privateHandlingRules.join(" ")).toContain("/secure/local/cloudrun/$SENTINEL_RELEASE_ID/");
     expect(pack.privateHandlingRules.join(" ")).toContain("collect:hosted-proof");
     expect(pack.privateHandlingRules.join(" ")).toContain("prepare:deployment-execution-checklist");
     expect(pack.privateHandlingRules.join(" ")).toContain("write-results-template");
