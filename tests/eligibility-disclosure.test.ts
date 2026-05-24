@@ -44,6 +44,35 @@ const cleanThirdPartyManifest: ThirdPartyManifest = {
       dataBoundary: "Only selected redacted snippets are routed to Gemini."
     }
   ],
+  reviewPacket: {
+    sourceDigests: {
+      packageJsonSha256: "0".repeat(64),
+      packageLockSha256: "1".repeat(64)
+    },
+    approvalEnvFlags: ["XPRIZE_THIRD_PARTY_REVIEW_APPROVED", "XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED"],
+    approvalBoundary: "Human review required before approval flags are set.",
+    requiredPrivateArtifacts: ["Dependency license review notes.", "Google API terms review notes."],
+    ruleTraceability: [
+      {
+        ruleArea: "third-party-use",
+        source: "Build with Gemini XPRIZE rules",
+        requirement: "Third-party SDK/API use requires authorization.",
+        manifestEvidence: "Clean test fixture."
+      }
+    ],
+    clearanceChecklist: [
+      {
+        id: "source-digest-inventory",
+        label: "Package inventory is hash-bound",
+        ruleArea: "third-party-use",
+        status: "passed",
+        evidence: "Test fixture includes hashes.",
+        requiredPrivateArtifact: "Manifest JSON.",
+        ownerRole: "engineering",
+        fix: "No action."
+      }
+    ]
+  },
   disclosureText: ["Built with Next.js, React, TypeScript, Google APIs, and npm dependencies."],
   blockers: [],
   nextActions: ["Retain human reviewer notes outside the repository."],

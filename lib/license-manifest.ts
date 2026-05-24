@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto";
 import packageJson from "@/package.json";
 import packageLock from "@/package-lock.json";
 import { sentinelConfig } from "@/lib/config";
 import type {
+  ThirdPartyClearanceChecklistItem,
   ThirdPartyIntegrationReviewItem,
   ThirdPartyManifest,
+  ThirdPartyManifestReviewPacket,
   ThirdPartyManifestStatus,
   ThirdPartyPackageReviewItem
 } from "@/lib/types";
@@ -71,6 +74,15 @@ export function buildThirdPartyManifest(generatedAt = new Date().toISOString()):
     },
     packages,
     integrations,
+    reviewPacket: buildReviewPacket({
+      packages,
+      integrations,
+      restrictedLicenseReviewCount,
+      unknownLicenseCount,
+      licenseNeedsReviewCount,
+      obligationReviewCount,
+      integrationsNeedingReview
+    }),
     disclosureText: [
       "Built with Next.js, React, TypeScript, npm, Google Generative AI SDK, and Google Cloud/Workspace APIs.",
       "The final Devpost description should disclose these frameworks, SDKs, APIs, and any starter boilerplate used.",
@@ -88,6 +100,162 @@ export function buildThirdPartyManifest(generatedAt = new Date().toISOString()):
     disclaimer:
       "This manifest supports submission review. It is not legal advice and does not by itself prove authorization to use every third-party service."
   };
+}
+
+function buildReviewPacket(input: {
+  packages: ThirdPartyPackageReviewItem[];
+  integrations: ThirdPartyIntegrationReviewItem[];
+  restrictedLicenseReviewCount: number;
+  unknownLicenseCount: number;
+  licenseNeedsReviewCount: number;
+  obligationReviewCount: number;
+  integrationsNeedingReview: number;
+}): ThirdPartyManifestReviewPacket {
+  const hasBlockingLicenseItems = input.restrictedLicenseReviewCount > 0 || input.unknownLicenseCount > 0;
+  const hasLicenseReviewItems = input.licenseNeedsReviewCount > 0 || input.obligationReviewCount > 0;
+  const packageDigestEvidence = `${input.packages.length} package(s) indexed from package-lock.json; package.json and package-lock.json hashes are recorded.`;
+
+  return {
+    sourceDigests: {
+      packageJsonSha256: digestJson(packageJson),
+      packageLockSha256: digestJson(packageLock)
+    },
+    approvalEnvFlags: ["XPRIZE_THIRD_PARTY_REVIEW_APPROVED", "XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED"],
+    approvalBoundary:
+      "These flags are human attestations only. They must stay false until the package/license inventory, Google API terms, OAuth consent screen, repository licensing, demo assets, screenshots, copy, and generated/pre-existing-work disclosures have been reviewed against the final submitted artifacts.",
+    requiredPrivateArtifacts: [
+      "Dependency license review notes for package.json and package-lock.json digests in this packet.",
+      "LGPL/notice/distribution obligation notes for any obligation-review packages.",
+      "Google API, Gemini API, Google Cloud, Workspace OAuth, and Sensitive Data Protection terms review notes.",
+      "OAuth consent-screen screenshot or export showing requested and deferred scopes.",
+      "Demo video and screenshot asset-clearance log covering trademarks, music, customer data, and third-party marks.",
+      "Repository license/access decision and Devpost third-party/pre-existing-work disclosure text."
+    ],
+    ruleTraceability: buildRuleTraceability(input),
+    clearanceChecklist: [
+      checklistItem({
+        id: "source-digest-inventory",
+        label: "Package inventory is hash-bound",
+        ruleArea: "third-party-use",
+        status: "passed",
+        evidence: packageDigestEvidence,
+        requiredPrivateArtifact: "Attach this manifest JSON to the private judge packet after every dependency change.",
+        ownerRole: "engineering",
+        fix: "Regenerate /api/xprize/license-manifest after package.json or package-lock.json changes."
+      }),
+      checklistItem({
+        id: "restricted-or-unknown-license-screen",
+        label: "Restricted and unknown license screen",
+        ruleArea: "third-party-use",
+        status: hasBlockingLicenseItems ? "blocked" : "passed",
+        evidence: `${input.restrictedLicenseReviewCount} restricted-review package(s); ${input.unknownLicenseCount} unknown-license package(s).`,
+        requiredPrivateArtifact: "Legal/engineering notes resolving every restricted or unknown license item.",
+        ownerRole: "legal",
+        fix: hasBlockingLicenseItems
+          ? "Replace, remove, or explicitly clear restricted/unknown-license packages before setting review approval flags."
+          : "No blocking restricted or unknown package license item in the current lockfile."
+      }),
+      checklistItem({
+        id: "notice-and-obligation-review",
+        label: "Notice and distribution obligation review",
+        ruleArea: "repository-licensing",
+        status: hasLicenseReviewItems ? "needs-review" : "passed",
+        evidence: `${input.obligationReviewCount} obligation-review package(s); ${input.licenseNeedsReviewCount} additional license-review package(s).`,
+        requiredPrivateArtifact: "Notice/distribution checklist and copied license notices for final repository or deployment bundle.",
+        ownerRole: "legal",
+        fix: hasLicenseReviewItems
+          ? "Record license basis, notices, and distribution obligations before final submission."
+          : "Keep notice artifacts with the private review packet."
+      }),
+      checklistItem({
+        id: "google-api-terms-review",
+        label: "Google API and OAuth terms review",
+        ruleArea: "third-party-use",
+        status: input.integrationsNeedingReview > 0 || !sentinelConfig.thirdPartyReviewApproved ? "needs-review" : "passed",
+        evidence: `${input.integrations.length} Google integration(s); ${input.integrationsNeedingReview} still planned or needing review.`,
+        requiredPrivateArtifact: "Review notes for Gemini API, Google Cloud, Workspace OAuth, Sensitive Data Protection, Cloud IAM, and API-key restrictions.",
+        ownerRole: "legal",
+        fix: "Confirm terms, scopes, billing, IAM, OAuth consent-screen wording, and data boundaries before setting XPRIZE_THIRD_PARTY_REVIEW_APPROVED=true."
+      }),
+      checklistItem({
+        id: "oauth-scope-consent-screen-review",
+        label: "OAuth consent screen and scope boundary",
+        ruleArea: "third-party-use",
+        status: sentinelConfig.thirdPartyReviewApproved ? "passed" : "needs-review",
+        evidence: "The app requests metadata-only Drive/Gmail pilot scopes and keeps restricted Drive mutation scope deferred in the Cloud Run contract.",
+        requiredPrivateArtifact: "OAuth consent-screen screenshot/export plus signed pilot consent packet showing requested and deferred scopes.",
+        ownerRole: "legal",
+        fix: "Keep restricted mutation scope deferred until explicit customer consent and OAuth review justify requesting it."
+      }),
+      checklistItem({
+        id: "demo-and-screenshot-asset-clearance",
+        label: "Demo and screenshot asset clearance",
+        ruleArea: "demo-assets",
+        status:
+          sentinelConfig.demoVideoAssetClearanceConfirmed && sentinelConfig.xprizeIpOwnershipReviewApproved
+            ? "passed"
+            : "needs-review",
+        evidence: `Demo asset clearance flag is ${sentinelConfig.demoVideoAssetClearanceConfirmed ? "confirmed" : "not confirmed"}; IP ownership review flag is ${sentinelConfig.xprizeIpOwnershipReviewApproved ? "confirmed" : "not confirmed"}.`,
+        requiredPrivateArtifact: "Final demo-video/screenshot review log with third-party marks, copyrighted media, and customer-identifying data removed or licensed.",
+        ownerRole: "sales",
+        fix: "Review final public video and screenshots before upload; do not rely on local UI screenshots as asset clearance."
+      }),
+      checklistItem({
+        id: "original-work-and-boilerplate-disclosure",
+        label: "Original work and boilerplate disclosure",
+        ruleArea: "new-project-disclosure",
+        status: sentinelConfig.projectCreatedAfterStartConfirmed ? "passed" : "needs-review",
+        evidence: "Project provenance and source-release guards exist, but generated/local boilerplate and dependency use still require human disclosure review.",
+        requiredPrivateArtifact: "Devpost disclosure text for frameworks, templates, generated code, and any pre-existing boilerplate.",
+        ownerRole: "founder",
+        fix: "Keep XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED=false until the final disclosure is reviewed."
+      })
+    ]
+  };
+}
+
+function checklistItem(input: ThirdPartyClearanceChecklistItem): ThirdPartyClearanceChecklistItem {
+  return input;
+}
+
+function buildRuleTraceability(input: {
+  packages: ThirdPartyPackageReviewItem[];
+  integrations: ThirdPartyIntegrationReviewItem[];
+  restrictedLicenseReviewCount: number;
+  unknownLicenseCount: number;
+  obligationReviewCount: number;
+  licenseNeedsReviewCount: number;
+}): ThirdPartyManifestReviewPacket["ruleTraceability"] {
+  return [
+    {
+      ruleArea: "third-party-use",
+      source: "Build with Gemini XPRIZE rules, Third Party Integrations",
+      requirement: "Third-party SDKs, APIs, and data require authorization under applicable terms and licensing requirements.",
+      manifestEvidence: `${input.packages.length} npm package(s) plus ${input.integrations.length} Google API integration(s) are inventoried for review.`
+    },
+    {
+      ruleArea: "ip-ownership",
+      source: "Build with Gemini XPRIZE rules, Submission Ownership and Intellectual Property",
+      requirement: "Submission materials must be original or owned/authorized and must not violate third-party IP or privacy rights.",
+      manifestEvidence: `${input.restrictedLicenseReviewCount} restricted-review, ${input.unknownLicenseCount} unknown-license, ${input.obligationReviewCount} obligation-review, and ${input.licenseNeedsReviewCount} additional license-review package(s) are separated for human review.`
+    },
+    {
+      ruleArea: "demo-assets",
+      source: "Build with Gemini XPRIZE rules, Demonstration Video",
+      requirement: "Demo video must use permitted assets and avoid unlicensed third-party trademarks, copyrighted music, or copyrighted material.",
+      manifestEvidence: "The review packet requires a final demo-video and screenshot asset-clearance log before IP approval flags are set."
+    },
+    {
+      ruleArea: "repository-licensing",
+      source: "Build with Gemini XPRIZE rules, Repository Access",
+      requirement: "A public repository needs relevant licensing; a private repository must be shared with the required judging/testing accounts.",
+      manifestEvidence: "Repository URL and access-mode checks are handled separately, while this packet identifies package-license and notice obligations for the source release."
+    }
+  ];
+}
+
+function digestJson(value: unknown) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
 function toReviewItem(

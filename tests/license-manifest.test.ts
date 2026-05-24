@@ -29,6 +29,31 @@ describe("third-party license manifest", () => {
     expect(manifest.disclosureText.join(" ")).toContain("package.json");
     expect(manifest.nextActions.join(" ")).toContain("LGPL-style package obligations");
     expect(manifest.nextActions.join(" ")).toContain("XPRIZE_THIRD_PARTY_REVIEW_APPROVED");
+    expect(manifest.reviewPacket.sourceDigests.packageJsonSha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(manifest.reviewPacket.sourceDigests.packageLockSha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(manifest.reviewPacket.approvalEnvFlags).toEqual(
+      expect.arrayContaining(["XPRIZE_THIRD_PARTY_REVIEW_APPROVED", "XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED"])
+    );
+    expect(manifest.reviewPacket.ruleTraceability.map((item) => item.ruleArea)).toEqual(
+      expect.arrayContaining(["third-party-use", "ip-ownership", "demo-assets", "repository-licensing"])
+    );
+    expect(manifest.reviewPacket.requiredPrivateArtifacts.join(" ")).toContain("OAuth consent-screen");
+    expect(manifest.reviewPacket.clearanceChecklist.find((item) => item.id === "source-digest-inventory")).toMatchObject({
+      status: "passed",
+      ownerRole: "engineering"
+    });
+    expect(manifest.reviewPacket.clearanceChecklist.find((item) => item.id === "restricted-or-unknown-license-screen")).toMatchObject({
+      status: "passed",
+      ownerRole: "legal"
+    });
+    expect(manifest.reviewPacket.clearanceChecklist.find((item) => item.id === "notice-and-obligation-review")).toMatchObject({
+      status: "needs-review",
+      ruleArea: "repository-licensing"
+    });
+    expect(manifest.reviewPacket.clearanceChecklist.find((item) => item.id === "demo-and-screenshot-asset-clearance")).toMatchObject({
+      status: "needs-review",
+      ruleArea: "demo-assets"
+    });
   });
 
   it("keeps manifest language inside the claim guard boundary", () => {

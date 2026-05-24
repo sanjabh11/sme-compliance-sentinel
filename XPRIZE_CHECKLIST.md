@@ -31,6 +31,7 @@
 - [x] Local MVP exposes a Submission Compliance Gate for repository access, judge access, new-project disclosure, third-party/IP review, demo-video asset clearance, redaction, and evidence-response readiness.
 - [x] Local MVP exposes a dependency/license and third-party API manifest generated from `package.json` and `package-lock.json`.
 - [x] Local dependency/license manifest separates restricted-license blockers from obligation-review packages, so optional LGPL-style transitive packages remain human-review items without being misreported as automatic replacement blockers.
+- [x] Local dependency/license manifest emits a hash-bound review packet with package-file digests, rule traceability, approval flag boundaries, private artifact requirements, and clearance checklist items for licenses, Google API terms, OAuth consent, demo/screenshot assets, repository licensing, and pre-existing-work disclosure.
 - [x] Local MVP exposes a private XPRIZE Submission Binder with artifact statuses, owner roles, testing instructions, demo timeline, and judge evidence request queue.
 - [x] Local MVP exposes a Devpost Submission Pack with claim-safe copy, under-three-minute demo script, screenshot checklist, testing instructions draft, private evidence response plan, and public-safe readiness export for Devpost evidence buckets.
 - [x] Local MVP exposes a Demo Video Compliance Pack for runtime, public platform, English/subtitle, live-Gemini, asset-clearance, and redaction gates.

@@ -1285,6 +1285,36 @@ export interface ThirdPartyManifestSummary {
   integrationsNeedingReview: number;
 }
 
+export interface ThirdPartyClearanceChecklistItem {
+  id: string;
+  label: string;
+  ruleArea: "third-party-use" | "ip-ownership" | "demo-assets" | "repository-licensing" | "new-project-disclosure";
+  status: "passed" | "needs-review" | "blocked";
+  evidence: string;
+  requiredPrivateArtifact: string;
+  ownerRole: "engineering" | "legal" | "sales" | "founder";
+  fix: string;
+}
+
+export interface ThirdPartyRuleTraceabilityItem {
+  ruleArea: ThirdPartyClearanceChecklistItem["ruleArea"];
+  source: string;
+  requirement: string;
+  manifestEvidence: string;
+}
+
+export interface ThirdPartyManifestReviewPacket {
+  sourceDigests: {
+    packageJsonSha256: string;
+    packageLockSha256: string;
+  };
+  approvalEnvFlags: string[];
+  approvalBoundary: string;
+  requiredPrivateArtifacts: string[];
+  ruleTraceability: ThirdPartyRuleTraceabilityItem[];
+  clearanceChecklist: ThirdPartyClearanceChecklistItem[];
+}
+
 export interface ThirdPartyManifest {
   generatedAt: string;
   packageManager: "npm";
@@ -1292,6 +1322,7 @@ export interface ThirdPartyManifest {
   summary: ThirdPartyManifestSummary;
   packages: ThirdPartyPackageReviewItem[];
   integrations: ThirdPartyIntegrationReviewItem[];
+  reviewPacket: ThirdPartyManifestReviewPacket;
   disclosureText: string[];
   blockers: string[];
   nextActions: string[];
