@@ -315,6 +315,7 @@ describe("Cloud Run dry-run preflight packet", () => {
     await writeFile(symlinkPacketTargetPath, await readFile(symlinkedPacketPath, "utf8"), "utf8");
     await rm(symlinkedPacketPath, { force: true });
     await symlink(symlinkPacketTargetPath, symlinkedPacketPath);
+    const symlinkPacketTargetContent = await readFile(symlinkPacketTargetPath, "utf8");
     const symlinkedPacketVerification = await verifyCloudRunDryRunPacket(symlinkedPacketPath);
 
     expect(symlinkedPacketVerification.status).toBe("blocked");
@@ -327,6 +328,15 @@ describe("Cloud Run dry-run preflight packet", () => {
         })
       ])
     );
+    await expect(
+      prepareCloudRunDryRunPacket({
+        valuesPath,
+        outDir: join(tempDir, "symlink-packet"),
+        releaseId: "release-20260523-001",
+        strict: true
+      })
+    ).rejects.toThrow(/symbolic link/u);
+    expect(await readFile(symlinkPacketTargetPath, "utf8")).toBe(symlinkPacketTargetContent);
 
     const symlinkedDigestPacket = await prepareCloudRunDryRunPacket({
       valuesPath,

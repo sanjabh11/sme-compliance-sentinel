@@ -464,10 +464,18 @@ describe("Cloud Run render-values audit", () => {
     await writeFile(symlinkTargetPath, await readFile(symlinkedPacket.evidencePacketPath, "utf8"), "utf8");
     await rm(symlinkedPacket.evidencePacketPath, { force: true });
     await symlink(symlinkTargetPath, symlinkedPacket.evidencePacketPath);
+    const symlinkTargetContent = await readFile(symlinkTargetPath, "utf8");
     const symlinked = await verifyCloudRunRenderEvidencePacket(symlinkedPacket.evidencePacketPath);
 
     expect(symlinked.overallStatus).toBe("blocked");
     expect(symlinked.blockers.join(" ")).toContain("symbolic link");
+    await expect(
+      writeCloudRunRenderValuesAudit({
+        valuesPath: "docs/deployment/cloudrun-render-values.template.json",
+        outDir: tempDir
+      })
+    ).rejects.toThrow(/symbolic link/u);
+    expect(await readFile(symlinkTargetPath, "utf8")).toBe(symlinkTargetContent);
   });
 
   it("blocks mismatched CLI and values-file release ids before rendering", async () => {

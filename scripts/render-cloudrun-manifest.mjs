@@ -2,7 +2,7 @@
 
 import { execFile, execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -270,7 +270,7 @@ export async function renderCloudRunManifest(options) {
   assertNoUnsafeRenderedSecrets(renderedManifest);
 
   const renderedManifestPath = join(outputDirectory, renderedFileName);
-  await writeFile(renderedManifestPath, renderedManifest, "utf8");
+  await writeTextFile(renderedManifestPath, renderedManifest, "Cloud Run rendered manifest");
 
   const verifier = await runManifestVerifier(renderedManifestPath);
   await writeJson(join(outputDirectory, verifierFileName), verifier);
@@ -279,8 +279,8 @@ export async function renderCloudRunManifest(options) {
   const region = renderValues.SENTINEL_CLOUD_RUN_REGION || "REGION";
   const dryRunCommand = `gcloud run services replace ${shellQuote(renderedManifestPath)} --region ${shellQuote(region)} --project ${shellQuote(projectId)} --dry-run`;
   const deployCommand = `gcloud run services replace ${shellQuote(renderedManifestPath)} --region ${shellQuote(region)} --project ${shellQuote(projectId)}`;
-  await writeFile(join(outputDirectory, dryRunCommandFileName), `${dryRunCommand}\n`, "utf8");
-  await writeFile(join(outputDirectory, deployCommandFileName), `${deployCommand}\n`, "utf8");
+  await writeTextFile(join(outputDirectory, dryRunCommandFileName), `${dryRunCommand}\n`, "Cloud Run dry-run command file");
+  await writeTextFile(join(outputDirectory, deployCommandFileName), `${deployCommand}\n`, "Cloud Run deploy command file");
 
   const summary = {
     generatedAt: new Date().toISOString(),
@@ -1432,7 +1432,34 @@ function isIsoLikeTimestamp(value) {
 }
 
 async function writeJson(path, payload) {
+  await assertRegularFileIfExists(path, "Cloud Run render output file");
   await writeFile(path, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+}
+
+async function writeTextFile(path, content, label) {
+  await assertRegularFileIfExists(path, label);
+  await writeFile(path, content, "utf8");
+}
+
+async function assertRegularFileIfExists(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = await lstat(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private file path before Cloud Run render.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${path} is not a regular file; use a regular private file path before Cloud Run render.`);
+  }
 }
 
 function sanitizePathSegment(value) {

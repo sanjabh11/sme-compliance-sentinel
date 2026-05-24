@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -130,6 +130,42 @@ describe("Cloud Run manifest renderer", () => {
     expect(JSON.stringify(summary)).not.toContain("private-admin-token");
 
     await expect(writeReleaseCandidateValues("", { gitRunner })).rejects.toThrow(/requires a private output path/u);
+  });
+
+  it("fails closed when Cloud Run render outputs would overwrite symlinks", async () => {
+    const { renderCloudRunManifest, writeReleaseCandidateValues } = await loadRenderer();
+    const tempDir = await makeTempDir();
+    const gitRunner = makeFakeGitRunner();
+    const releaseValuesPath = join(tempDir, "cloudrun-release-values.json");
+
+    await writeReleaseCandidateValues(releaseValuesPath, { gitRunner });
+    const releaseValuesTargetPath = join(tempDir, "reviewed-cloudrun-release-values.json");
+    await writeFile(releaseValuesTargetPath, await readFile(releaseValuesPath, "utf8"), "utf8");
+    await rm(releaseValuesPath, { force: true });
+    await symlink(releaseValuesTargetPath, releaseValuesPath);
+
+    await expect(writeReleaseCandidateValues(releaseValuesPath, { gitRunner })).rejects.toThrow(/symbolic link/u);
+
+    const valuesPath = await writeValues(tempDir, safeRenderValues());
+    const rendered = await renderCloudRunManifest({
+      valuesPath,
+      outDir: tempDir,
+      releaseId: "release-20260523-001",
+      strict: true
+    });
+    const renderedManifestTargetPath = join(tempDir, "reviewed-cloudrun.service.rendered.yaml");
+    await writeFile(renderedManifestTargetPath, await readFile(rendered.renderedManifestPath, "utf8"), "utf8");
+    await rm(rendered.renderedManifestPath, { force: true });
+    await symlink(renderedManifestTargetPath, rendered.renderedManifestPath);
+
+    await expect(
+      renderCloudRunManifest({
+        valuesPath,
+        outDir: tempDir,
+        releaseId: "release-20260523-001",
+        strict: true
+      })
+    ).rejects.toThrow(/symbolic link/u);
   });
 
   it("writes a non-secret render values template and rejects placeholders in strict mode", async () => {

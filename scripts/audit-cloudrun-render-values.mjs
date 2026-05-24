@@ -127,9 +127,9 @@ export async function writeCloudRunRenderValuesAudit(options) {
 
   await mkdir(outputDirectory, { recursive: true });
   await writeJson(packet.auditPath, packet);
-  await writeFile(packet.markdownPath, renderMarkdown(packet), "utf8");
+  await writeTextFile(packet.markdownPath, renderMarkdown(packet), "Cloud Run render-values audit Markdown");
   await writeJson(packet.evidencePacketPath, evidencePacket);
-  await writeFile(packet.evidencePacketMarkdownPath, renderEvidenceMarkdown(evidencePacket), "utf8");
+  await writeTextFile(packet.evidencePacketMarkdownPath, renderEvidenceMarkdown(evidencePacket), "Cloud Run render evidence Markdown");
 
   if (options.strict && packet.status !== "ready-to-render") {
     const error = new Error(`Cloud Run render-values audit is ${packet.status}; see ${packet.auditPath}.`);
@@ -981,7 +981,34 @@ function renderEvidenceMarkdown(packet) {
 }
 
 async function writeJson(path, value) {
+  await assertRegularFileIfExists(path, "Cloud Run render-values output file");
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+async function writeTextFile(path, content, label) {
+  await assertRegularFileIfExists(path, label);
+  await writeFile(path, content, "utf8");
+}
+
+async function assertRegularFileIfExists(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = await lstat(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private file path before Cloud Run render-value audit.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${path} is not a regular file; use a regular private file path before Cloud Run render-value audit.`);
+  }
 }
 
 function countBy(values) {

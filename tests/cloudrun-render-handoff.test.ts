@@ -258,10 +258,19 @@ describe("Cloud Run render handoff", () => {
     await writeFile(symlinkTargetPath, await readFile(symlinkedHandoff.handoffPath, "utf8"), "utf8");
     await rm(symlinkedHandoff.handoffPath, { force: true });
     await symlink(symlinkTargetPath, symlinkedHandoff.handoffPath);
+    const symlinkTargetContent = await readFile(symlinkTargetPath, "utf8");
     const symlinkedVerification = await verifyCloudRunRenderHandoff(symlinkedHandoff.handoffPath);
 
     expect(symlinkedVerification.overallStatus).toBe("blocked");
     expect(symlinkedVerification.blockers.join(" ")).toContain("symbolic link");
+    await expect(
+      prepareCloudRunRenderHandoff({
+        valuesPath: symlinkedHandoff.valuesPath,
+        outDir: join(tempDir, "symlink-deployment"),
+        gitRunner: makeFakeGitRunner()
+      })
+    ).rejects.toThrow(/symbolic link/u);
+    expect(await readFile(symlinkTargetPath, "utf8")).toBe(symlinkTargetContent);
   });
 
   it("blocks mismatched release ids before private handoff proceeds", async () => {

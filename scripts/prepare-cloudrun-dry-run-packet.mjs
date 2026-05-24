@@ -122,7 +122,7 @@ export async function prepareCloudRunDryRunPacket(options) {
 
   await mkdir(outputDirectory, { recursive: true });
   await writeJson(join(outputDirectory, packetFileName), packet);
-  await writeFile(join(outputDirectory, markdownFileName), renderMarkdown(packet), "utf8");
+  await writeTextFile(join(outputDirectory, markdownFileName), renderMarkdown(packet), "Cloud Run dry-run packet Markdown");
 
   if (options.strict && packet.status !== "ready-to-dry-run") {
     const error = new Error(`Cloud Run dry-run preflight is ${packet.status}; see ${join(outputDirectory, packetFileName)}.`);
@@ -844,7 +844,34 @@ function buildVerificationNextActions({ status, packet }) {
 }
 
 async function writeJson(path, value) {
+  await assertRegularFileIfExists(path, "Cloud Run dry-run packet output file");
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+async function writeTextFile(path, content, label) {
+  await assertRegularFileIfExists(path, label);
+  await writeFile(path, content, "utf8");
+}
+
+async function assertRegularFileIfExists(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = await lstat(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private file path before Cloud Run dry-run preflight.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${path} is not a regular file; use a regular private file path before Cloud Run dry-run preflight.`);
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

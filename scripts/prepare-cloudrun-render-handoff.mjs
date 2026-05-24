@@ -173,7 +173,7 @@ export async function prepareCloudRunRenderHandoff(options = {}) {
 
   await mkdir(outputDirectory, { recursive: true });
   await writeJson(handoffPath, handoff);
-  await writeFile(handoffMarkdownPath, renderMarkdown(handoff), "utf8");
+  await writeTextFile(handoffMarkdownPath, renderMarkdown(handoff), "Cloud Run render handoff Markdown");
 
   if (options.strict && handoff.overallStatus === "blocked") {
     const error = new Error(`Cloud Run render handoff is blocked; see ${handoffPath}.`);
@@ -802,7 +802,34 @@ function sortJson(value) {
 }
 
 async function writeJson(path, value) {
+  await assertRegularFileIfExists(path, "Cloud Run render handoff output file");
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+async function writeTextFile(path, content, label) {
+  await assertRegularFileIfExists(path, label);
+  await writeFile(path, content, "utf8");
+}
+
+async function assertRegularFileIfExists(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = await lstat(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private file path before Cloud Run render handoff.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${path} is not a regular file; use a regular private file path before Cloud Run render handoff.`);
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
