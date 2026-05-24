@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { scanClaimText } from "@/lib/claim-guard";
 import { buildThirdPartyManifest } from "@/lib/license-manifest";
@@ -64,5 +68,63 @@ describe("third-party license manifest", () => {
     });
 
     expect(violations).toEqual([]);
+  });
+
+  it("CLI verifier emits a hash-bound review packet and fails strict mode while review is pending", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-license-manifest-"));
+    const outPath = join(tempDir, "license-manifest.json");
+
+    try {
+      const output = execFileSync(process.execPath, ["scripts/verify-license-manifest.mjs", "--out", outPath], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          XPRIZE_THIRD_PARTY_REVIEW_APPROVED: "false",
+          XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED: "false",
+          XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED: "false",
+          XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED: "false"
+        },
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"]
+      });
+      const report = JSON.parse(output) as {
+        overallStatus: string;
+        sourceDigests: { packageJsonSha256: string; packageLockSha256: string };
+        summary: {
+          totalPackages: number;
+          restrictedLicenseReviewCount: number;
+          obligationReviewCount: number;
+          licenseNeedsReviewCount: number;
+        };
+        checks: Array<{ id: string; status: string; evidence: string }>;
+        blockers: string[];
+      };
+      const checksById = Object.fromEntries(report.checks.map((check) => [check.id, check]));
+
+      expect(report.overallStatus).toBe("warning");
+      expect(report.sourceDigests.packageJsonSha256).toMatch(/^[a-f0-9]{64}$/u);
+      expect(report.sourceDigests.packageLockSha256).toMatch(/^[a-f0-9]{64}$/u);
+      expect(report.summary.totalPackages).toBeGreaterThan(10);
+      expect(report.summary.restrictedLicenseReviewCount).toBe(0);
+      expect(report.summary.obligationReviewCount).toBeGreaterThan(0);
+      expect(report.summary.licenseNeedsReviewCount).toBeGreaterThan(0);
+      expect(report.blockers).toEqual([]);
+      expect(checksById["restricted-or-unknown-license-screen"]).toMatchObject({ status: "passed" });
+      expect(checksById["notice-and-obligation-review"]).toMatchObject({ status: "warning" });
+      expect(checksById["google-api-terms-review"]).toMatchObject({ status: "warning" });
+      expect(checksById["demo-and-screenshot-asset-clearance"]).toMatchObject({ status: "warning" });
+      expect(readFileSync(outPath, "utf8")).toContain('"overallStatus": "warning"');
+
+      expect(() =>
+        execFileSync(process.execPath, ["scripts/verify-license-manifest.mjs", "--strict"], {
+          cwd: process.cwd(),
+          env: { ...process.env, XPRIZE_THIRD_PARTY_REVIEW_APPROVED: "false" },
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"]
+        })
+      ).toThrow();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

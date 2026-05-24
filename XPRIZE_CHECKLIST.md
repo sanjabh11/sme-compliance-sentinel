@@ -29,7 +29,7 @@
 - [x] Local MVP exposes a Claim Guard endpoint and dashboard control for overclaim checks.
 - [x] Local MVP exposes an XPRIZE Submission Gate that blocks local/mock evidence from being misreported as production readiness.
 - [x] Local MVP exposes a Submission Compliance Gate for repository access, judge access, new-project disclosure, third-party/IP review, demo-video asset clearance, redaction, and evidence-response readiness.
-- [x] Local MVP exposes a dependency/license and third-party API manifest generated from `package.json` and `package-lock.json`.
+- [x] Local MVP exposes a dependency/license and third-party API manifest generated from `package.json` and `package-lock.json`, plus `npm run verify:license-manifest` for a hash-bound CLI review packet before final approval flags are set.
 - [x] Local dependency/license manifest separates restricted-license blockers from obligation-review packages, so optional LGPL-style transitive packages remain human-review items without being misreported as automatic replacement blockers.
 - [x] Local dependency/license manifest emits a hash-bound review packet with package-file digests, rule traceability, approval flag boundaries, private artifact requirements, and clearance checklist items for licenses, Google API terms, OAuth consent, demo/screenshot assets, repository licensing, and pre-existing-work disclosure.
 - [x] Local MVP exposes a private XPRIZE Submission Binder with artifact statuses, owner roles, testing instructions, demo timeline, and judge evidence request queue.
@@ -91,7 +91,7 @@
 - [x] Local submission gates block demo-video readiness until URL, under-three-minute duration, public visibility, English/subtitle confirmation, asset clearance, and customer-data redaction are all confirmed.
 - [x] Local demo-video pack includes a release-proof checklist for hosted product footage, repository access, Google Cloud proof, deployed Gemini API proof, production agent logs, free judge access, and revenue/user/consent claim boundaries.
 - [ ] Pre-existing frameworks, templates, boilerplate, open-source dependencies, and third-party API/SDK authorization are disclosed in the final submission.
-- [ ] Human owner reviews `/api/xprize/license-manifest` and sets `XPRIZE_THIRD_PARTY_REVIEW_APPROVED=true` only after dependency and API-use clearance.
+- [ ] Human owner reviews `/api/xprize/license-manifest` or `npm run verify:license-manifest -- --out /secure/local/license-manifest.json`, then sets `XPRIZE_THIRD_PARTY_REVIEW_APPROVED=true` only after dependency and API-use clearance.
 - [x] Local proof gates keep license/IP clearance blocked while the generated manifest still has restricted-license review items.
 - [ ] Judge testing instructions and private access are configured outside the repository.
 - [ ] Run `/api/xprize/judge-access-pack` after deployment, verify the hosted walkthrough from a signed-out browser, and store smoke output/screenshots privately.

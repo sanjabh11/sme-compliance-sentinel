@@ -16,6 +16,7 @@
     "test": "node scripts/run-vitest.mjs",
     "verify:source-release": "node scripts/verify-source-release.mjs",
     "verify:provenance": "node scripts/verify-project-provenance.mjs",
+    "verify:license-manifest": "node scripts/verify-license-manifest.mjs",
     "verify:cloudrun-deployment": "node scripts/verify-cloudrun-deployment.mjs",
     "write:cloudrun-values-template": "node scripts/render-cloudrun-manifest.mjs --write-values-template",
     "write:cloudrun-release-values": "node scripts/render-cloudrun-manifest.mjs --write-release-values",
