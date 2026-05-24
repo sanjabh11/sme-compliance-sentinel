@@ -1,15 +1,22 @@
 #!/usr/bin/env node
-/* global console, process */
+/* global console, process, URL */
 
 import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+const deploymentContract = JSON.parse(
+  readFileSync(new URL("../docs/deployment/cloudrun-deployment-contract.json", import.meta.url), "utf8")
+);
 const defaultOutDir = "artifacts/deployment";
 const packetFileName = "cloudrun-deployment-transcript-packet.json";
 const markdownFileName = "cloudrun-deployment-transcript-packet.md";
 const maxEmbeddedChars = 12000;
+const requiredNonSecretEnv = deploymentContract.requiredNonSecretEnv ?? [];
+const requiredSecretEnv = deploymentContract.requiredSecretEnv ?? [];
+const requiredSecretEnvNames = requiredSecretEnv.map((entry) => entry.envName);
 
 const prohibitedCliPatterns = [
   /(^|-)token($|=)/iu,
@@ -157,7 +164,8 @@ export async function collectCloudRunDeploymentTranscript(options) {
   const deployLog = await readEvidenceFile("cloudrun-deploy-log", options.deployLogPath, "text");
   const describeJson = await readEvidenceFile("cloudrun-describe-json", options.describeJsonPath, "json");
   const describeSummary = summarizeDescribeJson(describeJson.rawText);
-  const blockers = buildBlockers({ dryRunLog, deployLog, describeJson, describeSummary });
+  const deploymentContractChecks = buildDeploymentContractChecks({ releaseId, describeSummary });
+  const blockers = buildBlockers({ dryRunLog, deployLog, describeJson, describeSummary, deploymentContractChecks });
   const status = blockers.length ? "blocked" : "ready-for-hosted-verification";
   const packet = {
     generatedAt: new Date().toISOString(),
@@ -167,6 +175,7 @@ export async function collectCloudRunDeploymentTranscript(options) {
     outputDirectory,
     inputs: [dryRunLog.summary, deployLog.summary, describeJson.summary],
     describeSummary,
+    deploymentContractChecks,
     blockers,
     checks: [
       check("dry-run-log-present", dryRunLog.summary.status === "captured", dryRunLog.summary.status),
@@ -176,7 +185,8 @@ export async function collectCloudRunDeploymentTranscript(options) {
       check("service-url-present", Boolean(describeSummary.url), describeSummary.url || "missing"),
       check("revision-present", Boolean(describeSummary.latestReadyRevisionName || describeSummary.latestCreatedRevisionName), describeSummary.latestReadyRevisionName || describeSummary.latestCreatedRevisionName || "missing"),
       check("no-fatal-dry-run-marker", dryRunLog.summary.fatalMarkerCount === 0, `${dryRunLog.summary.fatalMarkerCount} fatal marker(s)`),
-      check("no-fatal-deploy-marker", deployLog.summary.fatalMarkerCount === 0, `${deployLog.summary.fatalMarkerCount} fatal marker(s)`)
+      check("no-fatal-deploy-marker", deployLog.summary.fatalMarkerCount === 0, `${deployLog.summary.fatalMarkerCount} fatal marker(s)`),
+      ...deploymentContractChecks
     ],
     redactedArtifacts: [
       dryRunLog.redactedArtifact,
@@ -283,6 +293,7 @@ function summarizeDescribeJson(rawText) {
       latestReadyRevisionName: "",
       serviceAccountName: "",
       image: "",
+      releaseIdEnvValue: "",
       envNames: [],
       secretEnvNames: []
     };
@@ -293,6 +304,7 @@ function summarizeDescribeJson(rawText) {
     const templateSpec = parsed?.spec?.template?.spec ?? parsed?.template?.spec ?? {};
     const firstContainer = Array.isArray(templateSpec.containers) ? templateSpec.containers[0] ?? {} : {};
     const env = Array.isArray(firstContainer.env) ? firstContainer.env : [];
+    const envByName = new Map(env.map((entry) => [String(entry?.name ?? ""), entry]));
 
     return {
       parseStatus: "parsed",
@@ -302,9 +314,10 @@ function summarizeDescribeJson(rawText) {
       latestReadyRevisionName: String(parsed?.status?.latestReadyRevisionName ?? ""),
       serviceAccountName: String(templateSpec.serviceAccountName ?? ""),
       image: String(firstContainer.image ?? ""),
+      releaseIdEnvValue: envValue(envByName.get("SENTINEL_RELEASE_ID")),
       envNames: env.map((entry) => String(entry?.name ?? "")).filter(Boolean).sort(),
       secretEnvNames: env
-        .filter((entry) => Boolean(entry?.valueFrom?.secretKeyRef))
+        .filter(hasSecretRef)
         .map((entry) => String(entry?.name ?? ""))
         .filter(Boolean)
         .sort()
@@ -319,13 +332,71 @@ function summarizeDescribeJson(rawText) {
       latestReadyRevisionName: "",
       serviceAccountName: "",
       image: "",
+      releaseIdEnvValue: "",
       envNames: [],
       secretEnvNames: []
     };
   }
 }
 
-function buildBlockers({ dryRunLog, deployLog, describeJson, describeSummary }) {
+function buildDeploymentContractChecks({ releaseId, describeSummary }) {
+  if (describeSummary.parseStatus !== "parsed") {
+    return [
+      check(
+        "cloudrun-describe-contract-parseable",
+        false,
+        "Cloud Run describe JSON must be parsed before deployed env contract drift can be checked."
+      )
+    ];
+  }
+
+  const envNames = new Set(describeSummary.envNames);
+  const secretEnvNames = new Set(describeSummary.secretEnvNames);
+  const missingEnv = [...requiredNonSecretEnv, ...requiredSecretEnvNames].filter((name) => !envNames.has(name));
+  const missingSecretEnv = requiredSecretEnvNames.filter((name) => !secretEnvNames.has(name));
+  const expectedImageTag = dockerTag(releaseId);
+
+  return [
+    check(
+      "cloudrun-required-env-present",
+      missingEnv.length === 0,
+      missingEnv.length
+        ? `Missing deployed env var(s): ${missingEnv.join(", ")}.`
+        : `${describeSummary.envNames.length} deployed env var(s) include the Cloud Run contract keys.`
+    ),
+    check(
+      "cloudrun-required-secrets-use-secret-manager",
+      missingSecretEnv.length === 0,
+      missingSecretEnv.length
+        ? `Missing Secret Manager env ref(s): ${missingSecretEnv.join(", ")}.`
+        : `${missingSecretEnv.length || requiredSecretEnvNames.length} required secret env var(s) use Secret Manager references.`
+    ),
+    check(
+      "cloudrun-release-id-env-matches",
+      describeSummary.releaseIdEnvValue === releaseId,
+      describeSummary.releaseIdEnvValue
+        ? "SENTINEL_RELEASE_ID in the deployed revision matches the collected release id."
+        : "SENTINEL_RELEASE_ID is missing from the deployed revision."
+    ),
+    check(
+      "cloudrun-image-release-bound",
+      Boolean(describeSummary.image) &&
+        (describeSummary.image.includes(`:${expectedImageTag}`) || describeSummary.image.includes("@sha256:")),
+      describeSummary.image
+        ? "Cloud Run image is tied to the release tag or an immutable digest."
+        : "Cloud Run describe JSON is missing the deployed image."
+    ),
+    check(
+      "cloudrun-runtime-service-account-dedicated",
+      /^sentinel-runtime@[^@\s]+\.iam\.gserviceaccount\.com$/u.test(describeSummary.serviceAccountName),
+      describeSummary.serviceAccountName
+        ? "Cloud Run revision uses the dedicated sentinel-runtime service account."
+        : "Cloud Run describe JSON is missing the runtime service account."
+    )
+  ];
+}
+
+function buildBlockers({ dryRunLog, deployLog, describeJson, describeSummary, deploymentContractChecks }) {
   return [
     ...(dryRunLog.summary.status !== "captured" ? ["Cloud Run dry-run log is missing."] : []),
     ...(deployLog.summary.status !== "captured" ? ["Cloud Run deploy log is missing."] : []),
@@ -336,7 +407,10 @@ function buildBlockers({ dryRunLog, deployLog, describeJson, describeSummary }) 
       ? ["Cloud Run describe JSON does not include a created or ready revision name."]
       : []),
     ...(dryRunLog.summary.fatalMarkerCount ? ["Cloud Run dry-run log contains fatal-looking output; review before deployment."] : []),
-    ...(deployLog.summary.fatalMarkerCount ? ["Cloud Run deploy log contains fatal-looking output; review before hosted verification."] : [])
+    ...(deployLog.summary.fatalMarkerCount ? ["Cloud Run deploy log contains fatal-looking output; review before hosted verification."] : []),
+    ...deploymentContractChecks
+      .filter((item) => item.status === "blocked")
+      .map((item) => `${item.id}: ${item.evidence}`)
   ];
 }
 
@@ -399,6 +473,10 @@ function renderMarkdown(packet) {
     `- Latest created revision: ${packet.describeSummary.latestCreatedRevisionName || "missing"}`,
     `- Runtime service account: ${packet.describeSummary.serviceAccountName || "missing"}`,
     `- Image: ${packet.describeSummary.image || "missing"}`,
+    `- Deployed release id env: ${packet.describeSummary.releaseIdEnvValue || "missing"}`,
+    "",
+    "## Deployment Contract Checks",
+    ...packet.deploymentContractChecks.map((item) => `- ${item.id}: ${item.status}; ${item.evidence}`),
     "",
     "## Inputs",
     ...packet.inputs.map((input) => `- ${input.role}: ${input.status}; sha256=${input.sha256 || "missing"}; redactions=${input.redactionCount}`),
@@ -430,6 +508,14 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function hasSecretRef(entry) {
+  return Boolean(entry?.valueFrom?.secretKeyRef || entry?.valueSource?.secretKeyRef);
+}
+
+function envValue(entry) {
+  return typeof entry?.value === "string" ? entry.value : "";
+}
+
 function countMatches(text, pattern) {
   const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
   return [...text.matchAll(new RegExp(pattern.source, flags))].length;
@@ -451,6 +537,10 @@ function sanitizePathSegment(value) {
       .replace(/^-+|-+$/gu, "")
       .slice(0, 120) || "release-candidate"
   );
+}
+
+function dockerTag(value) {
+  return sanitizePathSegment(value).toLowerCase().replace(/[^a-z0-9_.-]+/gu, "-").slice(0, 128);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
