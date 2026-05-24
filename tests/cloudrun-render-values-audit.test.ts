@@ -8,6 +8,7 @@ interface CloudRunRenderValuesAuditModule {
     valuesPath: string;
     outDir: string;
     releaseId: string;
+    verifyPacketPath: string;
     strict: boolean;
   };
   writeCloudRunRenderValuesAudit: (options: {
@@ -125,6 +126,24 @@ interface CloudRunRenderValuesAuditModule {
     stopConditions: string[];
     nextActions: string[];
   }>;
+  verifyCloudRunRenderEvidencePacket: (path: string) => Promise<{
+    overallStatus: "verified" | "blocked";
+    generatedFrom: string;
+    packetPath: string;
+    verificationPath: string;
+    releaseId: string;
+    packetStatus: string;
+    auditStatus: string;
+    summary: {
+      passed: number;
+      blocked: number;
+      fileCount: number;
+    };
+    checks: Array<{ id: string; status: "passed" | "blocked"; evidence: string }>;
+    blockers: string[];
+    proofBoundary: string;
+    stopConditions: string[];
+  }>;
 }
 
 const tempDirs: string[] = [];
@@ -150,6 +169,11 @@ describe("Cloud Run render-values audit", () => {
       valuesPath: "/secure/local/cloudrun-render-values.json",
       outDir: "/tmp/sentinel-render-audit",
       releaseId: "release-1",
+      verifyPacketPath: "",
+      strict: true
+    });
+    expect(parseArgs(["--verify-packet", "/secure/local/cloudrun-render-evidence-packet.json", "--strict"])).toMatchObject({
+      verifyPacketPath: "/secure/local/cloudrun-render-evidence-packet.json",
       strict: true
     });
     expect(() => parseArgs(["--values", "/tmp/values.json", "--oauth-client-secret=secret"])).toThrow(/Raw secret CLI args/u);
@@ -384,6 +408,47 @@ describe("Cloud Run render-values audit", () => {
     expect(evidenceMarkdown).toContain("XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED");
     expect(JSON.stringify(packet)).not.toContain("AIza");
     expect(JSON.stringify(packet)).not.toContain("private-admin-token");
+  });
+
+  it("verifies Cloud Run render evidence packet integrity and blocks tampered packet files", async () => {
+    const { verifyCloudRunRenderEvidencePacket, writeCloudRunRenderValuesAudit } = await loadAudit();
+    const tempDir = await makeTempDir();
+
+    const packet = await writeCloudRunRenderValuesAudit({
+      valuesPath: "docs/deployment/cloudrun-render-values.template.json",
+      outDir: tempDir
+    });
+    const verification = await verifyCloudRunRenderEvidencePacket(packet.evidencePacketPath);
+
+    expect(verification).toMatchObject({
+      overallStatus: "verified",
+      generatedFrom: "audit-cloudrun-render-values --verify-packet",
+      packetPath: packet.evidencePacketPath,
+      releaseId: "RELEASE_ID",
+      packetStatus: "needs-values",
+      auditStatus: "needs-values"
+    });
+    expect(verification.summary.fileCount).toBe(4);
+    expect(verification.summary.blocked).toBe(0);
+    expect(verification.verificationPath).toContain("cloudrun-render-evidence-packet-verifier.json");
+    expect(await readFile(verification.verificationPath, "utf8")).toContain('"overallStatus": "verified"');
+    expect(verification.checks.map((check) => check.id)).toEqual(
+      expect.arrayContaining([
+        "evidence-packet-json",
+        "audit-evidence-packet-match",
+        "audit-status-alignment",
+        "evidence-command-sequence",
+        "evidence-markdown-regenerated"
+      ])
+    );
+    expect(verification.proofBoundary).toContain("does not deploy Cloud Run");
+    expect(verification.stopConditions.join(" ")).toContain("Do not run Cloud Run dry-run");
+
+    await writeFile(packet.evidencePacketMarkdownPath, `${await readFile(packet.evidencePacketMarkdownPath, "utf8")}\nTampered after audit.\n`);
+    const tampered = await verifyCloudRunRenderEvidencePacket(packet.evidencePacketPath);
+
+    expect(tampered.overallStatus).toBe("blocked");
+    expect(tampered.blockers.join(" ")).toContain("evidence-markdown-regenerated");
   });
 
   it("blocks mismatched CLI and values-file release ids before rendering", async () => {

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /* global console, process */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
+import { mkdir, stat, writeFile, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { auditCloudRunRenderValues } from "./render-cloudrun-manifest.mjs";
 
@@ -10,6 +12,7 @@ const auditFileName = "cloudrun-render-values-audit.json";
 const markdownFileName = "cloudrun-render-values-audit.md";
 const evidencePacketFileName = "cloudrun-render-evidence-packet.json";
 const evidencePacketMarkdownFileName = "cloudrun-render-evidence-packet.md";
+const evidencePacketVerifierFileName = "cloudrun-render-evidence-packet-verifier.json";
 
 const prohibitedCliPatterns = [
   /(^|-)token($|=)/iu,
@@ -20,12 +23,24 @@ const prohibitedCliPatterns = [
   /drive-channel-token/iu,
   /judge-(credential|password)/iu
 ];
+const prohibitedPacketContentPatterns = [
+  /Bearer\s+[A-Za-z0-9._~+/=-]{12,}/u,
+  /password\s*[:=]\s*\S+/iu,
+  /api[_-]?key\s*[:=]\s*\S+/iu,
+  /authorization\s*[:=]\s*\S+/iu,
+  /client[_-]?secret\s*[:=]\s*\S+/iu,
+  /refresh[_-]?token\s*[:=]\s*\S+/iu,
+  /\bAIza[0-9A-Za-z_-]{20,}/u,
+  /\bGOCSPX-[0-9A-Za-z_-]{20,}/u,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/u
+];
 
 export function parseArgs(argv) {
   const args = {
     valuesPath: "",
     outDir: process.env.SENTINEL_CLOUD_RUN_RENDER_OUT_DIR ?? defaultOutDir,
     releaseId: process.env.SENTINEL_RELEASE_ID ?? "",
+    verifyPacketPath: "",
     strict: false
   };
 
@@ -71,6 +86,20 @@ export function parseArgs(argv) {
 
     if (arg === "--strict") {
       args.strict = true;
+      continue;
+    }
+
+    if (arg === "--verify-packet") {
+      args.verifyPacketPath = argv[index + 1] ?? "";
+      if (!args.verifyPacketPath) {
+        throw new Error("--verify-packet requires a non-secret Cloud Run render evidence packet path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--verify-packet=")) {
+      args.verifyPacketPath = arg.slice("--verify-packet=".length);
     }
   }
 
@@ -109,6 +138,343 @@ export async function writeCloudRunRenderValuesAudit(options) {
   }
 
   return packet;
+}
+
+export async function verifyCloudRunRenderEvidencePacket(path) {
+  const packetPath = resolve(path);
+  const outputDirectory = resolve(packetPath, "..");
+  const verificationPath = join(outputDirectory, evidencePacketVerifierFileName);
+  const checks = [];
+  const packetResult = await readJsonForVerification(packetPath, "evidence packet");
+  let packet = packetResult.value;
+  let audit;
+
+  checks.push(
+    verificationCheck(
+      "evidence-packet-json",
+      packetResult.ok ? "passed" : "blocked",
+      packetResult.ok ? `Evidence packet parsed from ${packetPath}.` : packetResult.error
+    )
+  );
+
+  if (packet) {
+    checks.push(
+      verificationCheck(
+        "evidence-packet-path-match",
+        resolve(packet.evidencePacketPath ?? "") === packetPath ? "passed" : "blocked",
+        `packetPath=${packetPath}; evidencePacketPath=${String(packet.evidencePacketPath ?? "missing")}.`
+      )
+    );
+    checks.push(
+      verificationCheck(
+        "evidence-proof-boundary",
+        evidencePacketProofBoundaryIsExplicit(packet) ? "passed" : "blocked",
+        "Evidence packet must state that it does not deploy Cloud Run, run gcloud, call Gemini, prove hosted availability, prove revenue, or guarantee judging outcome."
+      )
+    );
+    checks.push(
+      verificationCheck(
+        "evidence-stop-conditions",
+        Array.isArray(packet.stopConditions) &&
+          packet.stopConditions.join(" ").includes("Do not set public XPRIZE proof flags") &&
+          packet.stopConditions.join(" ").includes("Do not move to Cloud Run dry-run")
+          ? "passed"
+          : "blocked",
+        "Evidence packet must preserve dry-run and public-claim stop conditions."
+      )
+    );
+    checks.push(
+      verificationCheck(
+        "evidence-command-sequence",
+        requiredCommandIds().every((id) => packet.commandSequence?.some((command) => command.id === id)) ? "passed" : "blocked",
+        `commandIds=${(packet.commandSequence ?? []).map((command) => command.id).join(",") || "missing"}.`
+      )
+    );
+    checks.push(
+      verificationCheck(
+        "evidence-phase-boundary",
+        packet.phaseProgress?.phaseId === "cloudrun-render-dry-run" &&
+          packet.bucket === "code-controllable" &&
+          Number(packet.phaseProgress?.ratingOutOf5) >= 1 &&
+          Number(packet.phaseProgress?.ratingOutOf5) <= 5
+          ? "passed"
+          : "blocked",
+        `phase=${String(packet.phaseProgress?.phaseId ?? "missing")}; bucket=${String(packet.bucket ?? "missing")}; rating=${String(packet.phaseProgress?.ratingOutOf5 ?? "missing")}.`
+      )
+    );
+
+    const auditPath = typeof packet.auditPath === "string" ? packet.auditPath : "";
+    const auditResult = auditPath ? await readJsonForVerification(auditPath, "render-values audit") : { ok: false, error: "auditPath is missing." };
+    audit = auditResult.value;
+    checks.push(
+      verificationCheck(
+        "audit-json",
+        auditResult.ok ? "passed" : "blocked",
+        auditResult.ok ? `Render-values audit parsed from ${auditPath}.` : auditResult.error
+      )
+    );
+
+    if (audit) {
+      checks.push(
+        verificationCheck(
+          "audit-evidence-packet-match",
+          stableJson(audit.evidencePacket) === stableJson(packet) ? "passed" : "blocked",
+          "Evidence packet JSON must match the evidencePacket embedded in cloudrun-render-values-audit.json."
+        )
+      );
+      checks.push(
+        verificationCheck(
+          "audit-status-alignment",
+          evidenceStatusMatchesAudit(packet, audit) ? "passed" : "blocked",
+          `auditStatus=${String(audit.status ?? "missing")}; evidenceStatus=${String(packet.status ?? "missing")}; readyForStrictRender=${String(audit.readyForStrictRender ?? "missing")}.`
+        )
+      );
+      checks.push(
+        verificationCheck(
+          "audit-release-alignment",
+          packet.releaseId === audit.releaseId ? "passed" : "blocked",
+          `packet release=${String(packet.releaseId ?? "missing")}; audit release=${String(audit.releaseId ?? "missing")}.`
+        )
+      );
+      checks.push(
+        verificationCheck(
+          "audit-readiness-counts",
+          packet.readiness?.missingStrictKeyCount === audit.missingStrictKeys?.length &&
+            packet.readiness?.placeholderKeyCount === audit.placeholderKeys?.length &&
+            packet.readiness?.valueConsistencyBlockerCount === audit.valueConsistencyBlockers?.length &&
+            packet.readiness?.claimFlagsPending === audit.renderValueIntakeSummary?.claimFlagsPending
+            ? "passed"
+            : "blocked",
+          "Evidence readiness counts must match the render-values audit source."
+        )
+      );
+      checks.push(
+        await verifyRenderedTextMatch({
+          id: "audit-markdown-regenerated",
+          path: packet.markdownPath,
+          expectedContent: renderMarkdown(audit)
+        })
+      );
+    }
+
+    checks.push(
+      await verifyRenderedTextMatch({
+        id: "evidence-markdown-regenerated",
+        path: packet.evidencePacketMarkdownPath,
+        expectedContent: renderEvidenceMarkdown(packet)
+      })
+    );
+    checks.push(
+      ...(await verifyPacketFile({
+        id: "evidence-packet",
+        path: packetPath,
+        requiredText: ["Cloud Run", packet.status]
+      }))
+    );
+    checks.push(
+      ...(await verifyPacketFile({
+        id: "evidence-markdown",
+        path: packet.evidencePacketMarkdownPath,
+        requiredText: ["# Cloud Run Render Evidence Packet", packet.status, "## Stop Conditions"]
+      }))
+    );
+    checks.push(
+      ...(await verifyPacketFile({
+        id: "audit-json",
+        path: packet.auditPath,
+        requiredText: ["renderValueIntake", "evidencePacket"]
+      }))
+    );
+    checks.push(
+      ...(await verifyPacketFile({
+        id: "audit-markdown",
+        path: packet.markdownPath,
+        requiredText: ["# Cloud Run Render-Values Audit", "## Cloud Run Evidence Packet", "## Stop Conditions"]
+      }))
+    );
+  }
+
+  const blockers = checks.filter((check) => check.status === "blocked");
+  const report = {
+    generatedAt: new Date().toISOString(),
+    generatedFrom: "audit-cloudrun-render-values --verify-packet",
+    overallStatus: blockers.length ? "blocked" : "verified",
+    packetPath,
+    verificationPath,
+    releaseId: packet?.releaseId ?? "unknown",
+    packetStatus: packet?.status ?? "unknown",
+    auditStatus: audit?.status ?? "unknown",
+    summary: {
+      passed: checks.filter((check) => check.status === "passed").length,
+      blocked: blockers.length,
+      fileCount: packet ? 4 : 0
+    },
+    checks,
+    blockers: blockers.map((check) => `${check.id}: ${check.evidence}`),
+    proofBoundary:
+      "This verifies private Cloud Run render-values audit packet integrity only. It does not deploy Cloud Run, run gcloud, call Gemini, prove hosted availability, prove Workspace sync, prove revenue, approve public XPRIZE flags, or guarantee judging outcome.",
+    stopConditions: [
+      "Do not run Cloud Run dry-run from this verifier alone; dry-run still requires ready render values, strict render, preflight packet, and digest verification.",
+      "Do not set public XPRIZE proof flags from this verifier; public-claim rows require private proof and owner approval.",
+      "Regenerate the render-values audit and rerun this verifier after any audit, evidence packet, or Markdown edit."
+    ]
+  };
+
+  await writeJson(verificationPath, report);
+
+  return report;
+}
+
+function evidencePacketProofBoundaryIsExplicit(packet) {
+  const text = [
+    packet.disclaimer,
+    ...(Array.isArray(packet.stopConditions) ? packet.stopConditions : []),
+    ...(Array.isArray(packet.redactionChecklist) ? packet.redactionChecklist : [])
+  ].join(" ");
+
+  return (
+    text.includes("does not deploy Cloud Run") &&
+    text.includes("run gcloud") &&
+    text.includes("call Gemini") &&
+    text.includes("prove hosted availability") &&
+    text.includes("prove revenue") &&
+    text.includes("guarantee XPRIZE judging outcome")
+  );
+}
+
+function requiredCommandIds() {
+  return ["fill-private-render-values", "audit-render-values", "render-cloudrun-manifest", "prepare-dry-run-preflight"];
+}
+
+function evidenceStatusMatchesAudit(packet, audit) {
+  if (!audit?.evidencePacket) {
+    return false;
+  }
+
+  return (
+    packet.status === audit.evidencePacket.status &&
+    packet.readiness?.auditStatus === audit.status &&
+    packet.readiness?.readyForStrictRender === audit.readyForStrictRender
+  );
+}
+
+async function verifyPacketFile({ id, path, requiredText }) {
+  const checks = [];
+  const resolvedPath = typeof path === "string" && path ? resolve(path) : "";
+
+  checks.push(
+    verificationCheck(
+      `${id}-metadata`,
+      resolvedPath ? "passed" : "blocked",
+      `path=${resolvedPath || "missing"}.`
+    )
+  );
+
+  if (!resolvedPath) {
+    return checks;
+  }
+
+  let content = "";
+  let fileStat;
+
+  try {
+    content = await readFile(resolvedPath, "utf8");
+    fileStat = await stat(resolvedPath);
+    checks.push(verificationCheck(`${id}-readable`, "passed", `${resolvedPath} is readable.`));
+  } catch (error) {
+    checks.push(
+      verificationCheck(`${id}-readable`, "blocked", `${resolvedPath} is not readable: ${error instanceof Error ? error.message : String(error)}.`)
+    );
+    return checks;
+  }
+
+  checks.push(
+    verificationCheck(
+      `${id}-bytes`,
+      fileStat.size > 0 && fileStat.size === Buffer.byteLength(content, "utf8") ? "passed" : "blocked",
+      `bytes=${fileStat.size}.`
+    )
+  );
+  checks.push(
+    verificationCheck(
+      `${id}-sha256`,
+      /^[a-f0-9]{64}$/u.test(sha256Hex(content)) ? "passed" : "blocked",
+      `sha256=${sha256Hex(content)}.`
+    )
+  );
+  checks.push(
+    verificationCheck(
+      `${id}-required-text`,
+      requiredText.every((text) => content.includes(String(text))) ? "passed" : "blocked",
+      `required=${requiredText.join(", ")}.`
+    )
+  );
+  checks.push(
+    verificationCheck(
+      `${id}-secret-shape`,
+      prohibitedPacketContentPatterns.some((pattern) => pattern.test(content)) ? "blocked" : "passed",
+      `${resolvedPath} ${prohibitedPacketContentPatterns.some((pattern) => pattern.test(content)) ? "contains" : "does not contain"} obvious secret-shaped packet text.`
+    )
+  );
+
+  return checks;
+}
+
+async function verifyRenderedTextMatch({ id, path, expectedContent }) {
+  const resolvedPath = typeof path === "string" && path ? resolve(path) : "";
+
+  if (!resolvedPath) {
+    return verificationCheck(id, "blocked", "Expected rendered text path is missing.");
+  }
+
+  try {
+    const actualContent = await readFile(resolvedPath, "utf8");
+
+    return verificationCheck(
+      id,
+      actualContent === expectedContent ? "passed" : "blocked",
+      actualContent === expectedContent
+        ? `${resolvedPath} matches regenerated Markdown.`
+        : `${resolvedPath} differs from regenerated Markdown; rerun audit:cloudrun-values before dry-run.`
+    );
+  } catch (error) {
+    return verificationCheck(id, "blocked", `${resolvedPath} is not readable: ${error instanceof Error ? error.message : String(error)}.`);
+  }
+}
+
+async function readJsonForVerification(path, label) {
+  try {
+    return { ok: true, value: JSON.parse(await readFile(path, "utf8")) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: `${label} could not be parsed from ${path}: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+function verificationCheck(id, status, evidence) {
+  return { id, status, evidence };
+}
+
+function stableJson(value) {
+  return JSON.stringify(sortJson(value));
+}
+
+function sha256Hex(value) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function sortJson(value) {
+  if (Array.isArray(value)) {
+    return value.map(sortJson);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, nested]) => [key, sortJson(nested)]));
+  }
+
+  return value;
 }
 
 function buildEvidencePacket({ audit, outputDirectory, evidencePacketPath, evidencePacketMarkdownPath }) {
@@ -574,8 +940,14 @@ function sanitizePathSegment(value) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     const options = parseArgs(process.argv.slice(2));
-    const packet = await writeCloudRunRenderValuesAudit(options);
+    const packet = options.verifyPacketPath
+      ? await verifyCloudRunRenderEvidencePacket(options.verifyPacketPath)
+      : await writeCloudRunRenderValuesAudit(options);
     console.log(JSON.stringify(packet, null, 2));
+
+    if (options.strict && options.verifyPacketPath && packet.overallStatus !== "verified") {
+      process.exitCode = 1;
+    }
   } catch (error) {
     if (error?.packet) {
       console.error(JSON.stringify(error.packet, null, 2));
