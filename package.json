@@ -22,6 +22,7 @@
     "verify:judge-access": "node scripts/verify-judge-access-pack.mjs",
     "verify:business-evidence": "node scripts/verify-business-evidence.mjs",
     "prepare:manual-intervention": "node scripts/verify-local-submission.mjs --manual-packets-dir",
+    "verify:manual-intervention": "node scripts/verify-local-submission.mjs --verify-manifest",
     "write:cloudrun-values-template": "node scripts/render-cloudrun-manifest.mjs --write-values-template",
     "write:cloudrun-release-values": "node scripts/render-cloudrun-manifest.mjs --write-release-values",
     "audit:cloudrun-values": "node scripts/audit-cloudrun-render-values.mjs",

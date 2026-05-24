@@ -19,6 +19,7 @@ describe("package verification scripts", () => {
     expect(packageJson.scripts["verify:judge-access"]).toBe("node scripts/verify-judge-access-pack.mjs");
     expect(packageJson.scripts["verify:business-evidence"]).toBe("node scripts/verify-business-evidence.mjs");
     expect(packageJson.scripts["prepare:manual-intervention"]).toBe("node scripts/verify-local-submission.mjs --manual-packets-dir");
+    expect(packageJson.scripts["verify:manual-intervention"]).toBe("node scripts/verify-local-submission.mjs --verify-manifest");
     expect(packageJson.scripts["prepare:xprize-attestation"]).toBe("node scripts/prepare-xprize-attestation-packet.mjs");
   });
 

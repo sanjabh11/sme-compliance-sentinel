@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
@@ -14,6 +14,14 @@ const prohibitedCliPatterns = [
   /(^|-)secret($|=)/iu,
   /api[_-]?key=/iu,
   /authorization=/iu
+];
+const prohibitedPacketContentPatterns = [
+  /Bearer\s+[A-Za-z0-9._~+/=-]{12,}/u,
+  /password\s*[:=]\s*\S+/iu,
+  /api[_-]?key\s*[:=]\s*\S+/iu,
+  /authorization\s*[:=]\s*\S+/iu,
+  /client[_-]?secret\s*[:=]\s*\S+/iu,
+  /refresh[_-]?token\s*[:=]\s*\S+/iu
 ];
 
 const gates = [
@@ -71,7 +79,8 @@ function parseArgs(argv) {
   const args = {
     strict: false,
     outPath: "",
-    manualPacketsDir: ""
+    manualPacketsDir: "",
+    verifyManifestPath: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -111,6 +120,20 @@ function parseArgs(argv) {
 
     if (arg.startsWith("--manual-packets-dir=")) {
       args.manualPacketsDir = arg.slice("--manual-packets-dir=".length);
+      continue;
+    }
+
+    if (arg === "--verify-manifest") {
+      args.verifyManifestPath = argv[index + 1] ?? "";
+      if (!args.verifyManifestPath) {
+        throw new Error("--verify-manifest requires a non-secret manifest path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--verify-manifest=")) {
+      args.verifyManifestPath = arg.slice("--verify-manifest=".length);
       continue;
     }
 
@@ -955,6 +978,146 @@ function buildManualInterventionManifest({ report, indexFile, packetFiles }) {
   };
 }
 
+function verifyManualInterventionManifest(path) {
+  const manifestPath = resolve(path);
+  const checks = [];
+  let manifest;
+
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    checks.push(verificationCheck("manifest-json", "passed", `Manifest parsed from ${manifestPath}.`));
+  } catch (error) {
+    checks.push(
+      verificationCheck(
+        "manifest-json",
+        "blocked",
+        `Manifest could not be parsed from ${manifestPath}: ${error instanceof Error ? error.message : String(error)}`
+      )
+    );
+  }
+
+  if (manifest) {
+    checks.push(
+      verificationCheck(
+        "digest-algorithm",
+        manifest.digestAlgorithm === "sha256" ? "passed" : "blocked",
+        `digestAlgorithm=${String(manifest.digestAlgorithm ?? "missing")}.`
+      )
+    );
+    checks.push(
+      verificationCheck(
+        "proof-boundary",
+        String(manifest.proofBoundary ?? "").includes("not hosted proof") &&
+          String(manifest.proofBoundary ?? "").includes("not") &&
+          String(manifest.proofBoundary ?? "").includes("evidence")
+          ? "passed"
+          : "blocked",
+        "Manifest must state that packet integrity is not hosted/revenue/legal/judging proof."
+      )
+    );
+
+    const files = Array.isArray(manifest.files) ? manifest.files : [];
+    checks.push(
+      verificationCheck(
+        "file-register",
+        files.length >= 2 ? "passed" : "blocked",
+        `${files.length} file entry/entries found; expected index plus owner packet entries.`
+      )
+    );
+
+    for (const [index, file] of files.entries()) {
+      checks.push(...verifyManifestFileEntry(file, index));
+    }
+  }
+
+  const blockers = checks.filter((check) => check.status === "blocked");
+
+  return {
+    generatedAt: new Date().toISOString(),
+    generatedFrom: "verify-local-submission --verify-manifest",
+    overallStatus: blockers.length ? "blocked" : "verified",
+    manifestPath,
+    digestAlgorithm: manifest?.digestAlgorithm ?? "unknown",
+    summary: {
+      passed: checks.filter((check) => check.status === "passed").length,
+      blocked: blockers.length,
+      fileCount: Array.isArray(manifest?.files) ? manifest.files.length : 0
+    },
+    checks,
+    blockers: blockers.map((check) => `${check.id}: ${check.evidence}`),
+    proofBoundary:
+      "This verifies private manual-intervention packet integrity only. It does not prove hosted Cloud Run, live Gemini, Workspace OAuth, revenue, active users, judge access, legal review, or human attestation.",
+    stopConditions: [
+      "Do not set XPRIZE, hosted, revenue, judge-access, Gemini, Cloud Run, Workspace, or human-attestation flags from this manifest alone.",
+      "Regenerate packets and rerun this verifier after any owner packet edit.",
+      "Keep packet files and manifest under private or ignored paths."
+    ]
+  };
+}
+
+function verifyManifestFileEntry(file, index) {
+  const idPrefix = `file-${index + 1}`;
+  const checks = [];
+  const path = typeof file?.path === "string" ? file.path : "";
+  const expectedSha256 = typeof file?.sha256 === "string" ? file.sha256 : "";
+  const expectedBytes = Number(file?.bytes ?? 0);
+
+  checks.push(
+    verificationCheck(
+      `${idPrefix}-metadata`,
+      path && /^[a-f0-9]{64}$/u.test(expectedSha256) && Number.isInteger(expectedBytes) && expectedBytes > 0 ? "passed" : "blocked",
+      `owner=${String(file?.owner ?? "missing")}; path=${path || "missing"}; sha256=${expectedSha256 || "missing"}; bytes=${expectedBytes || "missing"}.`
+    )
+  );
+
+  if (!path) {
+    return checks;
+  }
+
+  let content = "";
+  let stat;
+
+  try {
+    content = readFileSync(path, "utf8");
+    stat = statSync(path);
+    checks.push(verificationCheck(`${idPrefix}-exists`, "passed", `${path} is readable.`));
+  } catch (error) {
+    checks.push(
+      verificationCheck(`${idPrefix}-exists`, "blocked", `${path} is not readable: ${error instanceof Error ? error.message : String(error)}.`)
+    );
+    return checks;
+  }
+
+  const actualSha256 = sha256Hex(content);
+  checks.push(
+    verificationCheck(
+      `${idPrefix}-sha256`,
+      actualSha256 === expectedSha256 ? "passed" : "blocked",
+      `expected=${expectedSha256}; actual=${actualSha256}.`
+    )
+  );
+  checks.push(
+    verificationCheck(
+      `${idPrefix}-bytes`,
+      stat.size === expectedBytes ? "passed" : "blocked",
+      `expected=${expectedBytes}; actual=${stat.size}.`
+    )
+  );
+  checks.push(
+    verificationCheck(
+      `${idPrefix}-secret-shape`,
+      prohibitedPacketContentPatterns.some((pattern) => pattern.test(content)) ? "blocked" : "passed",
+      `${path} ${prohibitedPacketContentPatterns.some((pattern) => pattern.test(content)) ? "contains" : "does not contain"} obvious secret-shaped packet text.`
+    )
+  );
+
+  return checks;
+}
+
+function verificationCheck(id, status, evidence) {
+  return { id, status, evidence };
+}
+
 function renderManualInterventionIndexMarkdown(report, packetFiles) {
   const rows = report.manualInterventionPlan.ownerPackets.map((packet) => {
     const packetFile = packetFiles.find((file) => file.owner === packet.owner);
@@ -1080,20 +1243,30 @@ function slugForOwner(owner) {
 
 try {
   const args = parseArgs(process.argv.slice(2));
-  const report = buildReport();
 
-  if (args.manualPacketsDir) {
-    report.manualInterventionPlan.packetFiles = writeManualInterventionPackets(args.manualPacketsDir, report);
-  }
+  if (args.verifyManifestPath) {
+    const verificationReport = verifyManualInterventionManifest(args.verifyManifestPath);
+    console.log(JSON.stringify(verificationReport, null, 2));
 
-  if (args.outPath) {
-    writeJson(args.outPath, report);
-  }
+    if (args.strict && verificationReport.overallStatus !== "verified") {
+      process.exitCode = 1;
+    }
+  } else {
+    const report = buildReport();
 
-  console.log(JSON.stringify(report, null, 2));
+    if (args.manualPacketsDir) {
+      report.manualInterventionPlan.packetFiles = writeManualInterventionPackets(args.manualPacketsDir, report);
+    }
 
-  if (args.strict && report.overallStatus !== "passed") {
-    process.exitCode = 1;
+    if (args.outPath) {
+      writeJson(args.outPath, report);
+    }
+
+    console.log(JSON.stringify(report, null, 2));
+
+    if (args.strict && report.overallStatus !== "passed") {
+      process.exitCode = 1;
+    }
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));

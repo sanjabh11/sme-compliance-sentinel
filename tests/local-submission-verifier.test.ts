@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -141,6 +141,22 @@ type LocalSubmissionReport = {
   stopConditions: string[];
   sourceUrls: string[];
   disclaimer: string;
+};
+
+type ManualManifestVerificationReport = {
+  overallStatus: "verified" | "blocked";
+  generatedFrom: string;
+  manifestPath: string;
+  digestAlgorithm: string;
+  summary: {
+    passed: number;
+    blocked: number;
+    fileCount: number;
+  };
+  checks: Array<{ id: string; status: "passed" | "blocked"; evidence: string }>;
+  blockers: string[];
+  proofBoundary: string;
+  stopConditions: string[];
 };
 
 const localSubmissionEnv = {
@@ -321,6 +337,37 @@ describe("local XPRIZE submission verifier", () => {
     }
   });
 
+  it("verifies manual-intervention packet manifest integrity and blocks tampered packets", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-manual-manifest-"));
+    const manifestPath = join(tempDir, "manual-intervention-manifest.json");
+
+    try {
+      const report = runVerifier(["--manual-packets-dir", tempDir]);
+      const verification = runManualManifestVerifier(manifestPath);
+
+      expect(report.manualInterventionPlan.packetFiles?.manifestPath).toBe(manifestPath);
+      expect(verification).toMatchObject({
+        overallStatus: "verified",
+        generatedFrom: "verify-local-submission --verify-manifest",
+        manifestPath,
+        digestAlgorithm: "sha256"
+      });
+      expect(verification.summary.fileCount).toBe(4);
+      expect(verification.summary.blocked).toBe(0);
+      expect(verification.proofBoundary).toContain("does not prove hosted Cloud Run");
+      expect(verification.stopConditions.join(" ")).toContain("Do not set XPRIZE");
+
+      writeFileSync(join(tempDir, "engineering.md"), `${readFileSync(join(tempDir, "engineering.md"), "utf8")}\nTampered after manifest.\n`);
+      const tampered = runManualManifestVerifier(manifestPath);
+
+      expect(tampered.overallStatus).toBe("blocked");
+      expect(tampered.blockers.join(" ")).toContain("file-2-sha256");
+      expect(() => runManualManifestVerifier(manifestPath, ["--strict"])).toThrow();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("emits a stop-gated execution plan for external evidence without overclaiming proof", () => {
     const report = runVerifier();
     const phasesById = Object.fromEntries(report.phasePlan.phases.map((phase) => [phase.id, phase]));
@@ -416,4 +463,15 @@ function runVerifier(args: string[] = []) {
   });
 
   return JSON.parse(output) as LocalSubmissionReport;
+}
+
+function runManualManifestVerifier(manifestPath: string, args: string[] = []) {
+  const output = execFileSync(process.execPath, ["scripts/verify-local-submission.mjs", "--verify-manifest", manifestPath, ...args], {
+    cwd: process.cwd(),
+    env: localSubmissionEnv,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  return JSON.parse(output) as ManualManifestVerificationReport;
 }
