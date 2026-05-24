@@ -152,6 +152,7 @@ export async function prepareCloudRunRenderHandoff(options = {}) {
       valueConsistencyBlockers: audit.valueConsistencyBlockers,
       intakeSummary: audit.renderValueIntakeSummary
     },
+    privateValueChecklist: buildPrivateValueChecklist({ audit }),
     evidencePacketVerification: {
       overallStatus: evidenceVerification.overallStatus,
       verificationPath: evidenceVerification.verificationPath,
@@ -350,6 +351,54 @@ function buildNextActions({ audit, evidenceVerification }) {
   return actions;
 }
 
+function buildPrivateValueChecklist({ audit }) {
+  const evidencePacket = audit.evidencePacket ?? {};
+  const requiredBeforeDryRun = Array.isArray(evidencePacket.requiredBeforeDryRun) ? evidencePacket.requiredBeforeDryRun : [];
+  const publicClaimEvidenceQueue = Array.isArray(evidencePacket.publicClaimEvidenceQueue) ? evidencePacket.publicClaimEvidenceQueue : [];
+  const consistencyBlockers = Array.isArray(audit.valueConsistencyBlockers) ? audit.valueConsistencyBlockers : [];
+  const status = audit.readyForStrictRender
+    ? publicClaimEvidenceQueue.length
+      ? "ready-for-render-claim-review-pending"
+      : "ready-for-render"
+    : "needs-private-values";
+
+  return {
+    status,
+    requiredBeforeDryRunCount: requiredBeforeDryRun.length,
+    publicClaimEvidenceCount: publicClaimEvidenceQueue.length,
+    consistencyBlockerCount: consistencyBlockers.length,
+    process: [
+      "Open the private render-values file in the private operator environment only.",
+      "Fill required-before-dry-run rows first using non-secret production values or Secret Manager resource/version references; never paste secret values.",
+      "Resolve value consistency blockers before strict audit, manifest render, or dry-run preflight.",
+      "Leave public XPRIZE, revenue, user, Gemini, Workspace, judge-access, demo, and AI-operation evidence flags false until matching private proof exists.",
+      "Rerun the handoff verifier, render-values audit, render-evidence verifier, manifest render, dry-run preflight, and dry-run packet verifier before any gcloud dry-run."
+    ],
+    requiredBeforeDryRun: requiredBeforeDryRun.map(checklistRow),
+    publicClaimEvidenceQueue: publicClaimEvidenceQueue.map(checklistRow),
+    consistencyBlockers: consistencyBlockers.map((blocker) => ({
+      id: blocker.id,
+      key: blocker.key,
+      status: blocker.status,
+      fix: blocker.fix
+    }))
+  };
+}
+
+function checklistRow(item) {
+  return {
+    key: item.key,
+    category: item.category,
+    owner: item.owner,
+    status: item.status,
+    requiredBeforeDryRun: item.requiredBeforeDryRun,
+    requiredBeforePublicClaim: item.requiredBeforePublicClaim,
+    acceptedProof: item.acceptedProof,
+    privateHandling: item.privateHandling,
+    fix: item.fix
+  };
+}
+
 function proofBoundaryIsExplicit(handoff) {
   const text = [
     handoff.proofBoundary,
@@ -389,6 +438,45 @@ function renderMarkdown(handoff) {
     `- Value consistency blockers: ${handoff.renderValuesAudit.valueConsistencyBlockers.length}`,
     `- Evidence packet verifier: ${handoff.evidencePacketVerification.overallStatus}`,
     "",
+    "## Private Value Fill Checklist",
+    `- Status: ${handoff.privateValueChecklist.status}`,
+    `- Required before Cloud Run dry-run: ${handoff.privateValueChecklist.requiredBeforeDryRunCount}`,
+    `- Public-claim evidence rows: ${handoff.privateValueChecklist.publicClaimEvidenceCount}`,
+    `- Value consistency blockers: ${handoff.privateValueChecklist.consistencyBlockerCount}`,
+    "",
+    "### Process",
+    ...handoff.privateValueChecklist.process.map((item) => `- ${item}`),
+    "",
+    "### Required Before Cloud Run Dry-Run",
+    ...(handoff.privateValueChecklist.requiredBeforeDryRun.length
+      ? [
+          markdownTable(
+            ["Key", "Owner", "Status", "Fix"],
+            handoff.privateValueChecklist.requiredBeforeDryRun.map((item) => [item.key, item.owner, item.status, item.fix])
+          )
+        ]
+      : ["- none"]),
+    "",
+    "### Public Claim Evidence Queue",
+    ...(handoff.privateValueChecklist.publicClaimEvidenceQueue.length
+      ? [
+          markdownTable(
+            ["Key", "Owner", "Status", "Accepted Proof"],
+            handoff.privateValueChecklist.publicClaimEvidenceQueue.map((item) => [
+              item.key,
+              item.owner,
+              item.status,
+              item.acceptedProof
+            ])
+          )
+        ]
+      : ["- none"]),
+    "",
+    "### Value Consistency Blockers",
+    ...(handoff.privateValueChecklist.consistencyBlockers.length
+      ? handoff.privateValueChecklist.consistencyBlockers.map((item) => `- ${item.key} [${item.status}]: ${item.fix}`)
+      : ["- none"]),
+    "",
     "## Next Actions",
     ...handoff.nextActions.map((item) => `- ${item}`),
     "",
@@ -402,6 +490,20 @@ function renderMarkdown(handoff) {
     handoff.proofBoundary,
     ""
   ].join("\n");
+}
+
+function markdownTable(headers, rows) {
+  return [
+    `| ${headers.map(escapeTable).join(" | ")} |`,
+    `| ${headers.map(() => "---").join(" | ")} |`,
+    ...rows.map((row) => `| ${row.map(escapeTable).join(" | ")} |`)
+  ].join("\n");
+}
+
+function escapeTable(value) {
+  return String(value ?? "")
+    .replace(/\|/gu, "\\|")
+    .replace(/\n/gu, " ");
 }
 
 function isRawSecretArg(value) {

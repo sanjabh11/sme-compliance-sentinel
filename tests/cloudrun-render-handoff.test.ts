@@ -33,6 +33,30 @@ interface CloudRunRenderHandoffModule {
         placeholder: number;
       };
     };
+    privateValueChecklist: {
+      status: string;
+      requiredBeforeDryRunCount: number;
+      publicClaimEvidenceCount: number;
+      consistencyBlockerCount: number;
+      process: string[];
+      requiredBeforeDryRun: Array<{
+        key: string;
+        owner: string;
+        status: string;
+        fix: string;
+      }>;
+      publicClaimEvidenceQueue: Array<{
+        key: string;
+        owner: string;
+        status: string;
+        acceptedProof: string;
+      }>;
+      consistencyBlockers: Array<{
+        key: string;
+        status: string;
+        fix: string;
+      }>;
+    };
     evidencePacketVerification: {
       overallStatus: string;
       verificationPath: string;
@@ -116,6 +140,13 @@ describe("Cloud Run render handoff", () => {
     expect(handoff.renderValuesAudit.status).toBe("needs-values");
     expect(handoff.renderValuesAudit.missingStrictKeys.length).toBeGreaterThan(0);
     expect(handoff.renderValuesAudit.intakeSummary.ready).toBeGreaterThan(0);
+    expect(handoff.privateValueChecklist.status).toBe("needs-private-values");
+    expect(handoff.privateValueChecklist.requiredBeforeDryRunCount).toBeGreaterThan(0);
+    expect(handoff.privateValueChecklist.publicClaimEvidenceCount).toBeGreaterThan(0);
+    expect(handoff.privateValueChecklist.requiredBeforeDryRun.some((row) => row.key === "GOOGLE_CLOUD_PROJECT")).toBe(true);
+    expect(handoff.privateValueChecklist.consistencyBlockers.some((row) => row.key === "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS")).toBe(true);
+    expect(handoff.privateValueChecklist.process.join(" ")).toContain("never paste secret values");
+    expect(handoff.privateValueChecklist.process.join(" ")).toContain("before any gcloud dry-run");
     expect(handoff.evidencePacketVerification.overallStatus).toBe("verified");
     expect(evidenceVerifier.overallStatus).toBe("verified");
     expect(handoff.blockers).toEqual([]);
@@ -134,8 +165,14 @@ describe("Cloud Run render handoff", () => {
     expect(handoff.proofBoundary).toContain("guarantee judging outcome");
     expect(handoffMarkdown).toContain("Cloud Run Render Handoff");
     expect(handoffMarkdown).toContain("ready-for-private-values");
+    expect(handoffMarkdown).toContain("Private Value Fill Checklist");
+    expect(handoffMarkdown).toContain("GOOGLE_CLOUD_PROJECT");
+    expect(handoffMarkdown).toContain("Public Claim Evidence Queue");
     expect(handoffJson).toMatchObject({
       overallStatus: "ready-for-private-values",
+      privateValueChecklist: {
+        status: "needs-private-values"
+      },
       evidencePacketVerification: { overallStatus: "verified" }
     });
     expect(JSON.stringify(handoff)).not.toContain("AIza");
