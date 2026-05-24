@@ -89,6 +89,7 @@ describe("Cloud Run deployment evidence verifier", () => {
         "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
         "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
         "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
+        "GOOGLE_OAUTH_SCOPE_REVIEW_CONFIRMED",
         "XPRIZE_THIRD_PARTY_REVIEW_APPROVED",
         "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
         "XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED"
@@ -307,6 +308,14 @@ describe("Cloud Run deployment evidence verifier", () => {
         'name: WORKSPACE_PUBSUB_PUSH_AUDIENCE\n              value: "https://sme-workspace-sentinel-abc-uc.a.run.app/api/webhooks/pubsub/drive"'
       )
       .replace(
+        'name: GOOGLE_OAUTH_REQUESTED_SCOPES\n              value: "https://www.googleapis.com/auth/drive.metadata.readonly,https://www.googleapis.com/auth/gmail.metadata"',
+        'name: GOOGLE_OAUTH_REQUESTED_SCOPES\n              value: "https://www.googleapis.com/auth/drive.metadata.readonly,https://www.googleapis.com/auth/gmail.metadata,https://www.googleapis.com/auth/drive"'
+      )
+      .replace(
+        'name: GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES\n              value: "https://www.googleapis.com/auth/drive"',
+        'name: GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES\n              value: "https://www.googleapis.com/auth/gmail.modify"'
+      )
+      .replace(
         "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:release-20260523-001",
         "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:latest"
       )
@@ -322,6 +331,9 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(checksByName.INVALID_VALUE_SENTINEL_MOCK_MODE).toMatchObject({ status: "blocked" });
     expect(checksByName.MISMATCHED_GOOGLE_OAUTH_REDIRECT_URI).toMatchObject({ status: "blocked" });
     expect(checksByName.MISMATCHED_WORKSPACE_PUBSUB_PUSH_AUDIENCE).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_GOOGLE_OAUTH_REQUESTED_SCOPES).toMatchObject({ status: "blocked" });
+    expect(checksByName.REQUESTED_RESTRICTED_GOOGLE_OAUTH_SCOPES).toMatchObject({ status: "blocked" });
+    expect(checksByName.MISSING_GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_XPRIZE_DEMO_VIDEO_URL_HOST).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_XPRIZE_ENTRANT_TYPE).toMatchObject({ status: "blocked" });
     expect(checksByName.INVALID_GOOGLE_OAUTH_CLIENT_ID).toMatchObject({ status: "blocked" });

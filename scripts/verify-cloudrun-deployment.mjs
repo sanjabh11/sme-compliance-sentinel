@@ -73,6 +73,11 @@ const allowedEntrantTypes = new Set(["individual", "team", "organization"]);
 const allowedRepositoryAccessModes = new Set(["public", "private-shared"]);
 const requiredRepositoryJudgeEmails = ["testing@devpost.com", "judging@hacker.fund"];
 const requiredJudgingPeriodEndAt = "2026-09-15T17:00:00-07:00";
+const requiredPilotOauthScopes = [
+  "https://www.googleapis.com/auth/drive.metadata.readonly",
+  "https://www.googleapis.com/auth/gmail.metadata"
+];
+const deferredRestrictedOauthScopes = ["https://www.googleapis.com/auth/drive"];
 const evidenceFlagDependencies = deploymentContract.evidenceFlagDependencies ?? [];
 
 const placeholderPatterns = [
@@ -556,8 +561,72 @@ function checkProductionValueInvariants(envByName, image, runtimeServiceAccount)
     ...checkPositiveNumberEnv(envByName, "SENTINEL_GEMINI_DAILY_REQUEST_QUOTA", true),
     ...checkPositiveNumberEnv(envByName, "SENTINEL_GEMINI_DAILY_TOKEN_QUOTA", true),
     ...checkPositiveNumberEnv(envByName, "GEMINI_INPUT_PER_1K_USD"),
-    ...checkPositiveNumberEnv(envByName, "GEMINI_OUTPUT_PER_1K_USD")
+    ...checkPositiveNumberEnv(envByName, "GEMINI_OUTPUT_PER_1K_USD"),
+    ...checkOauthScopeBoundary(envByName)
   );
+
+  return checks;
+}
+
+function checkOauthScopeBoundary(envByName) {
+  const requestedScopes = parseScopeList(cleanEnvValue(envByName, "GOOGLE_OAUTH_REQUESTED_SCOPES"));
+  const deferredScopes = parseScopeList(cleanEnvValue(envByName, "GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES"));
+  const checks = [];
+
+  if (requestedScopes.length) {
+    const unexpectedRequested = requestedScopes.filter((scope) => !requiredPilotOauthScopes.includes(scope));
+    const missingRequired = requiredPilotOauthScopes.filter((scope) => !requestedScopes.includes(scope));
+
+    if (unexpectedRequested.length) {
+      checks.push(
+        check(
+          "INVALID_GOOGLE_OAUTH_REQUESTED_SCOPES",
+          "blocked",
+          unexpectedRequested.join(","),
+          "Requested OAuth scopes must stay limited to metadata-only Drive and Gmail pilot scopes before Marketplace verification.",
+          "Remove restricted or content-access scopes from GOOGLE_OAUTH_REQUESTED_SCOPES and keep them in GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES until explicit review."
+        )
+      );
+    }
+
+    if (missingRequired.length) {
+      checks.push(
+        check(
+          "MISSING_GOOGLE_OAUTH_REQUESTED_SCOPES",
+          "blocked",
+          missingRequired.join(","),
+          "The Cloud Run deployment metadata no longer matches the app's least-privilege pilot OAuth launch plan.",
+          `Keep GOOGLE_OAUTH_REQUESTED_SCOPES aligned with ${requiredPilotOauthScopes.join(",")}.`
+        )
+      );
+    }
+  }
+
+  const missingDeferred = deferredRestrictedOauthScopes.filter((scope) => !deferredScopes.includes(scope));
+  if (deferredScopes.length && missingDeferred.length) {
+    checks.push(
+      check(
+        "MISSING_GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES",
+        "blocked",
+        missingDeferred.join(","),
+        "Restricted Drive mutation scope must remain documented as deferred rather than silently disappearing from the deployment review.",
+        `Keep GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES aligned with ${deferredRestrictedOauthScopes.join(",")}.`
+      )
+    );
+  }
+
+  const requestedRestricted = requestedScopes.filter((scope) => deferredRestrictedOauthScopes.includes(scope));
+  if (requestedRestricted.length) {
+    checks.push(
+      check(
+        "REQUESTED_RESTRICTED_GOOGLE_OAUTH_SCOPES",
+        "blocked",
+        requestedRestricted.join(","),
+        "Restricted remediation scopes cannot be requested in the first-pilot OAuth set.",
+        "Keep restricted mutation scopes deferred until the tenant explicitly enables human-approved remediation and OAuth review is complete."
+      )
+    );
+  }
 
   return checks;
 }
@@ -755,6 +824,17 @@ function parseCsv(value) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function parseScopeList(value) {
+  return Array.from(
+    new Set(
+      value
+        .split(/[\s,]+/u)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
 }
 
 function extractImageTag(image) {

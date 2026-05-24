@@ -165,6 +165,12 @@ spec:
               value: "YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com"
             - name: GOOGLE_OAUTH_REDIRECT_URI
               value: "https://YOUR-SERVICE-URL/api/oauth/google/callback"
+            - name: GOOGLE_OAUTH_REQUESTED_SCOPES
+              value: "https://www.googleapis.com/auth/drive.metadata.readonly,https://www.googleapis.com/auth/gmail.metadata"
+            - name: GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES
+              value: "https://www.googleapis.com/auth/drive"
+            - name: GOOGLE_OAUTH_SCOPE_REVIEW_CONFIRMED
+              value: "false"
             - name: GEMINI_MODEL
               value: "gemini-3.5-flash"
             - name: SENTINEL_GEMINI_MODEL_ALLOWLIST

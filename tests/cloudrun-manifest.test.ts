@@ -71,6 +71,9 @@ const requiredDeploymentCapabilityGroups = [
       "WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL",
       "GOOGLE_OAUTH_CLIENT_ID",
       "GOOGLE_OAUTH_REDIRECT_URI",
+      "GOOGLE_OAUTH_REQUESTED_SCOPES",
+      "GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES",
+      "GOOGLE_OAUTH_SCOPE_REVIEW_CONFIRMED",
       "GOOGLE_OAUTH_CLIENT_SECRET",
       "WORKSPACE_DRIVE_CHANNEL_TOKEN"
     ]
@@ -191,6 +194,9 @@ describe("Cloud Run deployment manifest", () => {
       "WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL",
       "GOOGLE_OAUTH_CLIENT_ID",
       "GOOGLE_OAUTH_REDIRECT_URI",
+      "GOOGLE_OAUTH_REQUESTED_SCOPES",
+      "GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES",
+      "GOOGLE_OAUTH_SCOPE_REVIEW_CONFIRMED",
       "GEMINI_MODEL",
       "SENTINEL_GEMINI_MODEL_ALLOWLIST",
       "SENTINEL_GEMINI_MONTHLY_BUDGET_USD",
@@ -234,6 +240,12 @@ describe("Cloud Run deployment manifest", () => {
     expectEnvValue("XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED", "false");
     expectEnvValue("XPRIZE_EVIDENCE_RESPONSE_READY", "false");
     expectEnvValue("SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE", "oidc");
+    expectEnvValue(
+      "GOOGLE_OAUTH_REQUESTED_SCOPES",
+      "https://www.googleapis.com/auth/drive.metadata.readonly,https://www.googleapis.com/auth/gmail.metadata"
+    );
+    expectEnvValue("GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES", "https://www.googleapis.com/auth/drive");
+    expectEnvValue("GOOGLE_OAUTH_SCOPE_REVIEW_CONFIRMED", "false");
     expectEnvValue("GEMINI_INPUT_PER_1K_USD", "0.000075");
     expectEnvValue("GEMINI_OUTPUT_PER_1K_USD", "0.0003");
     expectEnvValue("SENSITIVE_DATA_PROTECTION_ENABLED", "true");
