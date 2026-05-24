@@ -49,6 +49,10 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(evidence.envChecks.find((check) => check.name === "XPRIZE_REPOSITORY_ACCESS_CONFIGURED")?.status).toBe(
       "manual-review"
     );
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_REPOSITORY_ACCESS_MODE")).toMatchObject({
+      status: "passed",
+      currentValue: "private-shared"
+    });
     expect(evidence.envChecks.find((check) => check.name === "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED")?.status).toBe(
       "manual-review"
     );
@@ -61,6 +65,10 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(evidence.envChecks.find((check) => check.name === "XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED")?.status).toBe(
       "manual-review"
     );
+    expect(evidence.envChecks.find((check) => check.name === "XPRIZE_JUDGING_PERIOD_END_AT")).toMatchObject({
+      status: "passed",
+      currentValue: "2026-09-15T17:00:00-07:00"
+    });
     expect(evidence.blockers).toEqual([]);
     expect(evidence.dryRunCommand).toContain("artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun.service.rendered.yaml");
     expect(evidence.nextActions[0]).toContain("Replace all template placeholders");
@@ -156,6 +164,33 @@ describe("Cloud Run deployment evidence verifier", () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it("blocks inconsistent repository and judge-access evidence metadata before dry-run", () => {
+    const driftedManifest = renderProductionCandidateManifest()
+      .replace(
+        'name: XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS\n              value: "testing@devpost.com,judging@hacker.fund"',
+        'name: XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS\n              value: "testing@devpost.com"'
+      )
+      .replace(
+        'name: XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED\n              value: "false"',
+        'name: XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED\n              value: "true"'
+      )
+      .replace(
+        'name: XPRIZE_JUDGING_PERIOD_END_AT\n              value: "2026-09-15T17:00:00-07:00"',
+        'name: XPRIZE_JUDGING_PERIOD_END_AT\n              value: "2026-09-01T17:00:00-07:00"'
+      );
+    const evidence = buildCloudRunDeploymentEvidence(driftedManifest);
+    const checksByName = Object.fromEntries(evidence.envChecks.map((check) => [check.name, check]));
+
+    expect(evidence.overallStatus).toBe("blocked");
+    expect(checksByName.MISSING_XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS).toMatchObject({
+      status: "blocked",
+      currentValue: "judging@hacker.fund"
+    });
+    expect(checksByName.INCONSISTENT_XPRIZE_JUDGE_ACCESS_FLAGS).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_XPRIZE_JUDGING_PERIOD_END_AT).toMatchObject({ status: "blocked" });
+    expect(evidence.blockers.join(" ")).toContain("judging@hacker.fund");
   });
 
   it("blocks rendered manifests when Cloud Run secret lookup annotations are missing", () => {

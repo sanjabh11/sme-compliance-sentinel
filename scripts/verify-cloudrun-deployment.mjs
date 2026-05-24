@@ -22,6 +22,8 @@ const requiredNonSecretEnv = [
   "NEXT_PUBLIC_PRODUCT_URL",
   "XPRIZE_REPOSITORY_URL",
   "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
+  "XPRIZE_REPOSITORY_ACCESS_MODE",
+  "XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS",
   "XPRIZE_CATEGORY",
   "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
   "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
@@ -36,6 +38,7 @@ const requiredNonSecretEnv = [
   "XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED",
   "XPRIZE_JUDGE_ACCESS_CONFIGURED",
   "XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED",
+  "XPRIZE_JUDGING_PERIOD_END_AT",
   "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED",
   "XPRIZE_ENTRANT_TYPE",
   "XPRIZE_GENERAL_ELIGIBILITY_CONFIRMED",
@@ -188,6 +191,9 @@ const fixedProductionEnvValues = {
 };
 
 const allowedEntrantTypes = new Set(["individual", "team", "organization"]);
+const allowedRepositoryAccessModes = new Set(["public", "private-shared"]);
+const requiredRepositoryJudgeEmails = ["testing@devpost.com", "judging@hacker.fund"];
+const requiredJudgingPeriodEndAt = "2026-09-15T17:00:00-07:00";
 
 const placeholderPatterns = [
   /PROJECT_ID/u,
@@ -458,6 +464,11 @@ function checkProductionValueInvariants(envByName, image, runtimeServiceAccount)
   const demoVideoUrl = cleanEnvValue(envByName, "XPRIZE_DEMO_VIDEO_URL");
   const entrantType = cleanEnvValue(envByName, "XPRIZE_ENTRANT_TYPE");
   const oauthClientId = cleanEnvValue(envByName, "GOOGLE_OAUTH_CLIENT_ID");
+  const repositoryAccessMode = cleanEnvValue(envByName, "XPRIZE_REPOSITORY_ACCESS_MODE");
+  const repositoryJudgeAccessEmails = cleanEnvValue(envByName, "XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS");
+  const judgeAccessConfigured = cleanEnvValue(envByName, "XPRIZE_JUDGE_ACCESS_CONFIGURED");
+  const freeJudgeAccessConfirmed = cleanEnvValue(envByName, "XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED");
+  const judgingPeriodEndAt = cleanEnvValue(envByName, "XPRIZE_JUDGING_PERIOD_END_AT");
 
   for (const [name, expectedValue] of Object.entries(fixedProductionEnvValues)) {
     const value = cleanEnvValue(envByName, name);
@@ -514,6 +525,63 @@ function checkProductionValueInvariants(envByName, image, runtimeServiceAccount)
         "Set XPRIZE_ENTRANT_TYPE to individual, team, or organization after eligibility review."
       )
     );
+  }
+
+  if (repositoryAccessMode && !allowedRepositoryAccessModes.has(repositoryAccessMode)) {
+    checks.push(
+      check(
+        "INVALID_XPRIZE_REPOSITORY_ACCESS_MODE",
+        "blocked",
+        repositoryAccessMode,
+        "XPRIZE_REPOSITORY_ACCESS_MODE must be public or private-shared.",
+        "Set repository access mode to public for a public repository or private-shared after verifying required judge/testing access."
+      )
+    );
+  }
+
+  if (repositoryAccessMode === "private-shared") {
+    const configuredEmails = parseCsv(repositoryJudgeAccessEmails).map((email) => email.toLowerCase());
+    const missingEmails = requiredRepositoryJudgeEmails.filter((email) => !configuredEmails.includes(email));
+
+    if (missingEmails.length) {
+      checks.push(
+        check(
+          "MISSING_XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS",
+          "blocked",
+          missingEmails.join(","),
+          "Private repository judging access is missing one or more required judge/testing emails.",
+          `Share the repository with ${requiredRepositoryJudgeEmails.join(", ")} or set XPRIZE_REPOSITORY_ACCESS_MODE to public after making the repository public.`
+        )
+      );
+    }
+  }
+
+  if (freeJudgeAccessConfirmed === "true" && judgeAccessConfigured !== "true") {
+    checks.push(
+      check(
+        "INCONSISTENT_XPRIZE_JUDGE_ACCESS_FLAGS",
+        "blocked",
+        "free-access-true-without-judge-access",
+        "Free judging-period access cannot be confirmed before judge access itself is configured.",
+        "Set XPRIZE_JUDGE_ACCESS_CONFIGURED=true only after hosted judge access exists, then confirm free access through the judging period."
+      )
+    );
+  }
+
+  if (judgingPeriodEndAt) {
+    const judgingEndTimestamp = Date.parse(judgingPeriodEndAt);
+
+    if (!Number.isFinite(judgingEndTimestamp) || judgingEndTimestamp < Date.parse(requiredJudgingPeriodEndAt)) {
+      checks.push(
+        check(
+          "INVALID_XPRIZE_JUDGING_PERIOD_END_AT",
+          "blocked",
+          judgingPeriodEndAt,
+          "XPRIZE_JUDGING_PERIOD_END_AT must cover the official judging period end.",
+          `Set XPRIZE_JUDGING_PERIOD_END_AT to ${requiredJudgingPeriodEndAt} or later if official rules change.`
+        )
+      );
+    }
   }
 
   if (oauthClientId && !/^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/u.test(oauthClientId)) {
@@ -776,6 +844,13 @@ function isValidIpv4OrCidr(value) {
 
 function trimTrailingSlash(value) {
   return value.replace(/\/+$/u, "");
+}
+
+function parseCsv(value) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function extractImageTag(image) {

@@ -89,10 +89,13 @@ describe("Cloud Run manifest renderer", () => {
       SENTINEL_SOURCE_COMMIT_AT: "SOURCE_COMMIT_AT",
       XPRIZE_CATEGORY: "Small Business Services",
       XPRIZE_REPOSITORY_ACCESS_CONFIGURED: "false",
+      XPRIZE_REPOSITORY_ACCESS_MODE: "private-shared",
+      XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS: "testing@devpost.com,judging@hacker.fund",
       XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED: "false",
       XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED: "false",
       XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED: "false",
       XPRIZE_JUDGE_ACCESS_CONFIGURED: "false",
+      XPRIZE_JUDGING_PERIOD_END_AT: "2026-09-15T17:00:00-07:00",
       XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED: "false",
       XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED: "false",
       XPRIZE_THIRD_PARTY_REVIEW_APPROVED: "false",
@@ -137,6 +140,11 @@ describe("Cloud Run manifest renderer", () => {
     expect(renderedManifest).toContain('value: "2026-05-23T17:24:17.894Z"');
     expect(renderedManifest).toContain('value: "https://sme-workspace-sentinel-abc-uc.a.run.app"');
     expect(renderedManifest).toContain('name: XPRIZE_REPOSITORY_ACCESS_CONFIGURED\n              value: "false"');
+    expect(renderedManifest).toContain('name: XPRIZE_REPOSITORY_ACCESS_MODE\n              value: "private-shared"');
+    expect(renderedManifest).toContain(
+      'name: XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS\n              value: "testing@devpost.com,judging@hacker.fund"'
+    );
+    expect(renderedManifest).toContain('name: XPRIZE_JUDGING_PERIOD_END_AT\n              value: "2026-09-15T17:00:00-07:00"');
     expect(renderedManifest).toContain('name: XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED\n              value: "false"');
     expect(renderedManifest).toContain('name: XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED\n              value: "false"');
     expect(renderedManifest).toContain('key: "2"');
@@ -226,7 +234,10 @@ function safeRenderValues() {
     NEXT_PUBLIC_PRODUCT_URL: "https://sme-workspace-sentinel-abc-uc.a.run.app",
     XPRIZE_DEMO_VIDEO_URL: "https://youtu.be/sentinel-demo",
     XPRIZE_REPOSITORY_URL: "https://github.com/sanjabh11/sme-compliance-sentinel",
+    XPRIZE_REPOSITORY_ACCESS_MODE: "private-shared",
+    XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS: "testing@devpost.com,judging@hacker.fund",
     XPRIZE_CATEGORY: "Small Business Services",
+    XPRIZE_JUDGING_PERIOD_END_AT: "2026-09-15T17:00:00-07:00",
     GOOGLE_CLOUD_BILLING_ACCOUNT_ID: "000000-111111-222222",
     SENTINEL_GCP_BUDGET_SHORT_ID: "budget-123",
     GOOGLE_OAUTH_CLIENT_ID: "123456789012-abcdef.apps.googleusercontent.com",

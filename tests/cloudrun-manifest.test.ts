@@ -27,6 +27,8 @@ describe("Cloud Run deployment manifest", () => {
       "NEXT_PUBLIC_PRODUCT_URL",
       "XPRIZE_REPOSITORY_URL",
       "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
+      "XPRIZE_REPOSITORY_ACCESS_MODE",
+      "XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS",
       "XPRIZE_CATEGORY",
       "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
       "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
@@ -38,6 +40,7 @@ describe("Cloud Run deployment manifest", () => {
       "XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED",
       "XPRIZE_JUDGE_ACCESS_CONFIGURED",
       "XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED",
+      "XPRIZE_JUDGING_PERIOD_END_AT",
       "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED",
       "XPRIZE_ENTRANT_TYPE",
       "XPRIZE_GENERAL_ELIGIBILITY_CONFIRMED",
@@ -100,6 +103,8 @@ describe("Cloud Run deployment manifest", () => {
     expectEnvValue("SENTINEL_PRIVATE_EVIDENCE_BUCKET", "gs://PROJECT_ID-sentinel-private-evidence");
     expectEnvValue("XPRIZE_REPOSITORY_URL", "https://github.com/sanjabh11/sme-compliance-sentinel");
     expectEnvValue("XPRIZE_REPOSITORY_ACCESS_CONFIGURED", "false");
+    expectEnvValue("XPRIZE_REPOSITORY_ACCESS_MODE", "private-shared");
+    expectEnvValue("XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS", "testing@devpost.com,judging@hacker.fund");
     expectEnvValue("XPRIZE_CATEGORY", "Small Business Services");
     expectEnvValue("XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED", "false");
     expectEnvValue("XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED", "false");
@@ -107,6 +112,7 @@ describe("Cloud Run deployment manifest", () => {
     expectEnvValue("XPRIZE_REAL_USER_EVIDENCE_CONFIGURED", "false");
     expectEnvValue("XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED", "false");
     expectEnvValue("XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED", "false");
+    expectEnvValue("XPRIZE_JUDGING_PERIOD_END_AT", "2026-09-15T17:00:00-07:00");
     expectEnvValue("SENTINEL_WORKSPACE_WEBHOOK_AUTH_MODE", "oidc");
     expectEnvValue("GEMINI_INPUT_PER_1K_USD", "0.000075");
     expectEnvValue("GEMINI_OUTPUT_PER_1K_USD", "0.0003");

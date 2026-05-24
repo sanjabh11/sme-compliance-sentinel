@@ -32,6 +32,8 @@ const renderValueKeys = [
   "NEXT_PUBLIC_PRODUCT_URL",
   "XPRIZE_REPOSITORY_URL",
   "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
+  "XPRIZE_REPOSITORY_ACCESS_MODE",
+  "XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS",
   "XPRIZE_CATEGORY",
   "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
   "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
@@ -46,6 +48,7 @@ const renderValueKeys = [
   "XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED",
   "XPRIZE_JUDGE_ACCESS_CONFIGURED",
   "XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED",
+  "XPRIZE_JUDGING_PERIOD_END_AT",
   "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED",
   "XPRIZE_ENTRANT_TYPE",
   "XPRIZE_GENERAL_ELIGIBILITY_CONFIRMED",
@@ -188,8 +191,11 @@ const strictRequiredValueKeys = [
   "SENTINEL_PRIVATE_EVIDENCE_BUCKET",
   "NEXT_PUBLIC_PRODUCT_URL",
   "XPRIZE_REPOSITORY_URL",
+  "XPRIZE_REPOSITORY_ACCESS_MODE",
+  "XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS",
   "XPRIZE_CATEGORY",
   "XPRIZE_DEMO_VIDEO_URL",
+  "XPRIZE_JUDGING_PERIOD_END_AT",
   "GOOGLE_CLOUD_BILLING_ACCOUNT_ID",
   "SENTINEL_GCP_BUDGET_ID",
   "SENTINEL_BUDGET_PUBSUB_TOPIC",
@@ -216,6 +222,8 @@ const renderValuesTemplate = {
   NEXT_PUBLIC_PRODUCT_URL: "https://YOUR-SERVICE-URL",
   XPRIZE_REPOSITORY_URL: "https://github.com/sanjabh11/sme-compliance-sentinel",
   XPRIZE_REPOSITORY_ACCESS_CONFIGURED: "false",
+  XPRIZE_REPOSITORY_ACCESS_MODE: "private-shared",
+  XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS: "testing@devpost.com,judging@hacker.fund",
   XPRIZE_CATEGORY: "Small Business Services",
   XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED: "false",
   XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED: "false",
@@ -230,6 +238,7 @@ const renderValuesTemplate = {
   XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED: "false",
   XPRIZE_JUDGE_ACCESS_CONFIGURED: "false",
   XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED: "false",
+  XPRIZE_JUDGING_PERIOD_END_AT: "2026-09-15T17:00:00-07:00",
   XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED: "false",
   XPRIZE_GENERAL_ELIGIBILITY_CONFIRMED: "false",
   XPRIZE_REPRESENTATIVE_AUTHORIZED: "false",
@@ -607,6 +616,10 @@ function buildValueConsistencyChecks(values, releaseIdConsistency) {
   const projectNumber = values.GOOGLE_CLOUD_PROJECT_NUMBER;
   const billingAccountId = values.GOOGLE_CLOUD_BILLING_ACCOUNT_ID;
   const region = values.SENTINEL_CLOUD_RUN_REGION || "us-central1";
+  const repositoryAccessMode = String(values.XPRIZE_REPOSITORY_ACCESS_MODE ?? "");
+  const repositoryJudgeAccessEmails = parseCsv(values.XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS).map((email) => email.toLowerCase());
+  const requiredRepositoryJudgeEmails = ["testing@devpost.com", "judging@hacker.fund"];
+  const requiredJudgingPeriodEndAt = "2026-09-15T17:00:00-07:00";
 
   return [
     valueCheck(
@@ -632,6 +645,25 @@ function buildValueConsistencyChecks(values, releaseIdConsistency) {
       "XPRIZE_DEMO_VIDEO_URL",
       isAcceptedDemoVideoUrl(values.XPRIZE_DEMO_VIDEO_URL),
       "Use a public YouTube, Vimeo, or Youku demo URL before strict render."
+    ),
+    valueCheck(
+      "repository-access-mode",
+      "XPRIZE_REPOSITORY_ACCESS_MODE",
+      ["public", "private-shared"].includes(repositoryAccessMode),
+      "Set repository access mode to public or private-shared."
+    ),
+    valueCheck(
+      "repository-judge-access-emails",
+      "XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS",
+      repositoryAccessMode !== "private-shared" ||
+        requiredRepositoryJudgeEmails.every((email) => repositoryJudgeAccessEmails.includes(email)),
+      "For private-shared repositories, include testing@devpost.com and judging@hacker.fund."
+    ),
+    valueCheck(
+      "judging-period-end",
+      "XPRIZE_JUDGING_PERIOD_END_AT",
+      isTimestampAtOrAfter(values.XPRIZE_JUDGING_PERIOD_END_AT, requiredJudgingPeriodEndAt),
+      `Keep judge access available through ${requiredJudgingPeriodEndAt} or later if official rules change.`
     ),
     valueCheck(
       "category-fit",
@@ -1066,6 +1098,13 @@ function isIsoTimestamp(value) {
 
   const timestamp = Date.parse(String(value));
   return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === String(value);
+}
+
+function isTimestampAtOrAfter(value, minimumValue) {
+  const timestamp = Date.parse(String(value ?? ""));
+  const minimumTimestamp = Date.parse(String(minimumValue));
+
+  return Number.isFinite(timestamp) && timestamp >= minimumTimestamp;
 }
 
 function isPublicHttpsUrl(value) {

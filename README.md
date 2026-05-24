@@ -164,6 +164,8 @@ The **Low-risk skip** button verifies that metadata-only events do not call Gemi
 - `NEXT_PUBLIC_PRODUCT_URL`: hosted product URL for judge access. A URL alone is not marked ready until `XPRIZE_JUDGE_ACCESS_CONFIGURED` and `XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED` are also true.
 - `XPRIZE_REPOSITORY_URL`: public or judge-shared source repository URL.
 - `XPRIZE_REPOSITORY_ACCESS_CONFIGURED`: set to `true` only after the repository is public or the required judge/testing accounts have verified access.
+- `XPRIZE_REPOSITORY_ACCESS_MODE`: set to `public` or `private-shared`; private repositories must keep the required judge/testing accounts in `XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS`.
+- `XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS`: non-secret record of required repository access recipients for private-shared source repos; keep credentials and invitations out of Git.
 - `XPRIZE_CATEGORY`: selected submission category; keep `Small Business Services` unless the final strategy is formally changed.
 - `XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED`: set to `true` only after private Cloud Run/GCP product-running evidence exists.
 - `XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED`: set to `true` only after deployed Gemini API-call evidence is captured from the hosted application.
@@ -183,6 +185,7 @@ The **Low-risk skip** button verifies that metadata-only events do not call Gemi
 - `XPRIZE_CORPORATE_ID_CONFIGURED`: set to `true` only if entering as an organization and the required corporate ID proof is ready in the private submission packet.
 - `XPRIZE_NO_PROMOTION_ENTITY_CONFLICT_CONFIRMED`: set to `true` only after confirming no disallowed promotion-entity employee/contractor/immediate-family conflict applies.
 - `XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED`: set to `true` only after confirming the hosted product will remain free and accessible for judges through the judging period.
+- `XPRIZE_JUDGING_PERIOD_END_AT`: deployment metadata for the official judging-period end; update only if official rules change.
 - `XPRIZE_TESTING_INSTRUCTIONS`: non-secret testing instruction summary; keep real credentials in Devpost private fields.
 - `XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED` / `XPRIZE_REVENUE_BY_MONTH_EVIDENCE_CONFIGURED`: set to `true` only after private arms-length invoice/payment evidence and month-by-month revenue evidence are ready.
 - `XPRIZE_TOTAL_COSTS_EVIDENCE_CONFIGURED` / `XPRIZE_CAC_SPEND_EVIDENCE_CONFIGURED`: set to `true` only after private cost records and customer acquisition spend evidence are ready, even if CAC is zero.

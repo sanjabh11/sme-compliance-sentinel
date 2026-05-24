@@ -57,6 +57,10 @@ spec:
               value: "https://github.com/sanjabh11/sme-compliance-sentinel"
             - name: XPRIZE_REPOSITORY_ACCESS_CONFIGURED
               value: "false"
+            - name: XPRIZE_REPOSITORY_ACCESS_MODE
+              value: "private-shared"
+            - name: XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS
+              value: "testing@devpost.com,judging@hacker.fund"
             - name: XPRIZE_CATEGORY
               value: "Small Business Services"
             - name: XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED
@@ -85,6 +89,8 @@ spec:
               value: "false"
             - name: XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED
               value: "false"
+            - name: XPRIZE_JUDGING_PERIOD_END_AT
+              value: "2026-09-15T17:00:00-07:00"
             - name: XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED
               value: "false"
             - name: XPRIZE_ENTRANT_TYPE
