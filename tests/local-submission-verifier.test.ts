@@ -272,9 +272,18 @@ describe("local XPRIZE submission verifier", () => {
       priority: 5
     });
     expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("render-values file");
+    expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("operator handoff");
     expect(report.phasePlan.recommendedNextCodeControllableAction.commands.join(" ")).toContain("audit:cloudrun-values");
     expect(report.phasePlan.recommendedNextCodeControllableAction.privateArtifactPaths).toContain(
       "/secure/local/cloudrun-render-values.json"
+    );
+    expect(report.phasePlan.recommendedNextCodeControllableAction.privateArtifactPaths).toEqual(
+      expect.arrayContaining([
+        "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-values-audit.json",
+        "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet-verifier.json",
+        "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json",
+        "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-packet-verifier.json"
+      ])
     );
     expect(report.phasePlan.recommendedNextCodeControllableAction.proofBoundary).toContain("Code-controllable preparation only");
     expect(report.phasePlan.confidenceBoundary).toContain("not a win-probability estimate");
@@ -501,8 +510,15 @@ describe("local XPRIZE submission verifier", () => {
       expect(bundleManifest.proofBoundary).toContain("not hosted Cloud Run proof");
       expect(bundleManifest.phaseProgress?.recommendedNextCodeControllablePhaseId).toBe("cloudrun-render-dry-run");
       expect(bundleManifest.phaseProgress?.recommendedNextCodeControllableAction?.action).toContain("render-values file");
+      expect(bundleManifest.phaseProgress?.recommendedNextCodeControllableAction?.action).toContain("operator handoff");
       expect(bundleManifest.phaseProgress?.recommendedNextCodeControllableAction?.commands.join(" ")).toContain(
         "audit:cloudrun-values"
+      );
+      expect(bundleManifest.phaseProgress?.recommendedNextCodeControllableAction?.privateArtifactPaths).toEqual(
+        expect.arrayContaining([
+          "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json",
+          "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-packet-verifier.json"
+        ])
       );
       expect(bundleManifest.stopConditions.join(" ")).toContain("Do not set XPRIZE");
       expect(combined).not.toContain("Bearer ");
@@ -642,13 +658,27 @@ describe("local XPRIZE submission verifier", () => {
     expect(humanRows.some((row) => row.action.includes("project-created-after-start"))).toBe(true);
     expect(humanRows.every((row) => row.proofBoundary.includes("human review"))).toBe(true);
     expect(cloudRunRows.some((row) => row.privateArtifactPaths.includes("/secure/local/cloudrun-render-values.json"))).toBe(true);
+    expect(
+      cloudRunRows.some((row) =>
+        row.privateArtifactPaths.includes("artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json")
+      )
+    ).toBe(true);
     expect(cloudRunRows.some((row) => row.commands.join(" ").includes("audit:cloudrun-values"))).toBe(true);
     expect(hostedRows.some((row) => row.action.includes("Cloud Run service URL"))).toBe(true);
+    expect(
+      hostedRows.some((row) =>
+        row.privateArtifactPaths.includes("/secure/local/cloudrun/$SENTINEL_RELEASE_ID/cloudrun-dry-run.log")
+      )
+    ).toBe(true);
     expect(hostedRows.every((row) => row.proofBoundary.includes("external artifact evidence"))).toBe(true);
     expect(businessRows.some((row) => row.action.includes("invoice/payment"))).toBe(true);
     expect(businessRows.some((row) => row.privateArtifactPaths.includes("/secure/local/business-evidence.json"))).toBe(true);
     expect(ownerPacketsByOwner.engineering.privateArtifactPaths).toEqual(
-      expect.arrayContaining(["/secure/local/cloudrun-render-values.json"])
+      expect.arrayContaining([
+        "/secure/local/cloudrun-render-values.json",
+        "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json",
+        "/secure/local/cloudrun/$SENTINEL_RELEASE_ID/cloudrun-dry-run.log"
+      ])
     );
     expect(ownerPacketsByOwner["founder/sales"].rows.some((row) => row.action.includes("invoice"))).toBe(true);
     expect(JSON.stringify(report.manualInterventionPlan)).not.toContain("Bearer ");

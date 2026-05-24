@@ -387,8 +387,11 @@ function privateArtifactPathsForGate(gateId) {
     "license-ip-review": ["/secure/local/xprize-attestation/xprize-human-attestation-packet.json"],
     "cloudrun-deployment-template": [
       "/secure/local/cloudrun-render-values.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-values-audit.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json",
-      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json"
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet-verifier.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-packet-verifier.json"
     ],
     "gemini-model-readiness": ["/secure/local/gemini-model-readiness.json"],
     "judge-access-readiness": ["/secure/local/judge-access-readiness.json", "artifacts/hosted-proof/$SENTINEL_RELEASE_ID/judge-access-pack.json"],
@@ -403,10 +406,17 @@ function privateArtifactPathsForPhase(phaseId) {
     "human-attestation-review": ["/secure/local/xprize-attestation/xprize-human-attestation-packet.json"],
     "cloudrun-render-dry-run": [
       "/secure/local/cloudrun-render-values.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-values-audit.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet-verifier.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-summary.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-packet-verifier.json"
     ],
     "hosted-proof-capture": [
+      "/secure/local/cloudrun/$SENTINEL_RELEASE_ID/cloudrun-dry-run.log",
+      "/secure/local/cloudrun/$SENTINEL_RELEASE_ID/cloudrun-deploy.log",
+      "/secure/local/cloudrun/$SENTINEL_RELEASE_ID/cloudrun-describe.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-deployment-transcript-packet.json",
       "/secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json",
       "/secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json",
@@ -809,7 +819,7 @@ function buildRecommendedNextCodeControllableAction(phases) {
 
 function codeControllableActionForPhase(phase) {
   if (phase.id === "cloudrun-render-dry-run") {
-    return "Prepare the private Cloud Run render-values file, run the render-values audit, render the ignored manifest, and produce the dry-run preflight packet. Stop before gcloud dry-run/deploy until private production values and owner approvals exist.";
+    return "Prepare the private Cloud Run render-values file, run and verify the render-values audit packet, render the ignored manifest, produce and verify the dry-run preflight packet, and review its operator handoff. Stop before gcloud dry-run/deploy until private production values and owner approvals exist.";
   }
 
   return `Advance ${phase.label} with local code or generated private handoff artifacts only; stop before claiming hosted, revenue, user, legal, or human-attestation proof.`;
