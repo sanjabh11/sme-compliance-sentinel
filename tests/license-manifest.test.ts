@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -123,6 +123,34 @@ describe("third-party license manifest", () => {
           stdio: ["ignore", "pipe", "pipe"]
         })
       ).toThrow();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("CLI verifier fails closed when the private review packet path is a symlink", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-license-manifest-symlink-"));
+    const outPath = join(tempDir, "license-manifest.json");
+    const targetPath = join(tempDir, "reviewed-license-manifest.json");
+
+    try {
+      writeFileSync(targetPath, "{}", "utf8");
+      symlinkSync(targetPath, outPath);
+
+      expect(() =>
+        execFileSync(process.execPath, ["scripts/verify-license-manifest.mjs", "--out", outPath], {
+          cwd: process.cwd(),
+          env: {
+            ...process.env,
+            XPRIZE_THIRD_PARTY_REVIEW_APPROVED: "false",
+            XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED: "false",
+            XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED: "false",
+            XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED: "false"
+          },
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"]
+        })
+      ).toThrow(/symbolic link/u);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

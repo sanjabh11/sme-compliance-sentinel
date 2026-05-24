@@ -3,7 +3,7 @@
 
 import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 const packageLock = JSON.parse(readFileSync("package-lock.json", "utf8"));
@@ -324,7 +324,29 @@ function sha256(value) {
 function writeJson(path, value) {
   const absolutePath = resolve(path);
   mkdirSync(dirname(absolutePath), { recursive: true });
+  assertRegularFileIfExists(absolutePath, "License manifest review packet");
   writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function assertRegularFileIfExists(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = lstatSync(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private file path before review.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${path} is not a regular file; use a regular private file path before review.`);
+  }
 }
 
 try {
