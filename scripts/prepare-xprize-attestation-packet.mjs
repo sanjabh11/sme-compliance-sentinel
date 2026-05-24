@@ -3,7 +3,7 @@
 
 import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
@@ -500,12 +500,57 @@ function escapeTable(value) {
 
 function writePacket(outDir, packet) {
   const absoluteDir = resolve(outDir);
+  assertOutputDirectorySafe(absoluteDir, "XPRIZE human attestation output directory");
   mkdirSync(absoluteDir, { recursive: true });
   const jsonPath = join(absoluteDir, "xprize-human-attestation-packet.json");
   const markdownPath = join(absoluteDir, "xprize-human-attestation-packet.md");
+  assertRegularFileIfExists(jsonPath, "XPRIZE human attestation JSON packet");
+  assertRegularFileIfExists(markdownPath, "XPRIZE human attestation Markdown packet");
   writeFileSync(jsonPath, `${JSON.stringify(packet, null, 2)}\n`, "utf8");
   writeFileSync(markdownPath, renderMarkdown(packet), "utf8");
   return { jsonPath, markdownPath };
+}
+
+function assertOutputDirectorySafe(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = lstatSync(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private directory before packet generation.`);
+  }
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${path} is not a directory; use a regular private directory before packet generation.`);
+  }
+}
+
+function assertRegularFileIfExists(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = lstatSync(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; regenerate the packet into regular private files before review.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${path} is not a regular file; regenerate the packet into regular private files before review.`);
+  }
 }
 
 function unique(values) {

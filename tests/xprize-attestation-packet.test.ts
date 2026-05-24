@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -108,6 +108,36 @@ describe("XPRIZE human attestation packet CLI", () => {
     });
 
     expect(violations).toEqual([]);
+  });
+
+  it("fails closed when the output directory or packet files are symlinks", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-xprize-attestation-symlink-"));
+    const symlinkedOutDir = join(tempDir, "symlinked-output");
+    const realOutDir = join(tempDir, "reviewed-output");
+    const packetOutDir = join(tempDir, "packet-output");
+    const jsonTargetPath = join(tempDir, "reviewed-xprize-human-attestation-packet.json");
+    const markdownTargetPath = join(tempDir, "reviewed-xprize-human-attestation-packet.md");
+
+    try {
+      mkdirSync(realOutDir);
+      symlinkSync(realOutDir, symlinkedOutDir);
+
+      expect(() => runPacket(["--out-dir", symlinkedOutDir])).toThrow(/symbolic link/u);
+
+      mkdirSync(packetOutDir);
+      writeFileSync(jsonTargetPath, "{}", "utf8");
+      symlinkSync(jsonTargetPath, join(packetOutDir, "xprize-human-attestation-packet.json"));
+
+      expect(() => runPacket(["--out-dir", packetOutDir])).toThrow(/symbolic link/u);
+
+      rmSync(join(packetOutDir, "xprize-human-attestation-packet.json"), { force: true });
+      writeFileSync(markdownTargetPath, "# Reviewed\n", "utf8");
+      symlinkSync(markdownTargetPath, join(packetOutDir, "xprize-human-attestation-packet.md"));
+
+      expect(() => runPacket(["--out-dir", packetOutDir])).toThrow(/symbolic link/u);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
 
