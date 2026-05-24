@@ -387,6 +387,8 @@ function privateArtifactPathsForGate(gateId) {
     "license-ip-review": ["/secure/local/xprize-attestation/xprize-human-attestation-packet.json"],
     "cloudrun-deployment-template": [
       "/secure/local/cloudrun-render-values.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.md",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-values-audit.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet-verifier.json",
@@ -407,6 +409,8 @@ function privateArtifactPathsForPhase(phaseId) {
     "human-attestation-review": ["/secure/local/xprize-attestation/xprize-human-attestation-packet.json"],
     "cloudrun-render-dry-run": [
       "/secure/local/cloudrun-render-values.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.json",
+      "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.md",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-values-audit.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet.json",
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet-verifier.json",

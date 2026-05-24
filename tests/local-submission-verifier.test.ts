@@ -314,6 +314,8 @@ describe("local XPRIZE submission verifier", () => {
     );
     expect(report.phasePlan.recommendedNextCodeControllableAction.privateArtifactPaths).toEqual(
       expect.arrayContaining([
+        "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.json",
+        "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.md",
         "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-values-audit.json",
         "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-evidence-packet-verifier.json",
         "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json",
@@ -705,6 +707,11 @@ describe("local XPRIZE submission verifier", () => {
     expect(cloudRunRows.some((row) => row.privateArtifactPaths.includes("/secure/local/cloudrun-render-values.json"))).toBe(true);
     expect(
       cloudRunRows.some((row) =>
+        row.privateArtifactPaths.includes("artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.json")
+      )
+    ).toBe(true);
+    expect(
+      cloudRunRows.some((row) =>
         row.privateArtifactPaths.includes("artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json")
       )
     ).toBe(true);
@@ -726,6 +733,7 @@ describe("local XPRIZE submission verifier", () => {
     expect(ownerPacketsByOwner.engineering.privateArtifactPaths).toEqual(
       expect.arrayContaining([
         "/secure/local/cloudrun-render-values.json",
+        "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.json",
         "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-summary.json",
         "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-preflight-packet.json",
         "/secure/local/cloudrun/$SENTINEL_RELEASE_ID/cloudrun-dry-run.log"
