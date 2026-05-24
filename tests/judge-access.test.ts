@@ -18,7 +18,8 @@ describe("judge access pack", () => {
     expect(checksById["hosted-product-url"].status).toBe("missing");
     expect(checksById["judge-testing-instructions"].status).toBe("missing");
     expect(checksById["free-judging-period-access"].status).toBe("missing");
-    expect(checksById["repository-access"].status).toBe("ready");
+    expect(checksById["repository-access"].status).toBe("missing");
+    expect(checksById["support-and-evidence-response"].status).toBe("missing");
     expect(checksById["demo-reset-and-seeded-data"].status).toBe("ready");
     expect(pack.blockers.join(" ")).toContain("Deploy the app");
     expect(pack.privateCredentialRules.join(" ")).toContain("Do not commit judge usernames");
@@ -46,8 +47,14 @@ describe("judge access pack", () => {
 
   it("moves into ready status only when every access confirmation is set", async () => {
     vi.stubEnv("NEXT_PUBLIC_PRODUCT_URL", "https://sentinel.example.com");
+    vi.stubEnv("XPRIZE_REPOSITORY_ACCESS_CONFIGURED", "true");
+    vi.stubEnv("XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED", "true");
+    vi.stubEnv("XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED", "true");
+    vi.stubEnv("XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED", "true");
     vi.stubEnv("XPRIZE_JUDGE_ACCESS_CONFIGURED", "true");
     vi.stubEnv("XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED", "true");
+    vi.stubEnv("XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS", "2");
+    vi.stubEnv("XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED", "true");
     vi.stubEnv("XPRIZE_DEMO_VIDEO_URL", "https://youtu.be/sentinel-demo");
     vi.stubEnv("XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED", "true");
     vi.stubEnv("XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED", "true");

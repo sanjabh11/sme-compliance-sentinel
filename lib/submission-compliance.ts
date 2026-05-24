@@ -50,7 +50,10 @@ function buildChecks(
   thirdPartyManifest: ReturnType<typeof buildThirdPartyManifest>,
   projectProvenance: ReturnType<typeof buildProjectProvenanceReport>
 ): SubmissionComplianceCheck[] {
-  const hasRepo = Boolean(sentinelConfig.repositoryUrl) && sentinelConfig.xprizeRepositoryAccessConfigured;
+  const hasRepo =
+    Boolean(sentinelConfig.repositoryUrl) &&
+    sentinelConfig.xprizeRepositoryAccessConfigured &&
+    sentinelConfig.xprizeSourceCodeCompleteConfirmed;
   const demoVideoCleared = hasDemoVideoClearance();
   const hasEvidenceExport = snapshot.auditEvents.some((event) => event.type === "evidence_exported");
   const hasGeminiRun =
@@ -60,6 +63,10 @@ function buildChecks(
   const hasFinancialProof =
     productionEvidence &&
     snapshot.pilotRecords.some((pilot) => pilot.armsLength && !pilot.relatedParty && pilot.proofStatus === "financial-doc-ready");
+  const evidenceResponseLogisticsReady =
+    sentinelConfig.xprizeEvidenceResponsePrivateContactConfigured &&
+    sentinelConfig.xprizeEvidenceResponseSlaBusinessDays > 0 &&
+    sentinelConfig.xprizeEvidenceResponseSlaBusinessDays <= 2;
 
   return [
     {
@@ -80,9 +87,9 @@ function buildChecks(
       ruleArea: "Testing Access",
       status: hasRepo ? "passed" : "blocked",
       evidence: sentinelConfig.repositoryUrl
-        ? `${sentinelConfig.repositoryUrl}; judge/testing access ${sentinelConfig.xprizeRepositoryAccessConfigured ? "confirmed" : "missing"}.`
+        ? `${sentinelConfig.repositoryUrl}; judge/testing access ${sentinelConfig.xprizeRepositoryAccessConfigured ? "confirmed" : "missing"}; source completeness ${sentinelConfig.xprizeSourceCodeCompleteConfirmed ? "confirmed" : "missing"}.`
         : "XPRIZE_REPOSITORY_URL is not configured.",
-      fix: "Publish the repository or share a private repository with the required judge/testing accounts, then set XPRIZE_REPOSITORY_URL and XPRIZE_REPOSITORY_ACCESS_CONFIGURED=true only after access is verified.",
+      fix: "Publish the repository or share a private repository with the required judge/testing accounts, then set XPRIZE_REPOSITORY_URL, XPRIZE_REPOSITORY_ACCESS_CONFIGURED=true, and XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED=true only after access and source completeness are verified.",
       ownerRole: "engineering",
       requiredBeforeSubmit: true
     },
@@ -92,7 +99,7 @@ function buildChecks(
       ruleArea: "Testing Access",
       status: hasJudgeProductAccess() ? "passed" : "blocked",
       evidence: judgeProductAccessSummary(),
-      fix: "Deploy the app, verify it from a signed-out browser, keep credentials only in Devpost testing instructions or a private channel, and confirm free judge access remains available through the judging period.",
+      fix: "Deploy the app, verify it from a signed-out browser or judge-like account, set XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED=true, complete XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED=true without committing credentials, and confirm free judge access remains available through the judging period.",
       ownerRole: "engineering",
       requiredBeforeSubmit: true
     },
@@ -151,9 +158,16 @@ function buildChecks(
       id: "private-evidence-response",
       label: "Two-business-day evidence response packet",
       ruleArea: "Evidence Response",
-      status: hasFinancialProof && hasGeminiRun && hasEvidenceExport ? "passed" : "blocked",
-      evidence: `Financial proof ${hasFinancialProof ? "ready" : "missing"}; Gemini API log ${hasGeminiRun ? "ready" : "missing"}; judge export ${hasEvidenceExport ? "ready" : "missing"}.`,
-      fix: "Prepare private invoice/payment records, Gemini API metadata, Cloud/Gemini logs, customer contact proof, and redacted judge export for organizer requests.",
+      status:
+        hasFinancialProof &&
+        hasGeminiRun &&
+        hasEvidenceExport &&
+        evidenceResponseLogisticsReady &&
+        sentinelConfig.xprizeEvidenceResponseReady
+          ? "passed"
+          : "blocked",
+      evidence: `Financial proof ${hasFinancialProof ? "ready" : "missing"}; Gemini API log ${hasGeminiRun ? "ready" : "missing"}; judge export ${hasEvidenceExport ? "ready" : "missing"}; private response contact ${sentinelConfig.xprizeEvidenceResponsePrivateContactConfigured ? "configured" : "missing"}; response SLA ${sentinelConfig.xprizeEvidenceResponseSlaBusinessDays || "missing"} business day(s); final readiness flag ${sentinelConfig.xprizeEvidenceResponseReady ? "confirmed" : "missing"}.`,
+      fix: "Prepare private invoice/payment records, Gemini API metadata, Cloud/Gemini logs, customer contact proof, response owner/back-up owner, two-business-day response plan, and redacted judge export; set XPRIZE_EVIDENCE_RESPONSE_READY=true only after those are reviewed.",
       ownerRole: "founder",
       requiredBeforeSubmit: true
     },

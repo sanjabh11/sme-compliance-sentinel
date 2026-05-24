@@ -244,17 +244,22 @@ function buildChecks(snapshot: GateSnapshot): XPrizeGateCheck[] {
       criterion: "Submission Logistics",
       status: hasJudgeProductAccess() ? "passed" : "blocked",
       evidence: judgeProductAccessSummary(),
-      fix: "Deploy the app, set NEXT_PUBLIC_PRODUCT_URL to the hosted judge-accessible URL, and confirm free access remains available through the judging period."
+      fix: "Deploy the app, set NEXT_PUBLIC_PRODUCT_URL to the hosted judge-accessible URL, verify working project access, set XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED=true, configure private testing instructions with XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED=true, and confirm free access remains available through the judging period."
     },
     {
       id: "repository-url",
       label: "Repository URL",
       criterion: "Submission Logistics",
-      status: sentinelConfig.repositoryUrl && sentinelConfig.xprizeRepositoryAccessConfigured ? "passed" : "blocked",
+      status:
+        sentinelConfig.repositoryUrl &&
+        sentinelConfig.xprizeRepositoryAccessConfigured &&
+        sentinelConfig.xprizeSourceCodeCompleteConfirmed
+          ? "passed"
+          : "blocked",
       evidence: sentinelConfig.repositoryUrl
-        ? `${sentinelConfig.repositoryUrl}; judge/testing access ${sentinelConfig.xprizeRepositoryAccessConfigured ? "confirmed" : "missing"}.`
+        ? `${sentinelConfig.repositoryUrl}; judge/testing access ${sentinelConfig.xprizeRepositoryAccessConfigured ? "confirmed" : "missing"}; source completeness ${sentinelConfig.xprizeSourceCodeCompleteConfirmed ? "confirmed" : "missing"}.`
         : "XPRIZE_REPOSITORY_URL is not configured.",
-      fix: "Publish or share the repository as required by Devpost, set XPRIZE_REPOSITORY_URL, and set XPRIZE_REPOSITORY_ACCESS_CONFIGURED=true only after access is verified."
+      fix: "Publish or share the repository as required by Devpost, set XPRIZE_REPOSITORY_URL, and set XPRIZE_REPOSITORY_ACCESS_CONFIGURED=true plus XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED=true only after access and source completeness are verified."
     },
     {
       id: "demo-video",

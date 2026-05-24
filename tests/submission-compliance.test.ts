@@ -19,8 +19,11 @@ describe("submission compliance gate", () => {
     expect(checksById["organization-corporate-id"].fix).toContain("XPRIZE_ENTRANT_TYPE");
     expect(checksById["repository-access"].status).toBe("blocked");
     expect(checksById["repository-access"].fix).toContain("XPRIZE_REPOSITORY_ACCESS_CONFIGURED");
+    expect(checksById["repository-access"].fix).toContain("XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED");
     expect(checksById["product-access"].status).toBe("blocked");
     expect(checksById["product-access"].evidence).toContain("free judging-period access missing");
+    expect(checksById["product-access"].evidence).toContain("testing instructions missing");
+    expect(checksById["product-access"].fix).toContain("XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED");
     expect(checksById["demo-video-clearance"].status).toBe("blocked");
     expect(checksById["demo-video-clearance"].fix).toContain("demo-video clearance env flags");
     expect(checksById["third-party-license-manifest"].status).toBe(center.thirdPartyManifestSummary.status);
@@ -28,6 +31,8 @@ describe("submission compliance gate", () => {
     expect(center.thirdPartyManifestSummary.directRuntimeDependencies).toBeGreaterThanOrEqual(5);
     expect(center.demoAssetChecklist).toHaveLength(5);
     expect(center.repositoryDisclosure.join(" ")).toContain("pre-existing frameworks");
+    expect(checksById["private-evidence-response"].evidence).toContain("private response contact missing");
+    expect(checksById["private-evidence-response"].fix).toContain("two-business-day response plan");
     expect(center.nextActions[0]).toContain("May 19, 2026");
   });
 

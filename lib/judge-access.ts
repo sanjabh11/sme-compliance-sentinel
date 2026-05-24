@@ -58,7 +58,7 @@ function buildAccessChecks(input: { productUrl: string; repositoryUrl: string; d
       label: "Hosted product URL",
       status: hasJudgeProductAccess() ? "ready" : "missing",
       evidence: judgeProductAccessSummary(),
-      fix: "Deploy the app, verify the hosted URL from a signed-out browser, configure private judge access, and confirm free access through the judging period.",
+      fix: "Deploy the app, verify the hosted URL from a signed-out browser or judge-like account, set XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED=true, complete XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED=true, configure private judge access, and confirm free access through the judging period.",
       ownerRole: "engineering",
       requiredBeforeSubmit: true,
       privateHandling: "Store screenshots or browser-smoke JSON privately; do not include judge credentials in source."
@@ -66,10 +66,10 @@ function buildAccessChecks(input: { productUrl: string; repositoryUrl: string; d
     check({
       id: "judge-testing-instructions",
       label: "Private judge testing instructions",
-      status: sentinelConfig.judgeAccessConfigured ? "private-on-request" : "missing",
-      evidence: sentinelConfig.judgeAccessConfigured
-        ? "Judge access is marked configured; private instructions must be supplied outside the repository."
-        : "XPRIZE_JUDGE_ACCESS_CONFIGURED is not confirmed.",
+      status: sentinelConfig.xprizeTestingInstructionsConfigured ? "private-on-request" : "missing",
+      evidence: sentinelConfig.xprizeTestingInstructionsConfigured
+        ? "Private testing instructions are marked configured; credentials must remain outside the repository."
+        : "XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED is not confirmed.",
       fix: "Prepare Devpost private testing instructions with URL, test-account path, demo reset path, expected workflow, support contact, and credential handling notes.",
       ownerRole: "founder",
       requiredBeforeSubmit: true,
@@ -90,9 +90,17 @@ function buildAccessChecks(input: { productUrl: string; repositoryUrl: string; d
     check({
       id: "repository-access",
       label: "Repository access",
-      status: input.repositoryUrl === "missing" ? "missing" : "ready",
-      evidence: input.repositoryUrl,
-      fix: "Publish the repository or share the private repository with judge/testing accounts and keep the URL in package metadata or XPRIZE_REPOSITORY_URL.",
+      status:
+        input.repositoryUrl !== "missing" &&
+        sentinelConfig.xprizeRepositoryAccessConfigured &&
+        sentinelConfig.xprizeSourceCodeCompleteConfirmed
+          ? "ready"
+          : "missing",
+      evidence:
+        input.repositoryUrl === "missing"
+          ? "Repository URL is missing."
+          : `${input.repositoryUrl}; judge/testing access ${sentinelConfig.xprizeRepositoryAccessConfigured ? "confirmed" : "missing"}; source completeness ${sentinelConfig.xprizeSourceCodeCompleteConfirmed ? "confirmed" : "missing"}.`,
+      fix: "Publish the repository or share the private repository with judge/testing accounts, keep the URL in package metadata or XPRIZE_REPOSITORY_URL, and set XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED=true only after source completeness review.",
       ownerRole: "engineering",
       requiredBeforeSubmit: true,
       privateHandling: "Do not include private evidence, .env files, invoices, customer findings, or judge credentials in the source repository."
@@ -110,11 +118,16 @@ function buildAccessChecks(input: { productUrl: string; repositoryUrl: string; d
     check({
       id: "support-and-evidence-response",
       label: "Two-business-day support and evidence response",
-      status: "private-on-request",
-      evidence: "Private evidence response owner and SLA are represented in the judge access packet.",
+      status:
+        sentinelConfig.xprizeEvidenceResponsePrivateContactConfigured &&
+        sentinelConfig.xprizeEvidenceResponseSlaBusinessDays > 0 &&
+        sentinelConfig.xprizeEvidenceResponseSlaBusinessDays <= 2
+          ? "private-on-request"
+          : "missing",
+      evidence: `Private contact ${sentinelConfig.xprizeEvidenceResponsePrivateContactConfigured ? "configured" : "missing"}; response SLA ${sentinelConfig.xprizeEvidenceResponseSlaBusinessDays || "missing"} business day(s).`,
       fix: "Assign a human owner who can answer organizer evidence requests within two business days and access the private Evidence Vault.",
       ownerRole: "founder",
-      requiredBeforeSubmit: false,
+      requiredBeforeSubmit: true,
       privateHandling: "Keep the owner's direct contact in private testing instructions, not public source."
     }),
     check({
@@ -226,7 +239,12 @@ function buildEvidenceResponsePlan(): SubmissionPrivateEvidenceRequest[] {
       label: "Judge login and support owner",
       ownerRole: "founder",
       responseSlaHours: 48,
-      status: sentinelConfig.judgeAccessConfigured ? "private-on-request" : "missing",
+      status:
+        sentinelConfig.judgeAccessConfigured &&
+        sentinelConfig.xprizeTestingInstructionsConfigured &&
+        sentinelConfig.xprizeEvidenceResponsePrivateContactConfigured
+          ? "private-on-request"
+          : "missing",
       handling: "Provide test login path, support contact, and credential reset process privately; never commit credentials."
     },
     {
@@ -234,7 +252,10 @@ function buildEvidenceResponsePlan(): SubmissionPrivateEvidenceRequest[] {
       label: "Hosted URL browser proof",
       ownerRole: "engineering",
       responseSlaHours: 48,
-      status: hasJudgeProductAccess() ? "private-on-request" : "missing",
+      status:
+        hasJudgeProductAccess() && sentinelConfig.xprizeWorkingProjectAccessConfigured
+          ? "private-on-request"
+          : "missing",
       handling: "Capture signed-out browser screenshot and route smoke JSON from the hosted product."
     },
     {

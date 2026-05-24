@@ -33,8 +33,10 @@ describe("XPRIZE submission gate", () => {
     expect(checksById["cloud-cost-controls"].status).toBe("blocked");
     expect(checksById["cloud-cost-controls"].fix).toContain("Cloud Billing budget");
     expect(checksById["product-url"].status).toBe("blocked");
+    expect(checksById["product-url"].fix).toContain("XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED");
     expect(checksById["repository-url"].status).toBe("blocked");
     expect(checksById["repository-url"].fix).toContain("XPRIZE_REPOSITORY_ACCESS_CONFIGURED");
+    expect(checksById["repository-url"].fix).toContain("XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED");
     expect(checksById["demo-video"].status).toBe("blocked");
     expect(checksById["demo-video"].fix).toContain("demo-video clearance flags");
     expect(gate.blockingSummary.join(" ")).toContain("Deploy");

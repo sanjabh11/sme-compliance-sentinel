@@ -31,6 +31,8 @@ describe("Production launch command center", () => {
     expect(envByName["SENTINEL_BUDGET_PUBSUB_TOPIC"].status).toBe("missing");
     expect(envByName["SENSITIVE_DATA_PROTECTION_ENABLED"].status).toBe("missing");
     expect(envByName["XPRIZE_REPOSITORY_ACCESS_CONFIGURED"].status).toBe("missing");
+    expect(envByName["XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED"].status).toBe("missing");
+    expect(envByName["XPRIZE_SUBMISSION_CLOSE_AT"].status).toBe("missing");
     expect(envByName["XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED"].status).toBe("missing");
     expect(envByName["XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED"].status).toBe("missing");
     expect(envByName["XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED"].status).toBe("missing");
@@ -38,6 +40,8 @@ describe("Production launch command center", () => {
     expect(envByName["XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED"].status).toBe("missing");
     expect(envByName["XPRIZE_DEMO_VIDEO_CUSTOMER_DATA_REDACTED_CONFIRMED"].status).toBe("missing");
     expect(envByName["XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED"].status).toBe("missing");
+    expect(envByName["XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED"].status).toBe("missing");
+    expect(envByName["XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED"].status).toBe("missing");
     expect(envByName["XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED"].status).toBe("missing");
     expect(envByName["XPRIZE_ENTRANT_TYPE"].status).toBe("missing");
     expect(envByName["XPRIZE_GENERAL_ELIGIBILITY_CONFIRMED"].status).toBe("missing");
@@ -46,6 +50,8 @@ describe("Production launch command center", () => {
     expect(envByName["XPRIZE_CORPORATE_ID_CONFIGURED"].status).toBe("missing");
     expect(envByName["XPRIZE_NO_PROMOTION_ENTITY_CONFLICT_CONFIRMED"].status).toBe("missing");
     expect(envByName["XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED"].status).toBe("missing");
+    expect(envByName["XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS"].status).toBe("missing");
+    expect(envByName["XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED"].status).toBe("missing");
     expect(["configured", "secret-required"]).toContain(envByName["GEMINI_API_KEY"].status);
     expect(center.blockers.join(" ")).toContain("Cloud Run");
     expect(center.blockers.join(" ")).toContain("GOOGLE_CLOUD_PROJECT");
@@ -76,6 +82,7 @@ describe("Production launch command center", () => {
         "bigquery-agent-run",
         "live-gemini-log",
         "financial-records",
+        "working-product-access",
         "demo-video",
         "license-ip-review"
       ])
@@ -83,6 +90,7 @@ describe("Production launch command center", () => {
     expect(proofArtifactsById["bigquery-agent-run"].privateHandling).toContain("provider/model/fallback/cost");
     expect(proofArtifactsById["live-gemini-log"].nextAction).toContain("XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED");
     expect(proofArtifactsById["repository-access"].nextAction).toContain("judge/testing access");
+    expect(proofArtifactsById["working-product-access"].nextAction).toContain("testing instructions");
     expect(proofArtifactsById["demo-video"].nextAction).toContain("human-review");
     expect(proofArtifactsById["license-ip-review"].status).toBe("external-required");
     expect(center.claimBoundaries.join(" ")).toContain("Local mock data");

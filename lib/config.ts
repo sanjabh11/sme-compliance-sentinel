@@ -57,6 +57,8 @@ export const sentinelConfig = {
   productUrl: process.env.NEXT_PUBLIC_PRODUCT_URL ?? "",
   repositoryUrl: process.env.XPRIZE_REPOSITORY_URL ?? "",
   xprizeRepositoryAccessConfigured: process.env.XPRIZE_REPOSITORY_ACCESS_CONFIGURED === "true",
+  xprizeSourceCodeCompleteConfirmed: process.env.XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED === "true",
+  xprizeSubmissionCloseAt: process.env.XPRIZE_SUBMISSION_CLOSE_AT ?? "",
   xprizeCategory: process.env.XPRIZE_CATEGORY ?? "Small Business Services",
   xprizeGoogleCloudProductEvidenceConfigured:
     process.env.XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED === "true",
@@ -71,10 +73,19 @@ export const sentinelConfig = {
   demoVideoAssetClearanceConfirmed: process.env.XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED === "true",
   demoVideoCustomerDataRedactedConfirmed: process.env.XPRIZE_DEMO_VIDEO_CUSTOMER_DATA_REDACTED_CONFIRMED === "true",
   demoVideoEnglishOrSubtitledConfirmed: process.env.XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED === "true",
+  xprizeWorkingProjectAccessConfigured: process.env.XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED === "true",
+  xprizeTestingInstructionsConfigured: process.env.XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED === "true",
   judgeAccessConfigured: process.env.XPRIZE_JUDGE_ACCESS_CONFIGURED === "true",
+  xprizeJudgingPeriodEndAt: process.env.XPRIZE_JUDGING_PERIOD_END_AT ?? "",
   thirdPartyReviewApproved: process.env.XPRIZE_THIRD_PARTY_REVIEW_APPROVED === "true",
   xprizeIpOwnershipReviewApproved: process.env.XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED === "true",
   xprizeEvidenceResponseReady: process.env.XPRIZE_EVIDENCE_RESPONSE_READY === "true",
+  xprizeEvidenceResponseSlaBusinessDays: parsePositiveInteger(
+    process.env.XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS,
+    0
+  ),
+  xprizeEvidenceResponsePrivateContactConfigured:
+    process.env.XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED === "true",
   projectCreatedAfterStartConfirmed: process.env.XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED === "true",
   xprizeEntrantType: parseXPrizeEntrantType(process.env.XPRIZE_ENTRANT_TYPE),
   xprizeCorporateIdConfigured: process.env.XPRIZE_CORPORATE_ID_CONFIGURED === "true",
@@ -134,6 +145,11 @@ function parsePositiveNumber(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parsePositiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export function nowIso() {
   return new Date().toISOString();
 }
@@ -164,11 +180,13 @@ export function demoVideoClearanceSummary() {
 export function hasJudgeProductAccess() {
   return (
     Boolean(sentinelConfig.productUrl) &&
+    sentinelConfig.xprizeWorkingProjectAccessConfigured &&
+    sentinelConfig.xprizeTestingInstructionsConfigured &&
     sentinelConfig.judgeAccessConfigured &&
     sentinelConfig.xprizeFreeJudgeAccessThroughJudgingConfirmed
   );
 }
 
 export function judgeProductAccessSummary() {
-  return `Product URL ${sentinelConfig.productUrl ? "configured" : "missing"}; judge access ${sentinelConfig.judgeAccessConfigured ? "configured" : "missing"}; free judging-period access ${sentinelConfig.xprizeFreeJudgeAccessThroughJudgingConfirmed ? "confirmed" : "missing"}.`;
+  return `Product URL ${sentinelConfig.productUrl ? "configured" : "missing"}; working project access ${sentinelConfig.xprizeWorkingProjectAccessConfigured ? "confirmed" : "missing"}; testing instructions ${sentinelConfig.xprizeTestingInstructionsConfigured ? "configured" : "missing"}; judge access ${sentinelConfig.judgeAccessConfigured ? "configured" : "missing"}; free judging-period access ${sentinelConfig.xprizeFreeJudgeAccessThroughJudgingConfirmed ? "confirmed" : "missing"}; judging-period end ${sentinelConfig.xprizeJudgingPeriodEndAt || "missing"}.`;
 }
