@@ -215,6 +215,39 @@ describe("Cloud Run render handoff", () => {
 
     expect(tamperedBoundary.overallStatus).toBe("blocked");
     expect(tamperedBoundary.blockers.join(" ")).toContain("handoff-proof-boundary");
+
+    const missingChecklist = await prepareCloudRunRenderHandoff({
+      valuesPath: join(tempDir, "missing-checklist-values.json"),
+      outDir: join(tempDir, "missing-checklist-deployment"),
+      gitRunner: makeFakeGitRunner()
+    });
+    const missingChecklistJson = JSON.parse(await readFile(missingChecklist.handoffPath, "utf8")) as Record<string, unknown>;
+    delete missingChecklistJson.privateValueChecklist;
+    await writeFile(missingChecklist.handoffPath, `${JSON.stringify(missingChecklistJson, null, 2)}\n`, "utf8");
+    const missingChecklistVerification = await verifyCloudRunRenderHandoff(missingChecklist.handoffPath);
+
+    expect(missingChecklistVerification.overallStatus).toBe("blocked");
+    expect(missingChecklistVerification.blockers.join(" ")).toContain("handoff-private-value-checklist-shape");
+    expect(missingChecklistVerification.blockers.join(" ")).toContain("handoff-markdown-regenerated");
+
+    const countDrift = await prepareCloudRunRenderHandoff({
+      valuesPath: join(tempDir, "count-drift-values.json"),
+      outDir: join(tempDir, "count-drift-deployment"),
+      gitRunner: makeFakeGitRunner()
+    });
+    const countDriftJson = JSON.parse(await readFile(countDrift.handoffPath, "utf8")) as {
+      privateValueChecklist?: {
+        requiredBeforeDryRunCount?: number;
+      };
+    };
+    if (countDriftJson.privateValueChecklist) {
+      countDriftJson.privateValueChecklist.requiredBeforeDryRunCount = 0;
+    }
+    await writeFile(countDrift.handoffPath, `${JSON.stringify(countDriftJson, null, 2)}\n`, "utf8");
+    const countDriftVerification = await verifyCloudRunRenderHandoff(countDrift.handoffPath);
+
+    expect(countDriftVerification.overallStatus).toBe("blocked");
+    expect(countDriftVerification.blockers.join(" ")).toContain("handoff-private-value-checklist-counts");
   });
 
   it("blocks mismatched release ids before private handoff proceeds", async () => {

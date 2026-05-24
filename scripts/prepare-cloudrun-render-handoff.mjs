@@ -240,7 +240,17 @@ export async function verifyCloudRunRenderHandoff(path) {
     );
 
     const evidencePacketPath = handoff.renderValuesAudit?.evidencePacketPath;
+    let evidencePacket;
     if (typeof evidencePacketPath === "string" && evidencePacketPath) {
+      const evidencePacketResult = await readJsonForVerification(evidencePacketPath, "render evidence packet");
+      evidencePacket = evidencePacketResult.value;
+      checks.push(
+        verificationCheck(
+          "render-evidence-packet-json",
+          evidencePacketResult.ok ? "passed" : "blocked",
+          evidencePacketResult.ok ? `Render evidence packet parsed from ${evidencePacketPath}.` : evidencePacketResult.error
+        )
+      );
       evidenceVerification = await verifyCloudRunRenderEvidencePacket(evidencePacketPath);
       checks.push(
         verificationCheck(
@@ -260,25 +270,35 @@ export async function verifyCloudRunRenderHandoff(path) {
       checks.push(verificationCheck("render-evidence-verifier", "blocked", "renderValuesAudit.evidencePacketPath is missing."));
     }
 
+    const privateChecklistChecks = verifyPrivateValueChecklist({ handoff, evidencePacket });
+    checks.push(...privateChecklistChecks);
+    const privateChecklistReady = privateChecklistChecks.every((check) => check.status === "passed");
+
     checks.push(
-      await verifyRenderedTextMatch({
-        id: "handoff-markdown-regenerated",
-        path: handoff.handoffMarkdownPath,
-        expectedContent: renderMarkdown(handoff)
-      })
+      privateChecklistReady
+        ? await verifyRenderedTextMatch({
+            id: "handoff-markdown-regenerated",
+            path: handoff.handoffMarkdownPath,
+            expectedContent: renderMarkdown(handoff)
+          })
+        : verificationCheck(
+            "handoff-markdown-regenerated",
+            "blocked",
+            "Skipped Markdown regeneration because privateValueChecklist is missing, malformed, or out of sync with the render evidence packet."
+          )
     );
     checks.push(
       ...(await verifyPacketFile({
         id: "handoff-json",
         path: handoffPath,
-        requiredText: ["prepare-cloudrun-render-handoff", "cloudrun-render-dry-run", "proofBoundary"]
+        requiredText: ["prepare-cloudrun-render-handoff", "cloudrun-render-dry-run", "privateValueChecklist", "proofBoundary"]
       }))
     );
     checks.push(
       ...(await verifyPacketFile({
         id: "handoff-markdown",
         path: handoff.handoffMarkdownPath,
-        requiredText: ["# Cloud Run Render Handoff", "## Stop Conditions", "## Proof Boundary"]
+        requiredText: ["# Cloud Run Render Handoff", "## Private Value Fill Checklist", "## Stop Conditions", "## Proof Boundary"]
       }))
     );
   }
@@ -396,6 +416,92 @@ function checklistRow(item) {
     acceptedProof: item.acceptedProof,
     privateHandling: item.privateHandling,
     fix: item.fix
+  };
+}
+
+function verifyPrivateValueChecklist({ handoff, evidencePacket }) {
+  const checklist = handoff.privateValueChecklist;
+  const requiredBeforeDryRun = Array.isArray(evidencePacket?.requiredBeforeDryRun) ? evidencePacket.requiredBeforeDryRun.map(checklistRow) : [];
+  const publicClaimEvidenceQueue = Array.isArray(evidencePacket?.publicClaimEvidenceQueue) ? evidencePacket.publicClaimEvidenceQueue.map(checklistRow) : [];
+  const consistencyBlockers = Array.isArray(handoff.renderValuesAudit?.valueConsistencyBlockers)
+    ? handoff.renderValuesAudit.valueConsistencyBlockers.map(consistencyBlockerRow)
+    : [];
+  const shapeOk =
+    checklist &&
+    typeof checklist === "object" &&
+    Array.isArray(checklist.process) &&
+    Array.isArray(checklist.requiredBeforeDryRun) &&
+    Array.isArray(checklist.publicClaimEvidenceQueue) &&
+    Array.isArray(checklist.consistencyBlockers);
+
+  if (!shapeOk) {
+    return [
+      verificationCheck(
+        "handoff-private-value-checklist-shape",
+        "blocked",
+        "privateValueChecklist must include process, requiredBeforeDryRun, publicClaimEvidenceQueue, and consistencyBlockers arrays."
+      )
+    ];
+  }
+
+  const expectedStatus = handoff.renderValuesAudit?.readyForStrictRender
+    ? publicClaimEvidenceQueue.length
+      ? "ready-for-render-claim-review-pending"
+      : "ready-for-render"
+    : "needs-private-values";
+  const countsOk =
+    checklist.requiredBeforeDryRunCount === checklist.requiredBeforeDryRun.length &&
+    checklist.publicClaimEvidenceCount === checklist.publicClaimEvidenceQueue.length &&
+    checklist.consistencyBlockerCount === checklist.consistencyBlockers.length &&
+    checklist.requiredBeforeDryRunCount === requiredBeforeDryRun.length &&
+    checklist.publicClaimEvidenceCount === publicClaimEvidenceQueue.length &&
+    checklist.consistencyBlockerCount === consistencyBlockers.length;
+  const processText = checklist.process.join(" ");
+  const processOk =
+    processText.includes("never paste secret values") &&
+    processText.includes("before any gcloud dry-run") &&
+    processText.includes("Leave public XPRIZE") &&
+    processText.includes("matching private proof exists");
+  const rowsOk =
+    stableJson(checklist.requiredBeforeDryRun.map(checklistRow)) === stableJson(requiredBeforeDryRun) &&
+    stableJson(checklist.publicClaimEvidenceQueue.map(checklistRow)) === stableJson(publicClaimEvidenceQueue) &&
+    stableJson(checklist.consistencyBlockers.map(consistencyBlockerRow)) === stableJson(consistencyBlockers);
+
+  return [
+    verificationCheck(
+      "handoff-private-value-checklist-shape",
+      "passed",
+      "privateValueChecklist includes the expected checklist arrays."
+    ),
+    verificationCheck(
+      "handoff-private-value-checklist-status",
+      checklist.status === expectedStatus ? "passed" : "blocked",
+      `expected=${expectedStatus}; actual=${String(checklist.status ?? "missing")}.`
+    ),
+    verificationCheck(
+      "handoff-private-value-checklist-counts",
+      countsOk ? "passed" : "blocked",
+      `requiredBeforeDryRun=${checklist.requiredBeforeDryRunCount}/${requiredBeforeDryRun.length}; publicClaimEvidence=${checklist.publicClaimEvidenceCount}/${publicClaimEvidenceQueue.length}; consistencyBlockers=${checklist.consistencyBlockerCount}/${consistencyBlockers.length}.`
+    ),
+    verificationCheck(
+      "handoff-private-value-checklist-process",
+      processOk ? "passed" : "blocked",
+      "Checklist process must preserve secret-handling, public-claim, private-proof, and pre-gcloud stop conditions."
+    ),
+    verificationCheck(
+      "handoff-private-value-checklist-evidence-alignment",
+      rowsOk ? "passed" : "blocked",
+      "Checklist rows must match the render evidence packet and render-values consistency blockers."
+    )
+  ];
+}
+
+function consistencyBlockerRow(blocker) {
+  return {
+    id: blocker.id,
+    key: blocker.key,
+    status: blocker.status,
+    fix: blocker.fix
   };
 }
 
@@ -619,6 +725,22 @@ function verificationCheck(id, status, evidence) {
 
 function sha256Hex(value) {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function stableJson(value) {
+  return JSON.stringify(sortJson(value));
+}
+
+function sortJson(value) {
+  if (Array.isArray(value)) {
+    return value.map(sortJson);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, nested]) => [key, sortJson(nested)]));
+  }
+
+  return value;
 }
 
 async function writeJson(path, value) {
