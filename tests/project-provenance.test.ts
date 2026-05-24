@@ -146,6 +146,58 @@ describe("project provenance disclosure report", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("CLI provenance verification blocks until the project-created-after-start attestation is reviewed", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-provenance-cli-"));
+    const scriptPath = join(process.cwd(), "scripts", "verify-project-provenance.mjs");
+
+    try {
+      runGit(tempDir, ["init", "-b", "main"]);
+      runGit(tempDir, ["config", "user.email", "sentinel@example.com"]);
+      runGit(tempDir, ["config", "user.name", "SME Sentinel"]);
+      runGit(tempDir, ["remote", "add", "origin", "https://github.com/example/sme-workspace-sentinel.git"]);
+      writeFileSync(
+        join(tempDir, "package.json"),
+        JSON.stringify({
+          dependencies: { next: "16.2.6", react: "19.2.0" },
+          devDependencies: { vitest: "2.1.8", typescript: "5.7.2" }
+        }),
+        "utf8"
+      );
+      writeFileSync(join(tempDir, "README.md"), "# Sentinel\n", "utf8");
+      runGit(tempDir, ["add", "package.json", "README.md"]);
+      runGit(tempDir, ["commit", "-m", "initial"], {
+        GIT_AUTHOR_DATE: "2026-05-20T10:00:00+00:00",
+        GIT_COMMITTER_DATE: "2026-05-20T10:00:00+00:00"
+      });
+      runGit(tempDir, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
+      runGit(tempDir, ["branch", "--set-upstream-to=origin/main", "main"]);
+
+      const unreviewedReport = runProvenanceCli(scriptPath, tempDir, {
+        XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED: "false"
+      });
+      const unreviewedChecks = Object.fromEntries(unreviewedReport.checks.map((check) => [check.id, check]));
+
+      expect(unreviewedReport.overallStatus).toBe("blocked");
+      expect(unreviewedReport.projectCreatedAfterStartConfirmed).toBe(false);
+      expect(unreviewedChecks["human-attestation"]).toMatchObject({
+        status: "blocked",
+        evidence: "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED is false."
+      });
+
+      const reviewedReport = runProvenanceCli(scriptPath, tempDir, {
+        XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED: "true"
+      });
+      const reviewedChecks = Object.fromEntries(reviewedReport.checks.map((check) => [check.id, check]));
+
+      expect(reviewedReport.projectCreatedAfterStartConfirmed).toBe(true);
+      expect(reviewedChecks["human-attestation"]).toMatchObject({ status: "passed" });
+      expect(reviewedReport.overallStatus).toBe("warning");
+      expect(reviewedChecks["pre-existing-work-disclosure"]).toMatchObject({ status: "warning" });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 function runGit(cwd: string, args: string[], env: Record<string, string> = {}) {
@@ -155,4 +207,19 @@ function runGit(cwd: string, args: string[], env: Record<string, string> = {}) {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
   });
+}
+
+function runProvenanceCli(scriptPath: string, cwd: string, env: Record<string, string>) {
+  const output = execFileSync(process.execPath, [scriptPath], {
+    cwd,
+    env: { ...process.env, ...env },
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  return JSON.parse(output) as {
+    overallStatus: string;
+    projectCreatedAfterStartConfirmed: boolean;
+    checks: Array<{ id: string; status: string; evidence: string }>;
+  };
 }

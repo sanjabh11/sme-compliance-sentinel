@@ -150,6 +150,7 @@ function buildReport() {
   const firstCommitAfterStart = Number.isFinite(firstCommitMs) && firstCommitMs >= Date.parse(hackathonStartAt);
   const deploymentSourceMetadata = git.sourceEvidenceMode === "deployment-env" && Boolean(git.headCommit);
   const repositoryUrl = normalizeRepositoryUrl(process.env.XPRIZE_REPOSITORY_URL ?? git.remoteUrl ?? "");
+  const projectCreatedAfterStartConfirmed = process.env.XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED === "true";
   const checks = [
     check(
       "git-history-present",
@@ -188,6 +189,13 @@ function buildReport() {
         : "No local HEAD commit."
     ),
     check(
+      "human-attestation",
+      projectCreatedAfterStartConfirmed,
+      projectCreatedAfterStartConfirmed
+        ? "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED is true."
+        : "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED is false."
+    ),
+    check(
       "pre-existing-work-disclosure",
       false,
       "Human review required for frameworks, dependencies, Google APIs, and generated/local boilerplate disclosure.",
@@ -203,6 +211,7 @@ function buildReport() {
     hackathonStartAt,
     repositoryUrl,
     repositoryUrlSource: process.env.XPRIZE_REPOSITORY_URL ? "env" : repositoryUrl ? "git-remote" : "missing",
+    projectCreatedAfterStartConfirmed,
     git,
     packageSummary: {
       runtimeDependencies: Object.keys(packageJson.dependencies ?? {}).sort(),
@@ -214,7 +223,8 @@ function buildReport() {
       ...(git.untrackedPaths.length && !deploymentSourceMetadata ? ["Add intended source files to Git and keep secrets/private evidence excluded."] : []),
       ...(deploymentSourceMetadata ? ["Keep local npm run verify:provenance output with the same source commit in the private judge packet."] : []),
       ...(git.headCommit && git.remoteHeadCommit === git.headCommit ? [] : ["Push or share the repository for judges."]),
-      "Human-review the Devpost disclosure before setting XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED=true."
+      ...(projectCreatedAfterStartConfirmed ? [] : ["Set XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED=true only after human review of git history and disclosure text."]),
+      "Human-review the final Devpost disclosure for frameworks, dependencies, Google APIs, and generated/local boilerplate before submission."
     ],
     disclosureDraft: [
       "Verify first commit date against the official hackathon start before claiming new-project status.",

@@ -4,7 +4,7 @@
 
 - [ ] Project created after the hackathon start date.
 - [x] Local submission gates block eligibility until project-created-after-start provenance and pre-existing work disclosure are verified.
-- [x] Local MVP exposes `/api/xprize/provenance` and `npm run verify:provenance` to inspect Git commits, first-commit timing, tracked/untracked source state, repository URL, deployment source revision metadata, and framework/dependency disclosure before setting the project-created-after-start attestation.
+- [x] Local MVP exposes `/api/xprize/provenance` and `npm run verify:provenance` to inspect Git commits, first-commit timing, tracked/untracked source state, repository URL, deployment source revision metadata, the missing/present project-created-after-start human attestation, and framework/dependency disclosure before setting the project-created-after-start attestation.
 - [x] Provenance collection uses the Git root commit from `git rev-list --max-parents=0 HEAD`, not the newest commit, so source creation timing is not inflated by later implementation commits.
 - [x] Local MVP exposes `/api/xprize/eligibility-disclosure` as a private reviewer packet for repository provenance, pre-existing-work disclosure, third-party/API authorization, entrant attestation flags, judge-access handling, and private-evidence boundaries without auto-clearing human attestations.
 - [x] Local MVP exposes `/api/xprize/source-release` and `npm run verify:source-release` to check required source surfaces, `.gitignore`, release file plan, and obvious secret patterns before source is committed or pushed.
