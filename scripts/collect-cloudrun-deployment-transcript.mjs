@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /* global console, process, URL */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 
 const deploymentContract = JSON.parse(
   readFileSync(new URL("../docs/deployment/cloudrun-deployment-contract.json", import.meta.url), "utf8")
@@ -204,9 +204,23 @@ export async function collectCloudRunDeploymentTranscript(options) {
       "This packet redacts and checksums operator-saved Cloud Run deployment transcripts. It does not run gcloud, deploy Cloud Run, call Gemini, or prove customer traction."
   };
 
+  const packetPath = join(outputDirectory, packetFileName);
+  const markdownPath = join(outputDirectory, markdownFileName);
+  await assertDirectoryPathSafe(outputDirectory, "Cloud Run deployment transcript output directory");
   await mkdir(outputDirectory, { recursive: true });
-  await writeJson(join(outputDirectory, packetFileName), packet);
-  await writeFile(join(outputDirectory, markdownFileName), renderMarkdown(packet), "utf8");
+  await assertDirectoryExistsSafe(outputDirectory, "Cloud Run deployment transcript output directory");
+  await writeOutputFiles([
+    {
+      path: packetPath,
+      label: "Cloud Run deployment transcript packet output file",
+      content: `${JSON.stringify(packet, null, 2)}\n`
+    },
+    {
+      path: markdownPath,
+      label: "Cloud Run deployment transcript markdown output file",
+      content: renderMarkdown(packet)
+    }
+  ]);
 
   if (options.strict && packet.status !== "ready-for-hosted-verification") {
     const error = new Error(`Cloud Run deployment transcript packet is ${packet.status}; see ${join(outputDirectory, packetFileName)}.`);
@@ -538,8 +552,96 @@ function renderMarkdown(packet) {
   ].join("\n");
 }
 
-async function writeJson(path, value) {
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+async function writeOutputFiles(files) {
+  const stagedFiles = [];
+
+  try {
+    for (const file of files) {
+      await assertDirectoryPathSafe(dirname(file.path), `${file.label} parent directory`);
+      await assertRegularFileIfExists(file.path, file.label);
+    }
+
+    for (const file of files) {
+      const tempPath = join(dirname(file.path), `.${basename(file.path)}.${process.pid}.${randomUUID()}.tmp`);
+      stagedFiles.push({ tempPath, finalPath: file.path });
+      await writeFile(tempPath, file.content, { encoding: "utf8", flag: "wx" });
+    }
+
+    for (const file of stagedFiles) {
+      await rename(file.tempPath, file.finalPath);
+    }
+  } catch (error) {
+    await Promise.allSettled(stagedFiles.map((file) => rm(file.tempPath, { force: true })));
+    throw error;
+  }
+}
+
+async function assertDirectoryPathSafe(path, label) {
+  const directories = [];
+  let cursor = resolve(path);
+
+  while (true) {
+    directories.push(cursor);
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+
+  for (const directory of directories.reverse()) {
+    let fileStat;
+
+    try {
+      fileStat = await lstat(directory);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+
+    if (fileStat.isSymbolicLink()) {
+      throw new Error(`${label} ${directory} is a symbolic link; use a regular private directory before Cloud Run deployment transcript collection.`);
+    }
+
+    if (!fileStat.isDirectory()) {
+      throw new Error(`${label} ${directory} is not a directory; use a regular private directory before Cloud Run deployment transcript collection.`);
+    }
+  }
+}
+
+async function assertDirectoryExistsSafe(path, label) {
+  const fileStat = await lstat(path);
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private directory before Cloud Run deployment transcript collection.`);
+  }
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${path} is not a directory; use a regular private directory before Cloud Run deployment transcript collection.`);
+  }
+}
+
+async function assertRegularFileIfExists(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = await lstat(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private file path before Cloud Run deployment transcript collection.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${path} is not a regular file; use a regular private file path before Cloud Run deployment transcript collection.`);
+  }
 }
 
 function truncate(text) {

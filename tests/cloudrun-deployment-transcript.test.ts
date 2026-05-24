@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -199,6 +199,102 @@ describe("Cloud Run deployment transcript collector", () => {
     ).rejects.toThrow("Cloud Run deployment transcript packet is blocked");
 
     rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("fails closed when transcript output paths would follow symlinks", async () => {
+    const { collectCloudRunDeploymentTranscript } = await loadCollector();
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-cloudrun-transcript-symlink-"));
+    const inputDir = join(tempDir, "input");
+    const outDir = join(tempDir, "out");
+    const realOutDir = join(tempDir, "real-out");
+    const symlinkedOutDir = join(tempDir, "symlinked-out");
+    const leafSymlinkBaseDir = join(tempDir, "leaf-symlink-base");
+    const realLeafOutDir = join(tempDir, "real-leaf-out");
+    const leafSymlinkOutDir = join(leafSymlinkBaseDir, "release-20260524");
+    mkdirSync(inputDir);
+    mkdirSync(realOutDir);
+    mkdirSync(leafSymlinkBaseDir);
+    mkdirSync(realLeafOutDir);
+    symlinkSync(realOutDir, symlinkedOutDir, "dir");
+    symlinkSync(realLeafOutDir, leafSymlinkOutDir, "dir");
+    const dryRunLogPath = join(inputDir, "cloudrun-dry-run.log");
+    const deployLogPath = join(inputDir, "cloudrun-deploy.log");
+    const describeJsonPath = join(inputDir, "cloudrun-describe.json");
+
+    writeFileSync(dryRunLogPath, "Dry run succeeded.\n", "utf8");
+    writeFileSync(deployLogPath, "Deploying service.\nDone.\n", "utf8");
+    writeFileSync(describeJsonPath, JSON.stringify(buildDescribeService(), null, 2), "utf8");
+
+    try {
+      await expect(
+        collectCloudRunDeploymentTranscript({
+          releaseId: "release-20260524",
+          outDir: symlinkedOutDir,
+          dryRunLogPath,
+          deployLogPath,
+          describeJsonPath
+        })
+      ).rejects.toThrow(/symbolic link/u);
+
+      await expect(
+        collectCloudRunDeploymentTranscript({
+          releaseId: "release-20260524",
+          outDir: leafSymlinkBaseDir,
+          dryRunLogPath,
+          deployLogPath,
+          describeJsonPath
+        })
+      ).rejects.toThrow(/symbolic link/u);
+      expect(readdirSync(realLeafOutDir)).toHaveLength(0);
+
+      const packet = await collectCloudRunDeploymentTranscript({
+        releaseId: "release-20260524",
+        outDir,
+        dryRunLogPath,
+        deployLogPath,
+        describeJsonPath
+      });
+      const packetPath = join(packet.outputDirectory, "cloudrun-deployment-transcript-packet.json");
+      const markdownPath = join(packet.outputDirectory, "cloudrun-deployment-transcript-packet.md");
+      const packetTargetPath = join(tempDir, "reviewed-cloudrun-deployment-transcript-packet.json");
+      const markdownTargetPath = join(tempDir, "reviewed-cloudrun-deployment-transcript-packet.md");
+
+      writeFileSync(packetTargetPath, readFileSync(packetPath, "utf8"), "utf8");
+      rmSync(packetPath, { force: true });
+      symlinkSync(packetTargetPath, packetPath);
+      const packetTargetContent = readFileSync(packetTargetPath, "utf8");
+
+      await expect(
+        collectCloudRunDeploymentTranscript({
+          releaseId: "release-20260524",
+          outDir,
+          dryRunLogPath,
+          deployLogPath,
+          describeJsonPath
+        })
+      ).rejects.toThrow(/symbolic link/u);
+      expect(readFileSync(packetTargetPath, "utf8")).toBe(packetTargetContent);
+
+      rmSync(packetPath, { force: true });
+      writeFileSync(packetPath, packetTargetContent, "utf8");
+      writeFileSync(markdownTargetPath, readFileSync(markdownPath, "utf8"), "utf8");
+      rmSync(markdownPath, { force: true });
+      symlinkSync(markdownTargetPath, markdownPath);
+      const markdownTargetContent = readFileSync(markdownTargetPath, "utf8");
+
+      await expect(
+        collectCloudRunDeploymentTranscript({
+          releaseId: "release-20260524",
+          outDir,
+          dryRunLogPath,
+          deployLogPath,
+          describeJsonPath
+        })
+      ).rejects.toThrow(/symbolic link/u);
+      expect(readFileSync(markdownTargetPath, "utf8")).toBe(markdownTargetContent);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("parses safe file-path args and rejects raw secret-shaped CLI args", async () => {
