@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
@@ -1557,8 +1557,14 @@ function verifyBundleFileEntry(file, index, bundleDir) {
   let stat;
 
   try {
+    const fileBoundary = verifyPacketFileBoundary(resolved.path, bundleDir, "bundle file");
+    if (fileBoundary.status === "blocked") {
+      checks.push(verificationCheck(`${idPrefix}-realpath-boundary`, "blocked", fileBoundary.evidence));
+      return checks;
+    }
+
     content = readFileSync(resolved.path, "utf8");
-    stat = statSync(resolved.path);
+    stat = fileBoundary.stat ?? statSync(resolved.path);
     checks.push(verificationCheck(`${idPrefix}-exists`, "passed", `${resolved.path} is readable.`));
   } catch (error) {
     checks.push(
@@ -1601,6 +1607,11 @@ function readBundleJsonEntry(file, bundleDir) {
   }
 
   try {
+    const fileBoundary = verifyPacketFileBoundary(resolved.path, bundleDir, "bundle JSON entry");
+    if (fileBoundary.status === "blocked") {
+      return { ok: false, error: fileBoundary.evidence };
+    }
+
     return { ok: true, value: JSON.parse(readFileSync(resolved.path, "utf8")) };
   } catch (error) {
     return {
@@ -1714,8 +1725,14 @@ function verifyManifestFileEntry(file, index, manifestDir = "") {
   let stat;
 
   try {
+    const fileBoundary = verifyPacketFileBoundary(path, manifestDir, "manual-intervention file");
+    if (fileBoundary.status === "blocked") {
+      checks.push(verificationCheck(`${idPrefix}-realpath-boundary`, "blocked", fileBoundary.evidence));
+      return checks;
+    }
+
     content = readFileSync(path, "utf8");
-    stat = statSync(path);
+    stat = fileBoundary.stat ?? statSync(path);
     checks.push(verificationCheck(`${idPrefix}-exists`, "passed", `${path} is readable.`));
   } catch (error) {
     checks.push(
@@ -1748,6 +1765,46 @@ function verifyManifestFileEntry(file, index, manifestDir = "") {
   );
 
   return checks;
+}
+
+function verifyPacketFileBoundary(path, baseDir, label) {
+  try {
+    const linkStat = lstatSync(path);
+    if (linkStat.isSymbolicLink()) {
+      return {
+        status: "blocked",
+        evidence: `${label} ${path} is a symbolic link; regenerate the private packet and keep every referenced file as a regular file inside ${baseDir}.`
+      };
+    }
+
+    if (!linkStat.isFile()) {
+      return {
+        status: "blocked",
+        evidence: `${label} ${path} is not a regular file.`
+      };
+    }
+
+    const realBaseDir = realpathSync(baseDir);
+    const realPath = realpathSync(path);
+
+    if (!pathIsInside(realBaseDir, realPath)) {
+      return {
+        status: "blocked",
+        evidence: `${label} real path ${realPath} escapes ${realBaseDir}.`
+      };
+    }
+
+    return {
+      status: "passed",
+      evidence: `${label} ${realPath} is a regular file inside ${realBaseDir}.`,
+      stat: linkStat
+    };
+  } catch (error) {
+    return {
+      status: "blocked",
+      evidence: `${label} ${path} is not readable for boundary verification: ${error instanceof Error ? error.message : String(error)}.`
+    };
+  }
 }
 
 function verificationCheck(id, status, evidence) {

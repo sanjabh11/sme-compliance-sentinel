@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -656,6 +656,22 @@ describe("local XPRIZE submission verifier", () => {
       expect(escaped.overallStatus).toBe("blocked");
       expect(escaped.blockers.join(" ")).toContain("bundle-file-1-path-boundary");
       expect(escaped.blockers.join(" ")).toContain("escapes bundle directory");
+
+      const symlinkPath = join(tempDir, "symlinked-readiness.md");
+      symlinkSync(escapedPath, symlinkPath);
+      bundleManifest.files[0] = {
+        ...bundleManifest.files[0],
+        path: symlinkPath,
+        relativePath: "symlinked-readiness.md",
+        sha256: sha256Hex(escapedContent),
+        bytes: Buffer.byteLength(escapedContent, "utf8")
+      };
+      writeFileSync(bundleManifestPath, `${JSON.stringify(bundleManifest, null, 2)}\n`);
+      const symlinked = runLocalBundleVerifier(bundleManifestPath);
+
+      expect(symlinked.overallStatus).toBe("blocked");
+      expect(symlinked.blockers.join(" ")).toContain("bundle-file-1-realpath-boundary");
+      expect(symlinked.blockers.join(" ")).toContain("symbolic link");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
       rmSync(outsideDir, { recursive: true, force: true });
@@ -715,6 +731,22 @@ describe("local XPRIZE submission verifier", () => {
       expect(escaped.overallStatus).toBe("blocked");
       expect(escaped.blockers.join(" ")).toContain("file-2-path-boundary");
       expect(escaped.blockers.join(" ")).toContain("escapes manifest directory");
+
+      const symlinkPath = join(tempDir, "symlinked-engineering.md");
+      symlinkSync(escapedPath, symlinkPath);
+      manifest.files[1] = {
+        ...manifest.files[1],
+        path: symlinkPath,
+        relativePath: "symlinked-engineering.md",
+        sha256: sha256Hex(escapedContent),
+        bytes: Buffer.byteLength(escapedContent, "utf8")
+      };
+      writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+      const symlinked = runManualManifestVerifier(manifestPath);
+
+      expect(symlinked.overallStatus).toBe("blocked");
+      expect(symlinked.blockers.join(" ")).toContain("file-2-realpath-boundary");
+      expect(symlinked.blockers.join(" ")).toContain("symbolic link");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
       rmSync(outsideDir, { recursive: true, force: true });
