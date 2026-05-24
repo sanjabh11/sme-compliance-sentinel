@@ -142,6 +142,19 @@ type LocalSubmissionReport = {
   sourceUrls: string[];
   disclaimer: string;
   markdownSummaryPath?: string;
+  localSubmissionBundle?: {
+    directory: string;
+    status: "ready-for-private-owner-review" | "blocked";
+    reportPath: string;
+    markdownSummaryPath: string;
+    manualPacketsDir: string;
+    manifestPath: string;
+    manifestVerificationPath: string;
+    bundleManifestPath: string;
+    digestAlgorithm: string;
+    fileCount: number;
+    proofBoundary: string;
+  };
 };
 
 type ManualManifestVerificationReport = {
@@ -366,6 +379,75 @@ describe("local XPRIZE submission verifier", () => {
       expect(markdown).toContain("verify:manual-intervention");
       expect(markdown).not.toContain("Bearer ");
       expect(markdown).not.toContain("password:");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes a private local-submission bundle with verified owner packets", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-bundle-"));
+
+    try {
+      const report = runVerifier(["--bundle-dir", tempDir]);
+      const bundle = report.localSubmissionBundle;
+
+      expect(bundle).toMatchObject({
+        directory: tempDir,
+        status: "ready-for-private-owner-review",
+        reportPath: join(tempDir, "local-submission-readiness.json"),
+        markdownSummaryPath: join(tempDir, "local-submission-summary.md"),
+        manualPacketsDir: join(tempDir, "manual-intervention-packets"),
+        manifestPath: join(tempDir, "manual-intervention-packets", "manual-intervention-manifest.json"),
+        manifestVerificationPath: join(tempDir, "manual-intervention-manifest-verification.json"),
+        bundleManifestPath: join(tempDir, "local-submission-bundle-manifest.json"),
+        digestAlgorithm: "sha256"
+      });
+      expect(bundle?.proofBoundary).toContain("not hosted Cloud Run proof");
+      expect(bundle?.fileCount).toBeGreaterThanOrEqual(7);
+      expect(report.manualInterventionPlan.packetFiles?.manifestPath).toBe(bundle?.manifestPath);
+
+      const readinessJson = JSON.parse(readFileSync(join(tempDir, "local-submission-readiness.json"), "utf8")) as LocalSubmissionReport;
+      const summaryMarkdown = readFileSync(join(tempDir, "local-submission-summary.md"), "utf8");
+      const manifestVerification = JSON.parse(readFileSync(join(tempDir, "manual-intervention-manifest-verification.json"), "utf8")) as ManualManifestVerificationReport;
+      const bundleManifest = JSON.parse(readFileSync(join(tempDir, "local-submission-bundle-manifest.json"), "utf8")) as {
+        status: string;
+        localSubmissionStatus: string;
+        digestAlgorithm: string;
+        fileCount: number;
+        files: Array<{ id: string; path: string; sha256: string; bytes: number }>;
+        proofBoundary: string;
+        stopConditions: string[];
+      };
+      const combined = [
+        readFileSync(join(tempDir, "local-submission-readiness.json"), "utf8"),
+        summaryMarkdown,
+        readFileSync(join(tempDir, "manual-intervention-manifest-verification.json"), "utf8"),
+        readFileSync(join(tempDir, "local-submission-bundle-manifest.json"), "utf8")
+      ].join("\n");
+
+      expect(readinessJson.overallStatus).toBe("blocked");
+      expect(summaryMarkdown).toContain("# Local Submission Readiness Summary");
+      expect(manifestVerification.overallStatus).toBe("verified");
+      expect(bundleManifest).toMatchObject({
+        status: "ready-for-private-owner-review",
+        localSubmissionStatus: "blocked",
+        digestAlgorithm: "sha256"
+      });
+      expect(bundleManifest.fileCount).toBe(bundleManifest.files.length);
+      expect(bundleManifest.files.map((file) => file.id)).toEqual(
+        expect.arrayContaining([
+          "local-submission-readiness",
+          "local-submission-summary",
+          "manual-intervention-manifest",
+          "manual-intervention-manifest-verification"
+        ])
+      );
+      expect(bundleManifest.files.every((file) => file.path.startsWith(tempDir))).toBe(true);
+      expect(bundleManifest.files.every((file) => /^[a-f0-9]{64}$/u.test(file.sha256) && file.bytes > 0)).toBe(true);
+      expect(bundleManifest.proofBoundary).toContain("not hosted Cloud Run proof");
+      expect(bundleManifest.stopConditions.join(" ")).toContain("Do not set XPRIZE");
+      expect(combined).not.toContain("Bearer ");
+      expect(combined).not.toContain("password:");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

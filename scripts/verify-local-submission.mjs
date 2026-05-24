@@ -81,7 +81,8 @@ function parseArgs(argv) {
     outPath: "",
     manualPacketsDir: "",
     verifyManifestPath: "",
-    markdownOutPath: ""
+    markdownOutPath: "",
+    bundleDir: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -121,6 +122,20 @@ function parseArgs(argv) {
 
     if (arg.startsWith("--markdown-out=")) {
       args.markdownOutPath = arg.slice("--markdown-out=".length);
+      continue;
+    }
+
+    if (arg === "--bundle-dir") {
+      args.bundleDir = argv[index + 1] ?? "";
+      if (!args.bundleDir) {
+        throw new Error("--bundle-dir requires a non-secret output directory.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--bundle-dir=")) {
+      args.bundleDir = arg.slice("--bundle-dir=".length);
       continue;
     }
 
@@ -983,6 +998,90 @@ function writeManualInterventionPackets(path, report) {
   };
 }
 
+function writeLocalSubmissionBundle(path, report) {
+  const absoluteDir = resolve(path);
+  mkdirSync(absoluteDir, { recursive: true });
+  const reportPath = join(absoluteDir, "local-submission-readiness.json");
+  const markdownSummaryPath = join(absoluteDir, "local-submission-summary.md");
+  const manualPacketsDir = join(absoluteDir, "manual-intervention-packets");
+  const manifestVerificationPath = join(absoluteDir, "manual-intervention-manifest-verification.json");
+  const bundleManifestPath = join(absoluteDir, "local-submission-bundle-manifest.json");
+  const packetFiles = writeManualInterventionPackets(manualPacketsDir, report);
+
+  report.manualInterventionPlan.packetFiles = packetFiles;
+  writeJson(reportPath, report);
+  writeMarkdown(markdownSummaryPath, renderLocalSubmissionMarkdown(report));
+
+  const manifestVerification = verifyManualInterventionManifest(packetFiles.manifestPath);
+  writeJson(manifestVerificationPath, manifestVerification);
+
+  const files = [
+    bundleFileRecord("local-submission-readiness", reportPath),
+    bundleFileRecord("local-submission-summary", markdownSummaryPath),
+    bundleFileRecord("manual-intervention-index", packetFiles.indexPath),
+    ...packetFiles.ownerPacketPaths.map((file) => bundleFileRecord(`manual-packet:${file.owner}`, file.path)),
+    bundleFileRecord("manual-intervention-manifest", packetFiles.manifestPath),
+    bundleFileRecord("manual-intervention-manifest-verification", manifestVerificationPath)
+  ];
+  const bundleManifest = {
+    generatedAt: report.generatedAt,
+    generatedFrom: "verify-local-submission --bundle-dir",
+    status: manifestVerification.overallStatus === "verified" ? "ready-for-private-owner-review" : "blocked",
+    localSubmissionStatus: report.overallStatus,
+    digestAlgorithm: "sha256",
+    fileCount: files.length,
+    files,
+    phaseProgress: {
+      overallGoalRemainingPercent: report.phaseProgressChart.overallGoalRemainingPercent,
+      recommendedNextPhaseId: report.phasePlan.recommendedNextPhaseId,
+      rows: report.phaseProgressChart.rows.map((row) => ({
+        phaseId: row.phaseId,
+        bucket: row.bucket,
+        owner: row.owner,
+        ratingOutOf5: row.ratingOutOf5,
+        currentPhaseRemainingPercent: row.currentPhaseRemainingPercent,
+        overallGoalRemainingPercent: row.overallGoalRemainingPercent
+      }))
+    },
+    manualInterventionSummary: report.manualInterventionPlan.summary,
+    proofBoundary:
+      "This bundle records private local readiness artifacts and packet integrity only. It is not hosted Cloud Run proof, live Gemini proof, Workspace proof, revenue proof, active-user proof, legal/IP review, human attestation, organizer approval, or judging evidence.",
+    stopConditions: [
+      ...report.stopConditions,
+      ...report.manualInterventionPlan.stopConditions,
+      "Do not upload raw bundle files publicly unless a human owner redacts private evidence paths and confirms every referenced artifact is share-safe."
+    ],
+    privateHandling: report.manualInterventionPlan.privateHandling
+  };
+  writeJson(bundleManifestPath, bundleManifest);
+
+  return {
+    directory: absoluteDir,
+    status: bundleManifest.status,
+    reportPath,
+    markdownSummaryPath,
+    manualPacketsDir,
+    manifestPath: packetFiles.manifestPath,
+    manifestVerificationPath,
+    bundleManifestPath,
+    digestAlgorithm: "sha256",
+    fileCount: files.length,
+    proofBoundary: bundleManifest.proofBoundary
+  };
+}
+
+function bundleFileRecord(id, path) {
+  const content = readFileSync(path, "utf8");
+  const stat = statSync(path);
+
+  return {
+    id,
+    path,
+    sha256: sha256Hex(content),
+    bytes: stat.size
+  };
+}
+
 function buildManualInterventionManifest({ report, indexFile, packetFiles }) {
   return {
     generatedAt: report.generatedAt,
@@ -1368,6 +1467,10 @@ try {
 
     if (args.markdownOutPath) {
       report.markdownSummaryPath = writeMarkdown(args.markdownOutPath, renderLocalSubmissionMarkdown(report));
+    }
+
+    if (args.bundleDir) {
+      report.localSubmissionBundle = writeLocalSubmissionBundle(args.bundleDir, report);
     }
 
     if (args.outPath) {

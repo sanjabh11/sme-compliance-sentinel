@@ -21,6 +21,7 @@
     "verify:cloudrun-deployment": "node scripts/verify-cloudrun-deployment.mjs",
     "verify:judge-access": "node scripts/verify-judge-access-pack.mjs",
     "verify:business-evidence": "node scripts/verify-business-evidence.mjs",
+    "prepare:local-submission-bundle": "node scripts/verify-local-submission.mjs --bundle-dir",
     "prepare:submission-summary": "node scripts/verify-local-submission.mjs --markdown-out",
     "prepare:manual-intervention": "node scripts/verify-local-submission.mjs --manual-packets-dir",
     "verify:manual-intervention": "node scripts/verify-local-submission.mjs --verify-manifest",
