@@ -113,6 +113,7 @@ type LocalSubmissionReport = {
         owner: string;
         action: string;
         privateArtifactPaths: string[];
+        checklist?: string[];
         proofBoundary: string;
       }>;
     }>;
@@ -132,6 +133,7 @@ type LocalSubmissionReport = {
       evidenceNeeded: string;
       commands: string[];
       privateArtifactPaths: string[];
+      checklist?: string[];
       stopCondition: string;
       proofBoundary: string;
     }>;
@@ -443,6 +445,9 @@ describe("local XPRIZE submission verifier", () => {
       expect(engineeringMarkdown).toContain("## Step-by-step Actions");
       expect(engineeringMarkdown).toContain("Cloud Run");
       expect(engineeringMarkdown).toContain("/secure/local/cloudrun-render-values.json");
+      expect(engineeringMarkdown).toContain("Checklist:");
+      expect(engineeringMarkdown).toContain("Fill only non-secret production values");
+      expect(engineeringMarkdown).toContain("stop on the first blocker before any gcloud dry-run");
       expect(founderLegalMarkdown).toContain("XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED");
       expect(founderLegalMarkdown).toContain("human review");
       expect(founderSalesMarkdown).toContain("invoice/payment");
@@ -731,6 +736,12 @@ describe("local XPRIZE submission verifier", () => {
     expect(
       cloudRunRows.some((row) =>
         row.privateArtifactPaths.includes("artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff-verifier.json")
+      )
+    ).toBe(true);
+    expect(cloudRunRows.some((row) => row.status === "private-values-required")).toBe(true);
+    expect(
+      cloudRunRows.some((row) =>
+        row.checklist?.some((item) => item.includes("Fill only non-secret production values"))
       )
     ).toBe(true);
     expect(

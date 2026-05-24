@@ -258,7 +258,7 @@ function buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReport
           phase,
           phaseProgress,
           source: "required-evidence",
-          status: phase.bucket === "external-proof" ? "external-required" : "pending",
+          status: manualStatusForPhaseEvidence(phase, evidence),
           action: evidence,
           evidenceNeeded: evidence,
           commands: phase.commands,
@@ -358,9 +358,45 @@ function manualInterventionRow(input) {
     evidenceNeeded: input.evidenceNeeded,
     commands: input.commands,
     privateArtifactPaths: input.privateArtifactPaths,
+    checklist: checklistForManualRow(input.phase, input.action),
     stopCondition: input.stopCondition,
     proofBoundary: proofBoundaryForBucket(input.phase.bucket ?? bucketForPhase(input.phase))
   };
+}
+
+function manualStatusForPhaseEvidence(phase, evidence) {
+  if (phase.bucket === "external-proof") {
+    return "external-required";
+  }
+
+  if (phase.id === "cloudrun-render-dry-run" && /render-values|private values|handoff|dry-run preflight/iu.test(evidence)) {
+    return "private-values-required";
+  }
+
+  return "pending";
+}
+
+function checklistForManualRow(phase, action) {
+  if (phase.id !== "cloudrun-render-dry-run") {
+    return [];
+  }
+
+  const text = String(action).toLowerCase();
+  const common = [
+    "Create or refresh `/secure/local/cloudrun-render-values.json` from the tracked template or `npm run prepare:cloudrun-render-handoff`; do not commit, screenshot, or paste the filled file.",
+    "Fill only non-secret production values: GCP project id/number, HTTPS Cloud Run URL, OAuth client id, billing budget id, Gemini key resource id or short id, static egress IPs, entrant/category timestamps, and positive Secret Manager versions.",
+    "Keep XPRIZE, revenue, user, Gemini, Workspace, judge-access, demo, and AI-operation evidence flags false until matching private proof exists and the owner has reviewed it.",
+    "Run the handoff verifier, render-values audit, render-evidence verifier, manifest render, dry-run preflight, and dry-run packet verifier in order; stop on the first blocker before any gcloud dry-run."
+  ];
+
+  if (text.includes("dry-run preflight") || text.includes("digest verifier")) {
+    return [
+      ...common,
+      "Preserve the preflight packet and digest verifier beside the rendered manifest bundle, then collect gcloud dry-run/deploy/describe transcripts only from a private operator shell."
+    ];
+  }
+
+  return common;
 }
 
 function ownerForManualRow(phase, action) {
@@ -1755,6 +1791,14 @@ function renderOwnerPacketMarkdown(packet, report) {
       `- Evidence needed: ${row.evidenceNeeded}`,
       `- Proof boundary: ${row.proofBoundary}`,
       `- Stop condition: ${row.stopCondition}`,
+      ...(row.checklist?.length
+        ? [
+            "",
+            "Checklist:",
+            "",
+            markdownList(row.checklist)
+          ]
+        : []),
       "",
       "Commands:",
       "",
