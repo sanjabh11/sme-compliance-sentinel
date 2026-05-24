@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { scanClaimText } from "@/lib/claim-guard";
+import contract from "../docs/deployment/cloudrun-deployment-contract.json";
 
 type AttestationPacket = {
   overallStatus: "blocked" | "ready-for-human-review" | "ready-to-apply-reviewed-flags";
@@ -25,6 +26,7 @@ type AttestationPacket = {
   flagDecisionRegister: Array<{
     envFlag: string;
     currentValue: boolean;
+    ownerRole: string;
     recommendedAction: string;
     setWhen: string;
   }>;
@@ -68,7 +70,13 @@ describe("XPRIZE human attestation packet CLI", () => {
       currentValue: false,
       recommendedAction: "keep-false-until-reviewed"
     });
+    expect(packet.flagDecisionRegister.map((flag) => flag.envFlag)).toEqual(contract.manualReviewEnv);
+    expect(new Set(packet.flagDecisionRegister.map((flag) => flag.envFlag)).size).toBe(contract.manualReviewEnv.length);
     expect(flagsByName.XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED.setWhen).toContain("deployed Gemini API call");
+    expect(flagsByName.XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED.setWhen).toContain("free of charge");
+    expect(flagsByName.XPRIZE_DEMO_VIDEO_CUSTOMER_DATA_REDACTED_CONFIRMED.ownerRole).toBe("marketing");
+    expect(flagsByName.GOOGLE_OAUTH_SCOPE_REVIEW_CONFIRMED.ownerRole).toBe("engineering");
+    expect(flagsByName.SENTINEL_GEMINI_QUOTA_EVIDENCE_CONFIRMED.setWhen).toContain("quota settings");
     expect(packet.devpostDisclosureDraft.publicSafeDraft.join(" ")).toContain("Small Business Services");
     expect(packet.devpostDisclosureDraft.privateOnlyNotes.join(" ")).toContain("Do not claim SOC2 compliance");
     expect(packet.disclaimer).toContain("not legal advice");

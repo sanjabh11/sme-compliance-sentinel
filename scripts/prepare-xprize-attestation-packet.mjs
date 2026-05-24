@@ -1,12 +1,16 @@
 #!/usr/bin/env node
-/* global console, process */
+/* global console, process, URL */
 
 import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
+const deploymentContract = JSON.parse(
+  readFileSync(new URL("../docs/deployment/cloudrun-deployment-contract.json", import.meta.url), "utf8")
+);
+const manualReviewEnv = [...new Set(deploymentContract.manualReviewEnv ?? [])];
 const prohibitedCliPatterns = [
   /(^|-)token($|=)/iu,
   /(^|-)password($|=)/iu,
@@ -170,61 +174,147 @@ function buildReviewGates({ sourceRelease, provenance, licenseManifest, localSub
 }
 
 function buildFlagDecisionRegister({ provenance, licenseManifest }) {
-  const projectConfirmed = Boolean(provenance.report?.projectCreatedAfterStartConfirmed);
-  const thirdPartyApproved = Boolean(licenseManifest.report?.envFlags?.thirdPartyReviewApproved);
-  const ipApproved = Boolean(licenseManifest.report?.envFlags?.ipOwnershipReviewApproved);
-  const demoApproved = Boolean(licenseManifest.report?.envFlags?.demoAssetClearanceConfirmed);
+  return manualReviewEnv.map((envFlag) =>
+    flagDecision(envFlag, currentFlagValue(envFlag, { provenance, licenseManifest }), ownerRoleForFlag(envFlag), setWhenForFlag(envFlag))
+  );
+}
 
-  return [
-    flagDecision(
-      "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED",
-      projectConfirmed,
-      "founder",
-      "Set true only after source provenance and pre-existing-work disclosure are human-reviewed."
-    ),
-    flagDecision(
-      "XPRIZE_THIRD_PARTY_REVIEW_APPROVED",
-      thirdPartyApproved,
-      "legal",
-      "Set true only after dependency licenses, notices, Google API terms, OAuth consent, billing/IAM, and data boundaries are reviewed."
-    ),
-    flagDecision(
-      "XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED",
-      ipApproved,
-      "legal",
-      "Set true only after source ownership, generated content, trademarks, screenshots, and final public assets are reviewed."
-    ),
-    flagDecision(
-      "XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED",
-      demoApproved,
-      "marketing",
-      "Set true only after the public demo video and screenshots have permission and redaction review."
-    ),
-    flagDecision(
-      "XPRIZE_REPOSITORY_ACCESS_CONFIGURED",
-      false,
-      "engineering",
-      "Set true only after the public or private-shared repository is accessible to the required judging/testing accounts."
-    ),
-    flagDecision(
-      "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
-      false,
-      "engineering",
-      "Set true only after hosted Google Cloud product evidence is collected and stored privately."
-    ),
-    flagDecision(
-      "XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED",
-      false,
-      "engineering",
-      "Set true only after a deployed Gemini API call is logged as provider=gemini-api in private proof."
-    ),
-    flagDecision(
-      "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
-      false,
-      "founder",
-      "Set true only after arms-length revenue proof is collected, redacted, and tied to the hackathon window."
-    )
-  ];
+function currentFlagValue(envFlag, { provenance, licenseManifest }) {
+  const licenseEnvFlags = licenseManifest.report?.envFlags ?? {};
+
+  if (envFlag === "XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED") {
+    return Boolean(provenance.report?.projectCreatedAfterStartConfirmed);
+  }
+
+  if (envFlag === "XPRIZE_THIRD_PARTY_REVIEW_APPROVED") {
+    return Boolean(licenseEnvFlags.thirdPartyReviewApproved);
+  }
+
+  if (envFlag === "XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED") {
+    return Boolean(licenseEnvFlags.ipOwnershipReviewApproved);
+  }
+
+  if (envFlag === "XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED") {
+    return Boolean(licenseEnvFlags.demoAssetClearanceConfirmed);
+  }
+
+  return process.env[envFlag] === "true";
+}
+
+function ownerRoleForFlag(envFlag) {
+  if (envFlag.includes("LICENSE") || envFlag.includes("IP_OWNERSHIP") || envFlag.includes("THIRD_PARTY")) {
+    return "legal";
+  }
+
+  if (envFlag.includes("DEMO_VIDEO")) {
+    return "marketing";
+  }
+
+  if (
+    envFlag.includes("REPOSITORY") ||
+    envFlag.includes("SOURCE_CODE") ||
+    envFlag.includes("WORKING_PROJECT") ||
+    envFlag.includes("GOOGLE_CLOUD") ||
+    envFlag.includes("GEMINI") ||
+    envFlag.includes("AI_NATIVE") ||
+    envFlag.includes("PRODUCT_RUNNING") ||
+    envFlag.includes("AGENT_EXECUTION") ||
+    envFlag.includes("OAUTH") ||
+    envFlag.includes("QUOTA")
+  ) {
+    return "engineering";
+  }
+
+  if (envFlag.includes("REVENUE") || envFlag.includes("COST") || envFlag.includes("CAC") || envFlag.includes("USER") || envFlag.includes("TESTIMONIAL")) {
+    return "founder";
+  }
+
+  if (envFlag.includes("ELIGIBILITY") || envFlag.includes("REPRESENTATIVE") || envFlag.includes("ORGANIZATION") || envFlag.includes("CORPORATE") || envFlag.includes("PROMOTION")) {
+    return "founder/legal";
+  }
+
+  return "founder";
+}
+
+function setWhenForFlag(envFlag) {
+  const guidance = {
+    XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED:
+      "Set true only after source provenance and pre-existing-work disclosure are human-reviewed.",
+    XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED:
+      "Set true only after the pushed judge-accessible repository contains all necessary source code and excludes private evidence.",
+    XPRIZE_REPOSITORY_ACCESS_CONFIGURED:
+      "Set true only after the public or private-shared repository is accessible to the required judging/testing accounts.",
+    XPRIZE_GENERAL_ELIGIBILITY_CONFIRMED:
+      "Set true only after entrant age, geography, role, and conflict restrictions are reviewed against the official rules.",
+    XPRIZE_REPRESENTATIVE_AUTHORIZED:
+      "Set true only after the team or organization representative is authorized to submit and receive official communications.",
+    XPRIZE_ORGANIZATION_UNDER_25_CONFIRMED:
+      "Set true only after the organization employee count is reviewed, if entering as an organization.",
+    XPRIZE_CORPORATE_ID_CONFIGURED:
+      "Set true only after the organization corporate id is available for the private submission packet, if applicable.",
+    XPRIZE_NO_PROMOTION_ENTITY_CONFLICT_CONFIRMED:
+      "Set true only after the entrant and contributors are reviewed for promotion-entity, judge, sponsor, administrator, and conflict restrictions.",
+    XPRIZE_THIRD_PARTY_REVIEW_APPROVED:
+      "Set true only after dependency licenses, notices, Google API terms, OAuth consent, billing/IAM, and data boundaries are reviewed.",
+    XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED:
+      "Set true only after source ownership, generated content, trademarks, screenshots, and final public assets are reviewed.",
+    XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED:
+      "Set true only after the final public demo video duration is reviewed and stays under three minutes.",
+    XPRIZE_DEMO_VIDEO_PUBLICLY_ACCESSIBLE_CONFIRMED:
+      "Set true only after the final demo video is publicly visible on an allowed host.",
+    XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED:
+      "Set true only after the public demo video and screenshots have permission and redaction review.",
+    XPRIZE_DEMO_VIDEO_CUSTOMER_DATA_REDACTED_CONFIRMED:
+      "Set true only after all customer names, files, findings, invoices, emails, and contact data are removed or consented for the public demo.",
+    XPRIZE_DEMO_VIDEO_ENGLISH_OR_SUBTITLED_CONFIRMED:
+      "Set true only after the final demo video and submission materials are in English or have English translation/subtitles.",
+    XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED:
+      "Set true only after the hosted project URL is reachable by judges with documented private testing instructions.",
+    XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED:
+      "Set true only after private Devpost testing instructions include URL, test path, credential handling, expected workflow, and support process.",
+    XPRIZE_JUDGE_ACCESS_CONFIGURED:
+      "Set true only after judge access is configured and verified from a judge-like session.",
+    XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED:
+      "Set true only after the product is confirmed free of charge and unrestricted for judging through the official judging-period end.",
+    XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED:
+      "Set true only after a private owner/contact can respond to organizer evidence requests within the required review window.",
+    XPRIZE_EVIDENCE_RESPONSE_READY:
+      "Set true only after source, repository, hosted access, testing instructions, demo, third-party, IP, and private-response evidence are all reviewed.",
+    XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED:
+      "Set true only after hosted Google Cloud product evidence is collected and stored privately.",
+    XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED:
+      "Set true only after a deployed Gemini API call is logged as provider=gemini-api in private proof.",
+    XPRIZE_AI_NATIVE_OPERATIONS_EVIDENCE_CONFIGURED:
+      "Set true only after deployed AI-native operating logs show production decisions or workflow execution, not local mock behavior.",
+    XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED:
+      "Set true only after hosted screenshots, logs, and verification output show the product running continuously enough for judge review.",
+    XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED:
+      "Set true only after production agent-run logs are redacted, stored, and tied to the hosted release.",
+    XPRIZE_BUSINESS_MODEL_EVIDENCE_CONFIGURED:
+      "Set true only after revenue, monthly revenue, cost, and real-user proof have all been reviewed.",
+    XPRIZE_CATEGORY_IMPACT_EVIDENCE_CONFIGURED:
+      "Set true only after Small Business Services impact is supported by real users, buyer value, and business proof.",
+    XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED:
+      "Set true only after arms-length revenue proof is collected, redacted, and tied to the hackathon window.",
+    XPRIZE_REVENUE_BY_MONTH_EVIDENCE_CONFIGURED:
+      "Set true only after May, June, July, and August 2026 monthly revenue breakdown evidence is collected.",
+    XPRIZE_TOTAL_COSTS_EVIDENCE_CONFIGURED:
+      "Set true only after hosting, AI API usage, contractor, and other operating costs are documented.",
+    XPRIZE_CAC_SPEND_EVIDENCE_CONFIGURED:
+      "Set true only after marketing and customer-acquisition spend is documented, even if the amount is zero.",
+    XPRIZE_REAL_USER_EVIDENCE_CONFIGURED:
+      "Set true only after active-user counts, user breakdown, and usage evidence are collected from real users.",
+    XPRIZE_TESTIMONIAL_CONSENT_CONFIRMED:
+      "Set true only after testimonial and feedback sharing permission is captured for every quoted customer.",
+    XPRIZE_RELATED_PARTY_REVENUE_REVIEWED:
+      "Set true only after related-party revenue is separately reviewed and disclosed.",
+    GOOGLE_OAUTH_SCOPE_REVIEW_CONFIRMED:
+      "Set true only after OAuth consent screen configuration, requested/deferred scopes, pilot consent copy, and data-use boundaries are reviewed.",
+    SENTINEL_GEMINI_QUOTA_EVIDENCE_CONFIRMED:
+      "Set true only after Gemini API key restrictions, quota settings, budget controls, and usage evidence are privately reviewed."
+  };
+
+  return guidance[envFlag] ?? "Set true only after the matching private proof exists and the responsible owner has reviewed it.";
 }
 
 function buildDevpostDisclosureDraft(provenance, licenseManifest) {
