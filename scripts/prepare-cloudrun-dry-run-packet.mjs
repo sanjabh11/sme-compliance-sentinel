@@ -2,7 +2,7 @@
 /* global console, process */
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { renderCloudRunManifest } from "./render-cloudrun-manifest.mjs";
 
@@ -116,7 +116,7 @@ export async function prepareCloudRunDryRunPacket(options) {
   });
   const outputDirectory = resolve(renderSummary.outputDirectory);
   const verifierPath = join(outputDirectory, renderSummary.verifierFile);
-  const verifier = JSON.parse(await readFile(verifierPath, "utf8"));
+  const verifier = JSON.parse(await readRegularTextFileOrThrow(verifierPath, "Cloud Run manifest verifier"));
   const evidenceFileDigests = await buildEvidenceFileDigests(renderSummary);
   const packet = buildDryRunPacket({ renderSummary, verifier, valuesPath: options.valuesPath, evidenceFileDigests });
 
@@ -140,11 +140,40 @@ export async function verifyCloudRunDryRunPacket(packetPath) {
 
   const absolutePacketPath = resolve(packetPath);
   const packetVerifierPath = join(dirname(absolutePacketPath), packetVerifierFileName);
-  const packet = JSON.parse(await readFile(absolutePacketPath, "utf8"));
+  const packetRead = await readRegularTextFileForVerification(absolutePacketPath, "Cloud Run dry-run packet");
+  const packetReadChecks = [
+    structureCheck(
+      "packet-regular-file",
+      packetRead.ok,
+      packetRead.ok ? `${absolutePacketPath} is a regular file.` : packetRead.error
+    )
+  ];
+  let packet = {};
+  if (packetRead.ok) {
+    try {
+      packet = JSON.parse(packetRead.content);
+      packetReadChecks.push(structureCheck("packet-json", true, `Packet JSON parsed from ${absolutePacketPath}.`));
+    } catch (error) {
+      packetReadChecks.push(
+        structureCheck(
+          "packet-json",
+          false,
+          `Packet JSON could not be parsed from ${absolutePacketPath}: ${error instanceof Error ? error.message : String(error)}.`
+        )
+      );
+    }
+  } else {
+    packetReadChecks.push(structureCheck("packet-json", false, "Packet JSON was not parsed because the packet file boundary check failed."));
+  }
   const digestEntries = Array.isArray(packet.evidenceFileDigests) ? packet.evidenceFileDigests : [];
   const digestChecks = await Promise.all(digestEntries.map(verifyDigestEntry));
   const failedChecks = digestChecks.filter((check) => check.status !== "matched");
-  const structuralChecks = await verifyPacketStructure({ packet, packetPath: absolutePacketPath });
+  const structuralChecks = [
+    ...packetReadChecks,
+    ...(packetRead.ok && packetReadChecks.every((check) => check.status === "passed")
+      ? await verifyPacketStructure({ packet, packetPath: absolutePacketPath })
+      : [])
+  ];
   const failedStructuralChecks = structuralChecks.filter((check) => check.status !== "passed");
   const packetReady = packet.status === "ready-to-dry-run" && packet.readyForDryRun === true;
   const status = packetReady && digestEntries.length > 0 && failedChecks.length === 0 && failedStructuralChecks.length === 0
@@ -516,7 +545,7 @@ async function buildEvidenceFileDigests(renderSummary) {
 }
 
 async function readDigest(file) {
-  const buffer = await readFile(file.path);
+  const buffer = await readRegularBufferFileOrThrow(file.path, `${file.role} evidence file`);
 
   return {
     ...file,
@@ -529,34 +558,36 @@ async function verifyDigestEntry(entry) {
   const expectedSha256 = String(entry.sha256 ?? "");
   const expectedByteLength = Number(entry.byteLength ?? 0);
 
-  try {
-    const buffer = await readFile(entry.path);
-    const actualSha256 = createHash("sha256").update(buffer).digest("hex");
-    const actualByteLength = buffer.length;
-    const matched = actualSha256 === expectedSha256 && actualByteLength === expectedByteLength;
+  const fileRead = await readRegularBufferFileForVerification(entry.path, `${String(entry.role ?? "unknown")} evidence file`);
 
+  if (!fileRead.ok) {
     return {
       role: String(entry.role ?? "unknown"),
       path: String(entry.path ?? ""),
-      status: matched ? "matched" : "mismatch",
+      status: "invalid-file",
       expectedSha256,
-      actualSha256,
-      expectedByteLength,
-      actualByteLength,
-      fix: matched ? "No action." : "Regenerate the Cloud Run dry-run preflight packet before running gcloud dry-run."
-    };
-  } catch {
-    return {
-      role: String(entry.role ?? "unknown"),
-      path: String(entry.path ?? ""),
-      status: "missing",
-      expectedSha256,
-      actualSha256: "missing",
+      actualSha256: "invalid-file",
       expectedByteLength,
       actualByteLength: 0,
-      fix: "Regenerate the Cloud Run dry-run preflight packet; the referenced evidence file is missing."
+      fix: `${fileRead.error} Regenerate the Cloud Run dry-run preflight packet from regular private files before running gcloud dry-run.`
     };
   }
+
+  const buffer = fileRead.buffer;
+  const actualSha256 = createHash("sha256").update(buffer).digest("hex");
+  const actualByteLength = buffer.length;
+  const matched = actualSha256 === expectedSha256 && actualByteLength === expectedByteLength;
+
+  return {
+    role: String(entry.role ?? "unknown"),
+    path: String(entry.path ?? ""),
+    status: matched ? "matched" : "mismatch",
+    expectedSha256,
+    actualSha256,
+    expectedByteLength,
+    actualByteLength,
+    fix: matched ? "No action." : "Regenerate the Cloud Run dry-run preflight packet before running gcloud dry-run."
+  };
 }
 
 async function verifyPacketStructure({ packet, packetPath }) {
@@ -642,7 +673,13 @@ async function verifyPacketStructure({ packet, packetPath }) {
   }
 
   try {
-    const markdown = await readFile(markdownPath, "utf8");
+    const markdownRead = await readRegularTextFileForVerification(markdownPath, "Cloud Run dry-run packet Markdown");
+    if (!markdownRead.ok) {
+      checks.push(structureCheck("packet-markdown-regenerated", false, markdownRead.error));
+      return checks;
+    }
+
+    const markdown = markdownRead.content;
     const expectedMarkdown = renderMarkdown(packet);
     checks.push(
       structureCheck(
@@ -685,6 +722,79 @@ function containsRawSecretShape(text) {
   ];
 
   return secretPatterns.some((pattern) => pattern.test(text));
+}
+
+async function readRegularTextFileOrThrow(path, label) {
+  const result = await readRegularTextFileForVerification(path, label);
+
+  if (!result.ok) {
+    throw new Error(result.error);
+  }
+
+  return result.content;
+}
+
+async function readRegularBufferFileOrThrow(path, label) {
+  const result = await readRegularBufferFileForVerification(path, label);
+
+  if (!result.ok) {
+    throw new Error(result.error);
+  }
+
+  return result.buffer;
+}
+
+async function readRegularTextFileForVerification(path, label) {
+  const result = await readRegularBufferFileForVerification(path, label);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  return {
+    ...result,
+    content: result.buffer.toString("utf8")
+  };
+}
+
+async function readRegularBufferFileForVerification(path, label) {
+  const resolvedPath = typeof path === "string" && path ? resolve(path) : "";
+
+  if (!resolvedPath) {
+    return {
+      ok: false,
+      error: `${label} path is missing.`
+    };
+  }
+
+  try {
+    const fileStat = await lstat(resolvedPath);
+
+    if (fileStat.isSymbolicLink()) {
+      return {
+        ok: false,
+        error: `${label} at ${resolvedPath} is a symbolic link; regenerate the packet from regular private files before verification.`
+      };
+    }
+
+    if (!fileStat.isFile()) {
+      return {
+        ok: false,
+        error: `${label} at ${resolvedPath} is not a regular file.`
+      };
+    }
+
+    return {
+      ok: true,
+      buffer: await readFile(resolvedPath),
+      stat: fileStat
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: `${label} at ${resolvedPath} is not readable: ${error instanceof Error ? error.message : String(error)}.`
+    };
+  }
 }
 
 function buildVerificationStopConditions({ packetReady, digestEntries, failedChecks, failedStructuralChecks = [] }) {

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -302,6 +302,58 @@ describe("Cloud Run dry-run preflight packet", () => {
     expect(driftedVerifierJson).toMatchObject({
       status: "blocked",
       failedDigestCount: 1
+    });
+
+    const symlinkedPacket = await prepareCloudRunDryRunPacket({
+      valuesPath,
+      outDir: join(tempDir, "symlink-packet"),
+      releaseId: "release-20260523-001",
+      strict: true
+    });
+    const symlinkedPacketPath = join(symlinkedPacket.outputDirectory, "cloudrun-dry-run-preflight-packet.json");
+    const symlinkPacketTargetPath = join(tempDir, "reviewed-cloudrun-dry-run-preflight-packet.json");
+    await writeFile(symlinkPacketTargetPath, await readFile(symlinkedPacketPath, "utf8"), "utf8");
+    await rm(symlinkedPacketPath, { force: true });
+    await symlink(symlinkPacketTargetPath, symlinkedPacketPath);
+    const symlinkedPacketVerification = await verifyCloudRunDryRunPacket(symlinkedPacketPath);
+
+    expect(symlinkedPacketVerification.status).toBe("blocked");
+    expect(symlinkedPacketVerification.structuralChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "packet-regular-file",
+          status: "blocked",
+          evidence: expect.stringContaining("symbolic link")
+        })
+      ])
+    );
+
+    const symlinkedDigestPacket = await prepareCloudRunDryRunPacket({
+      valuesPath,
+      outDir: join(tempDir, "symlink-digest"),
+      releaseId: "release-20260523-001",
+      strict: true
+    });
+    const symlinkedDigestPath = join(symlinkedDigestPacket.outputDirectory, "cloudrun-dry-run-preflight-packet.json");
+    const symlinkedManifestDigest = symlinkedDigestPacket.evidenceFileDigests.find((item) => item.role === "rendered-manifest");
+    if (!symlinkedManifestDigest) {
+      throw new Error("Test setup expected rendered-manifest digest for symlink check.");
+    }
+    const symlinkManifestTargetPath = join(tempDir, "reviewed-rendered-manifest.yaml");
+    await writeFile(symlinkManifestTargetPath, await readFile(symlinkedManifestDigest.path, "utf8"), "utf8");
+    await rm(symlinkedManifestDigest.path, { force: true });
+    await symlink(symlinkManifestTargetPath, symlinkedManifestDigest.path);
+    const symlinkedDigestVerification = await verifyCloudRunDryRunPacket(symlinkedDigestPath);
+
+    expect(symlinkedDigestVerification).toMatchObject({
+      status: "blocked",
+      readyForDryRun: false,
+      failedDigestCount: 1
+    });
+    expect(symlinkedDigestVerification.digestChecks.find((check) => check.role === "rendered-manifest")).toMatchObject({
+      status: "invalid-file",
+      actualSha256: "invalid-file",
+      fix: expect.stringContaining("symbolic link")
     });
   });
 
