@@ -28,6 +28,20 @@ type LocalSubmissionReport = {
     confidenceBoundary: string;
     sourceGateStatus: string;
     recommendedNextPhaseId: string;
+    recommendedNextCodeControllablePhaseId: string;
+    recommendedNextCodeControllableAction: {
+      phaseId: string;
+      label: string;
+      bucket: "code-controllable" | "external-proof" | "human-attestation";
+      owner: string;
+      priority: number;
+      status: string;
+      action: string;
+      commands: string[];
+      privateArtifactPaths: string[];
+      stopCondition: string;
+      proofBoundary: string;
+    };
     phases: Array<{
       id: string;
       label: string;
@@ -250,6 +264,19 @@ describe("local XPRIZE submission verifier", () => {
     expect(report.remainingBlockers.join(" ")).toContain("human-attestation");
     expect(report.nextActions.join(" ")).toContain("XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED");
     expect(report.phasePlan.recommendedNextPhaseId).toBe("human-attestation-review");
+    expect(report.phasePlan.recommendedNextCodeControllablePhaseId).toBe("cloudrun-render-dry-run");
+    expect(report.phasePlan.recommendedNextCodeControllableAction).toMatchObject({
+      phaseId: "cloudrun-render-dry-run",
+      bucket: "code-controllable",
+      owner: "engineering",
+      priority: 5
+    });
+    expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("render-values file");
+    expect(report.phasePlan.recommendedNextCodeControllableAction.commands.join(" ")).toContain("audit:cloudrun-values");
+    expect(report.phasePlan.recommendedNextCodeControllableAction.privateArtifactPaths).toContain(
+      "/secure/local/cloudrun-render-values.json"
+    );
+    expect(report.phasePlan.recommendedNextCodeControllableAction.proofBoundary).toContain("Code-controllable preparation only");
     expect(report.phasePlan.confidenceBoundary).toContain("not a win-probability estimate");
     expect(report.phasePlan.sourceGateStatus).toMatch(/passed|warning/);
     expect(report.manualInterventionPlan.status).toBe("manual-intervention-required");
@@ -380,6 +407,8 @@ describe("local XPRIZE submission verifier", () => {
       expect(markdown).toContain("Overall goal remaining:");
       expect(markdown).toContain("## Gate Summary");
       expect(markdown).toContain("## Phase Progress Chart");
+      expect(markdown).toContain("## Next Code-Controllable Action");
+      expect(markdown).toContain("Prepare the private Cloud Run render-values file");
       expect(markdown).toContain("## Manual Intervention Owners");
       expect(markdown).toContain("Rating");
       expect(markdown).toContain("Phase remaining");
@@ -433,6 +462,15 @@ describe("local XPRIZE submission verifier", () => {
         files: Array<{ id: string; path: string; sha256: string; bytes: number }>;
         proofBoundary: string;
         stopConditions: string[];
+        phaseProgress?: {
+          recommendedNextCodeControllablePhaseId?: string;
+          recommendedNextCodeControllableAction?: {
+            phaseId: string;
+            action: string;
+            commands: string[];
+            privateArtifactPaths: string[];
+          };
+        };
       };
       const combined = [
         readFileSync(join(tempDir, "local-submission-readiness.json"), "utf8"),
@@ -461,6 +499,11 @@ describe("local XPRIZE submission verifier", () => {
       expect(bundleManifest.files.every((file) => file.path.startsWith(tempDir))).toBe(true);
       expect(bundleManifest.files.every((file) => /^[a-f0-9]{64}$/u.test(file.sha256) && file.bytes > 0)).toBe(true);
       expect(bundleManifest.proofBoundary).toContain("not hosted Cloud Run proof");
+      expect(bundleManifest.phaseProgress?.recommendedNextCodeControllablePhaseId).toBe("cloudrun-render-dry-run");
+      expect(bundleManifest.phaseProgress?.recommendedNextCodeControllableAction?.action).toContain("render-values file");
+      expect(bundleManifest.phaseProgress?.recommendedNextCodeControllableAction?.commands.join(" ")).toContain(
+        "audit:cloudrun-values"
+      );
       expect(bundleManifest.stopConditions.join(" ")).toContain("Do not set XPRIZE");
       expect(combined).not.toContain("Bearer ");
       expect(combined).not.toContain("password:");

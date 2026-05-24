@@ -757,6 +757,7 @@ function buildPhasePlan(gateReports) {
     currentPhaseRemainingPercent: remainingPercentFromCounts(countCheckpoints(buildPhaseCheckpoints(phase, gatesById)))
   }));
   const nextPhase = phasesWithProgress.find((phase) => phase.status !== "passed") ?? phasesWithProgress.at(-1);
+  const recommendedNextCodeControllableAction = buildRecommendedNextCodeControllableAction(phasesWithProgress);
 
   return {
     objective:
@@ -765,8 +766,53 @@ function buildPhasePlan(gateReports) {
       "This phase plan improves evidence readiness only. It is not a win-probability estimate, legal opinion, audit assurance, certification, or judging guarantee.",
     sourceGateStatus: sourceGate?.status ?? "unknown",
     recommendedNextPhaseId: nextPhase?.id ?? "",
+    recommendedNextCodeControllablePhaseId: recommendedNextCodeControllableAction.phaseId,
+    recommendedNextCodeControllableAction,
     phases: phasesWithProgress
   };
+}
+
+function buildRecommendedNextCodeControllableAction(phases) {
+  const phase = phases.find((candidate) => (candidate.bucket ?? bucketForPhase(candidate)) === "code-controllable" && candidate.status !== "passed");
+
+  if (!phase) {
+    return {
+      phaseId: "",
+      label: "No open code-controllable readiness slice",
+      bucket: "code-controllable",
+      owner: "engineering",
+      priority: 0,
+      status: "not-needed",
+      action:
+        "No local engineering readiness slice is open in this report. Continue with external proof collection, human review, or private evidence capture.",
+      commands: [],
+      privateArtifactPaths: [],
+      stopCondition: "Do not invent code work when the remaining proof gap is external or human-owned.",
+      proofBoundary: proofBoundaryForBucket("code-controllable")
+    };
+  }
+
+  return {
+    phaseId: phase.id,
+    label: phase.label,
+    bucket: phase.bucket ?? bucketForPhase(phase),
+    owner: phase.owner,
+    priority: phase.priority,
+    status: phase.status,
+    action: codeControllableActionForPhase(phase),
+    commands: phase.commands,
+    privateArtifactPaths: privateArtifactPathsForPhase(phase.id),
+    stopCondition: phase.stopConditions[0] ?? "Stop until the selected code-controllable gate has command evidence.",
+    proofBoundary: proofBoundaryForBucket("code-controllable")
+  };
+}
+
+function codeControllableActionForPhase(phase) {
+  if (phase.id === "cloudrun-render-dry-run") {
+    return "Prepare the private Cloud Run render-values file, run the render-values audit, render the ignored manifest, and produce the dry-run preflight packet. Stop before gcloud dry-run/deploy until private production values and owner approvals exist.";
+  }
+
+  return `Advance ${phase.label} with local code or generated private handoff artifacts only; stop before claiming hosted, revenue, user, legal, or human-attestation proof.`;
 }
 
 function runGate(definition) {
@@ -1086,6 +1132,8 @@ function writeLocalSubmissionBundle(path, report) {
     phaseProgress: {
       overallGoalRemainingPercent: report.phaseProgressChart.overallGoalRemainingPercent,
       recommendedNextPhaseId: report.phasePlan.recommendedNextPhaseId,
+      recommendedNextCodeControllablePhaseId: report.phasePlan.recommendedNextCodeControllablePhaseId,
+      recommendedNextCodeControllableAction: report.phasePlan.recommendedNextCodeControllableAction,
       rows: report.phaseProgressChart.rows.map((row) => ({
         phaseId: row.phaseId,
         bucket: row.bucket,
@@ -1709,6 +1757,7 @@ function renderOwnerPacketMarkdown(packet, report) {
 }
 
 function renderLocalSubmissionMarkdown(report) {
+  const nextCodeAction = report.phasePlan.recommendedNextCodeControllableAction;
   const gateRows = report.gates.map((gate) => [
     gate.label,
     gate.status,
@@ -1765,6 +1814,27 @@ function renderLocalSubmissionMarkdown(report) {
     "## Phase Progress Chart",
     "",
     markdownTable(["Phase", "Bucket", "Owner", "Rating", "Phase remaining", "Overall remaining", "Done", "Pending", "Stop condition"], phaseRows),
+    "",
+    "## Next Code-Controllable Action",
+    "",
+    `Phase: ${nextCodeAction.label || "None"}`,
+    `Owner: ${nextCodeAction.owner || "none"}`,
+    `Priority: ${nextCodeAction.priority}/5`,
+    `Status: ${nextCodeAction.status}`,
+    "",
+    nextCodeAction.action,
+    "",
+    "Commands:",
+    "",
+    markdownList((nextCodeAction.commands ?? []).map((command) => `\`${command}\``)),
+    "",
+    "Private artifacts:",
+    "",
+    markdownList(nextCodeAction.privateArtifactPaths ?? []),
+    "",
+    `Stop condition: ${nextCodeAction.stopCondition}`,
+    "",
+    `Proof boundary: ${nextCodeAction.proofBoundary}`,
     "",
     "## Manual Intervention Owners",
     "",
