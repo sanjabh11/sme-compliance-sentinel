@@ -1451,6 +1451,7 @@ export interface ProjectProvenanceGitSignals {
   sourceEvidenceMode?: "git" | "deployment-env" | "missing";
   commitCount: number;
   headCommit?: string;
+  firstCommit?: string;
   remoteUrl?: string;
   upstreamBranch?: string;
   remoteHeadCommit?: string;

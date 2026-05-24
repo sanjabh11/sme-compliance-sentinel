@@ -34,6 +34,7 @@ export function collectGitSignals(cwd = process.cwd()): ProjectProvenanceGitSign
 
   let commitCount = 0;
   let headCommit: string | undefined;
+  let firstCommit: string | undefined;
   let remoteUrl: string | undefined;
   let upstreamBranch: string | undefined;
   let remoteHeadCommit: string | undefined;
@@ -44,10 +45,12 @@ export function collectGitSignals(cwd = process.cwd()): ProjectProvenanceGitSign
   try {
     commitCount = Number(runGit(["rev-list", "--count", "HEAD"], cwd)) || 0;
     headCommit = runGit(["rev-parse", "HEAD"], cwd).trim() || undefined;
+    const firstCommitSignals = collectFirstCommitSignals(cwd);
+    firstCommit = firstCommitSignals?.commit;
+    firstCommitAt = firstCommitSignals?.committedAt;
     remoteUrl = runGit(["remote", "get-url", "origin"], cwd).trim() || undefined;
     upstreamBranch = runOptionalGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], cwd) || undefined;
     remoteHeadCommit = upstreamBranch ? runOptionalGit(["rev-parse", upstreamBranch], cwd) || undefined : undefined;
-    firstCommitAt = runGit(["log", "--reverse", "--format=%cI", "--max-count=1"], cwd).trim() || undefined;
     headCommitAt = runGit(["log", "-1", "--format=%cI"], cwd).trim() || undefined;
   } catch (caught) {
     error = caught instanceof Error ? caught.message : "No commits are available.";
@@ -58,6 +61,7 @@ export function collectGitSignals(cwd = process.cwd()): ProjectProvenanceGitSign
     sourceEvidenceMode: "git",
     commitCount,
     headCommit,
+    firstCommit,
     remoteUrl,
     upstreamBranch,
     remoteHeadCommit,
@@ -117,4 +121,20 @@ function runOptionalGit(args: string[], cwd: string) {
   } catch {
     return "";
   }
+}
+
+function collectFirstCommitSignals(cwd: string) {
+  const rootCommits = runGit(["rev-list", "--max-parents=0", "HEAD"], cwd)
+    .split("\n")
+    .map((commit) => commit.trim())
+    .filter(Boolean);
+
+  const roots = rootCommits
+    .map((commit) => ({
+      commit,
+      committedAt: runGit(["show", "-s", "--format=%cI", commit], cwd).trim()
+    }))
+    .filter((root) => root.committedAt);
+
+  return roots.sort((left, right) => Date.parse(left.committedAt) - Date.parse(right.committedAt))[0];
 }

@@ -1,5 +1,10 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { scanClaimText } from "@/lib/claim-guard";
+import { collectGitSignals } from "@/lib/git-signals";
 import { buildProjectProvenanceReport, xprizeHackathonStartAt } from "@/lib/project-provenance";
 import type { ProjectProvenanceGitSignals } from "@/lib/types";
 
@@ -107,4 +112,47 @@ describe("project provenance disclosure report", () => {
 
     expect(violations).toEqual([]);
   });
+
+  it("collects the root commit timestamp instead of the newest commit when building git signals", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-provenance-git-"));
+
+    try {
+      runGit(tempDir, ["init"]);
+      runGit(tempDir, ["config", "user.email", "sentinel@example.com"]);
+      runGit(tempDir, ["config", "user.name", "SME Sentinel"]);
+      runGit(tempDir, ["remote", "add", "origin", "https://github.com/example/sme-workspace-sentinel.git"]);
+      writeFileSync(join(tempDir, "README.md"), "# Sentinel\n", "utf8");
+      runGit(tempDir, ["add", "README.md"]);
+      runGit(tempDir, ["commit", "-m", "initial"], {
+        GIT_AUTHOR_DATE: "2026-05-20T10:00:00+00:00",
+        GIT_COMMITTER_DATE: "2026-05-20T10:00:00+00:00"
+      });
+      writeFileSync(join(tempDir, "README.md"), "# Sentinel\n\nUpdated\n", "utf8");
+      runGit(tempDir, ["add", "README.md"]);
+      runGit(tempDir, ["commit", "-m", "second"], {
+        GIT_AUTHOR_DATE: "2026-05-23T09:00:00+00:00",
+        GIT_COMMITTER_DATE: "2026-05-23T09:00:00+00:00"
+      });
+
+      const signals = collectGitSignals(tempDir);
+
+      expect(signals.commitCount).toBe(2);
+      expect(signals.firstCommit).toMatch(/^[a-f0-9]{40}$/u);
+      expect(signals.headCommit).toMatch(/^[a-f0-9]{40}$/u);
+      expect(signals.firstCommit).not.toBe(signals.headCommit);
+      expect(Date.parse(signals.firstCommitAt ?? "")).toBe(Date.parse("2026-05-20T10:00:00+00:00"));
+      expect(Date.parse(signals.headCommitAt ?? "")).toBe(Date.parse("2026-05-23T09:00:00+00:00"));
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
+
+function runGit(cwd: string, args: string[], env: Record<string, string> = {}) {
+  return execFileSync("git", args, {
+    cwd,
+    env: { ...process.env, ...env },
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+}

@@ -46,6 +46,7 @@ function collectGitSignals() {
 
   let commitCount = 0;
   let headCommit;
+  let firstCommit;
   let remoteUrl;
   let upstreamBranch;
   let remoteHeadCommit;
@@ -56,10 +57,12 @@ function collectGitSignals() {
   try {
     commitCount = Number(runGit(["rev-list", "--count", "HEAD"])) || 0;
     headCommit = runGit(["rev-parse", "HEAD"]) || undefined;
+    const firstCommitSignals = collectFirstCommitSignals();
+    firstCommit = firstCommitSignals?.commit;
+    firstCommitAt = firstCommitSignals?.committedAt;
     remoteUrl = runGit(["remote", "get-url", "origin"]) || undefined;
     upstreamBranch = runOptionalGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]) || undefined;
     remoteHeadCommit = upstreamBranch ? runOptionalGit(["rev-parse", upstreamBranch]) || undefined : undefined;
-    firstCommitAt = runGit(["log", "--reverse", "--format=%cI", "--max-count=1"]) || undefined;
     headCommitAt = runGit(["log", "-1", "--format=%cI"]) || undefined;
   } catch (caught) {
     error = caught instanceof Error ? caught.message : "No commits are available.";
@@ -70,6 +73,7 @@ function collectGitSignals() {
     sourceEvidenceMode: "git",
     commitCount,
     headCommit,
+    firstCommit,
     remoteUrl,
     upstreamBranch,
     remoteHeadCommit,
@@ -123,6 +127,22 @@ function runOptionalGit(args) {
   }
 }
 
+function collectFirstCommitSignals() {
+  const rootCommits = runGit(["rev-list", "--max-parents=0", "HEAD"])
+    .split("\n")
+    .map((commit) => commit.trim())
+    .filter(Boolean);
+
+  const roots = rootCommits
+    .map((commit) => ({
+      commit,
+      committedAt: runGit(["show", "-s", "--format=%cI", commit])
+    }))
+    .filter((root) => root.committedAt);
+
+  return roots.sort((left, right) => Date.parse(left.committedAt) - Date.parse(right.committedAt))[0];
+}
+
 function buildReport() {
   const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
   const git = collectGitSignals();
@@ -144,7 +164,11 @@ function buildReport() {
     check(
       "first-commit-after-start",
       firstCommitAfterStart,
-      git.firstCommitAt ?? (deploymentSourceMetadata ? `Hosted runtime declares source commit ${git.headCommit}; first-commit timing still requires local repository provenance.` : "No first commit timestamp."),
+      git.firstCommitAt
+        ? `First commit ${git.firstCommit ?? "unknown"} timestamp ${git.firstCommitAt}.`
+        : deploymentSourceMetadata
+          ? `Hosted runtime declares source commit ${git.headCommit}; first-commit timing still requires local repository provenance.`
+          : "No first commit timestamp.",
       deploymentSourceMetadata ? "warning" : undefined
     ),
     check(

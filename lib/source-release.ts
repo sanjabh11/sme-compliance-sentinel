@@ -235,13 +235,16 @@ function collectGitSignals(rootDir: string): ProjectProvenanceGitSignals {
     .filter(Boolean).length;
 
   let commitCount = 0;
+  let firstCommit: string | undefined;
   let firstCommitAt: string | undefined;
   let headCommitAt: string | undefined;
   let error: string | undefined;
 
   try {
     commitCount = Number(runGit(rootDir, ["rev-list", "--count", "HEAD"])) || 0;
-    firstCommitAt = runGit(rootDir, ["log", "--reverse", "--format=%cI", "--max-count=1"]) || undefined;
+    const firstCommitSignals = collectFirstCommitSignals(rootDir);
+    firstCommit = firstCommitSignals?.commit;
+    firstCommitAt = firstCommitSignals?.committedAt;
     headCommitAt = runGit(rootDir, ["log", "-1", "--format=%cI"]) || undefined;
   } catch (caught) {
     error = caught instanceof Error ? caught.message : "No commits are available.";
@@ -250,12 +253,29 @@ function collectGitSignals(rootDir: string): ProjectProvenanceGitSignals {
   return {
     gitAvailable: true,
     commitCount,
+    firstCommit,
     firstCommitAt,
     headCommitAt,
     trackedFileCount,
     untrackedPaths,
     error
   };
+}
+
+function collectFirstCommitSignals(rootDir: string) {
+  const rootCommits = runGit(rootDir, ["rev-list", "--max-parents=0", "HEAD"])
+    .split("\n")
+    .map((commit) => commit.trim())
+    .filter(Boolean);
+
+  const roots = rootCommits
+    .map((commit) => ({
+      commit,
+      committedAt: runGit(rootDir, ["show", "-s", "--format=%cI", commit])
+    }))
+    .filter((root) => root.committedAt);
+
+  return roots.sort((left, right) => Date.parse(left.committedAt) - Date.parse(right.committedAt))[0];
 }
 
 function collectFilePlans(rootDir: string): SourceReleaseFilePlan[] {

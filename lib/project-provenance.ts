@@ -88,7 +88,7 @@ function buildChecks(
       "First commit is after hackathon start",
       firstCommitAfterStart ? "passed" : deploymentSourceMetadata ? "warning" : "blocked",
       git.firstCommitAt
-        ? `First commit timestamp ${git.firstCommitAt}; hackathon start reference ${xprizeHackathonStartAt}.`
+        ? `First commit ${git.firstCommit ?? "unknown"} timestamp ${git.firstCommitAt}; hackathon start reference ${xprizeHackathonStartAt}.`
         : deploymentSourceMetadata
           ? `Hosted runtime declares source commit ${git.headCommit}; first-commit timing still requires local repository provenance.`
         : "No first commit timestamp is available.",
