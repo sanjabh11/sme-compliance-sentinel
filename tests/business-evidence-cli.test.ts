@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -193,6 +193,31 @@ describe("business evidence CLI verifier", () => {
 
   it("rejects secret-shaped CLI arguments", () => {
     expect(() => runVerifier(baseEnv, ["--api-key=raw-secret"])).toThrow();
+  });
+
+  it("fails closed when private evidence or packet output paths are symlinks", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-business-symlink-"));
+    const evidencePath = join(tempDir, "business-evidence.json");
+    const evidenceTargetPath = join(tempDir, "reviewed-business-evidence.json");
+    const outPath = join(tempDir, "business-evidence-readiness.json");
+    const outTargetPath = join(tempDir, "reviewed-business-evidence-readiness.json");
+    const templatePath = join(tempDir, "business-evidence-template.json");
+    const templateTargetPath = join(tempDir, "reviewed-business-evidence-template.json");
+
+    try {
+      writeFileSync(evidenceTargetPath, JSON.stringify(readyEvidence(), null, 2), "utf8");
+      writeFileSync(outTargetPath, "{}", "utf8");
+      writeFileSync(templateTargetPath, "{}", "utf8");
+      symlinkSync(evidenceTargetPath, evidencePath);
+      symlinkSync(outTargetPath, outPath);
+      symlinkSync(templateTargetPath, templatePath);
+
+      expect(() => runVerifier(baseEnv, ["--evidence", evidencePath])).toThrow(/symbolic link/u);
+      expect(() => runVerifier(baseEnv, ["--out", outPath])).toThrow(/symbolic link/u);
+      expect(() => runVerifier(baseEnv, ["--write-template", templatePath])).toThrow(/symbolic link/u);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
 

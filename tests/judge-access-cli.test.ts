@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -126,6 +126,21 @@ describe("judge access CLI verifier", () => {
       status: "blocked"
     });
     expect(() => runVerifier(baseEnv, ["--api-key=raw-secret"])).toThrow();
+  });
+
+  it("fails closed when the private packet output path is a symlink", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-judge-access-symlink-"));
+    const outPath = join(tempDir, "judge-access-readiness.json");
+    const targetPath = join(tempDir, "reviewed-judge-access-readiness.json");
+
+    try {
+      writeFileSync(targetPath, "{}", "utf8");
+      symlinkSync(targetPath, outPath);
+
+      expect(() => runVerifier(baseEnv, ["--out", outPath])).toThrow(/symbolic link/u);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
 

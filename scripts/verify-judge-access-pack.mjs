@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* global console, process */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { URL } from "node:url";
 
@@ -339,7 +339,29 @@ function smokeCommand(input) {
 function writeJson(path, value) {
   const absolutePath = resolve(path);
   mkdirSync(dirname(absolutePath), { recursive: true });
+  assertRegularFileIfExists(absolutePath, "Judge access readiness output file");
   writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function assertRegularFileIfExists(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = lstatSync(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private file path before verification.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${path} is not a regular file; use a regular private file path before verification.`);
+  }
 }
 
 try {

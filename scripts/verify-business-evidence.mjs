@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* global console, process */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
@@ -462,7 +462,7 @@ function verifiedArtifacts(evidence, bucket) {
 
 function readEvidence(path) {
   try {
-    return JSON.parse(readFileSync(resolve(path), "utf8"));
+    return JSON.parse(readRegularTextFile(path, "Private business evidence file"));
   } catch (error) {
     throw new Error(`Unable to read private evidence file: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -534,7 +534,35 @@ function check(input) {
 function writeJson(path, value) {
   const absolutePath = resolve(path);
   mkdirSync(dirname(absolutePath), { recursive: true });
+  assertRegularFileIfExists(absolutePath, "Private business evidence output file");
   writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function readRegularTextFile(path, label) {
+  const absolutePath = resolve(path);
+  assertRegularFileIfExists(absolutePath, label);
+  return readFileSync(absolutePath, "utf8");
+}
+
+function assertRegularFileIfExists(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = lstatSync(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private file path before verification.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${path} is not a regular file; use a regular private file path before verification.`);
+  }
 }
 
 try {
