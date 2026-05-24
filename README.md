@@ -78,6 +78,8 @@ npm test
 npm run build
 ```
 
+`npm test` and `npm run build` use local runner scripts that prefer an already-cached Node 20 binary when this Codex desktop shell cannot load native optional packages cleanly. The build runner also uses the Next.js webpack build path so production proof is not blocked by local Turbopack native-binding availability.
+
 ## Demo Flow
 
 1. Run **Build launch plan** to see the one-day paid pilot offer, required proof, owners, day-one workflow, and blockers.

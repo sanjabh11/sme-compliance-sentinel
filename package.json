@@ -9,11 +9,11 @@
   },
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
-    "build": "next build",
+    "build": "node scripts/run-next-build.mjs",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "node scripts/run-vitest.mjs",
     "verify:source-release": "node scripts/verify-source-release.mjs",
     "verify:provenance": "node scripts/verify-project-provenance.mjs",
     "verify:cloudrun-deployment": "node scripts/verify-cloudrun-deployment.mjs",
