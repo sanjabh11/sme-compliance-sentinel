@@ -1,7 +1,8 @@
 /* global AbortController, URL, clearTimeout, console, fetch, process, setTimeout */
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { lstat, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import { runProductionReadinessVerification } from "./verify-production-readiness.mjs";
 
 const defaultOutDir = "artifacts/hosted-proof";
@@ -167,8 +168,11 @@ export function parseArgs(argv) {
 export async function collectHostedProofBundle(options) {
   const baseUrl = normalizeBaseUrl(options.url);
   const releaseId = sanitizePathSegment(options.releaseId || `release-${new Date().toISOString()}`);
-  const outputDirectory = join(options.outDir ?? defaultOutDir, releaseId);
+  const outputDirectory = resolve(options.outDir ?? defaultOutDir, releaseId);
+  await assertDirectoryPathSafe(outputDirectory, "Hosted proof bundle output directory");
   await mkdir(outputDirectory, { recursive: true });
+  await assertDirectoryExistsSafe(outputDirectory, "Hosted proof bundle output directory");
+  await assertDirectoryEmpty(outputDirectory, "Hosted proof bundle output directory");
 
   const verifyReport = await runProductionReadinessVerification(
     {
@@ -301,7 +305,7 @@ async function fetchEndpoint(baseUrl, endpoint, timeoutMs) {
 async function writeJsonArtifact(outputDirectory, artifact) {
   const redactedPayload = redact(artifact.payload);
   const absolutePath = join(outputDirectory, artifact.fileName);
-  await writeFile(absolutePath, `${JSON.stringify(redactedPayload, null, 2)}\n`, "utf8");
+  await writeTextFileAtomic(absolutePath, `${JSON.stringify(redactedPayload, null, 2)}\n`, "Hosted proof bundle JSON artifact");
 
   return {
     id: artifact.id,
@@ -1092,7 +1096,98 @@ async function writeMarkdownSummary(outputDirectory, manifest) {
     ...manifest.privateHandling.map((item) => `- ${item}`),
     ""
   ];
-  await writeFile(join(outputDirectory, "README.md"), `${lines.join("\n")}\n`, "utf8");
+  await writeTextFileAtomic(join(outputDirectory, "README.md"), `${lines.join("\n")}\n`, "Hosted proof bundle Markdown summary");
+}
+
+async function writeTextFileAtomic(path, content, label) {
+  const parentDirectory = dirname(path);
+  await assertDirectoryPathSafe(parentDirectory, `${label} parent directory`);
+  await assertRegularFileIfExists(path, label);
+  const tempPath = join(parentDirectory, `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`);
+
+  try {
+    await writeFile(tempPath, content, { encoding: "utf8", flag: "wx" });
+    await rename(tempPath, path);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
+}
+
+async function assertDirectoryPathSafe(path, label) {
+  const directories = [];
+  let cursor = resolve(path);
+
+  while (true) {
+    directories.push(cursor);
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+
+  for (const directory of directories.reverse()) {
+    let fileStat;
+
+    try {
+      fileStat = await lstat(directory);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+
+    if (fileStat.isSymbolicLink()) {
+      throw new Error(`${label} ${directory} is a symbolic link; use a regular private directory before hosted proof bundle collection.`);
+    }
+
+    if (!fileStat.isDirectory()) {
+      throw new Error(`${label} ${directory} is not a directory; use a regular private directory before hosted proof bundle collection.`);
+    }
+  }
+}
+
+async function assertDirectoryExistsSafe(path, label) {
+  const fileStat = await lstat(path);
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private directory before hosted proof bundle collection.`);
+  }
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${path} is not a directory; use a regular private directory before hosted proof bundle collection.`);
+  }
+}
+
+async function assertDirectoryEmpty(path, label) {
+  const entries = await readdir(path);
+
+  if (entries.length > 0) {
+    throw new Error(`${label} ${path} already contains files; use a new release id or empty private directory before hosted proof bundle collection.`);
+  }
+}
+
+async function assertRegularFileIfExists(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = await lstat(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private file path before hosted proof bundle collection.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${path} is not a regular file; use a regular private file path before hosted proof bundle collection.`);
+  }
 }
 
 function redact(value) {

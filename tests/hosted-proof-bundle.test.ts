@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -199,6 +199,96 @@ describe("hosted proof bundle collector", () => {
       expect(manifestJson).toContain("Admin tokens are read only from the configured environment variable");
       expect(readme).toContain("# Hosted Proof Bundle");
       expect(readme).toContain("Release Evidence Manifest");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when hosted proof bundle output paths would follow symlinks", async () => {
+    const { collectHostedProofBundle } = await loadCollector();
+    const tempDir = await mkdtemp(join(tmpdir(), "sentinel-proof-symlink-"));
+    const realOutDir = join(tempDir, "real-out");
+    const symlinkedOutDir = join(tempDir, "symlinked-out");
+    const leafSymlinkBaseDir = join(tempDir, "leaf-symlink-base");
+    const realLeafOutDir = join(tempDir, "real-leaf-out");
+    const leafSymlinkOutDir = join(leafSymlinkBaseDir, "release-test-unsafe");
+    const artifactOutDir = join(tempDir, "artifact-out");
+    const artifactOutputDirectory = join(artifactOutDir, "release-test-unsafe");
+    const readmeOutDir = join(tempDir, "readme-out");
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      const method = init?.method ?? "GET";
+
+      return new Response(JSON.stringify(payloadForRequest(href, method)), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    await mkdir(realOutDir);
+    await mkdir(leafSymlinkBaseDir);
+    await mkdir(realLeafOutDir);
+    await symlink(realOutDir, symlinkedOutDir, "dir");
+    await symlink(realLeafOutDir, leafSymlinkOutDir, "dir");
+
+    try {
+      await expect(
+        collectHostedProofBundle({
+          url: "https://sentinel.example.com",
+          outDir: symlinkedOutDir,
+          releaseId: "release test/unsafe",
+          timeoutMs: 1000
+        })
+      ).rejects.toThrow(/symbolic link/u);
+
+      await expect(
+        collectHostedProofBundle({
+          url: "https://sentinel.example.com",
+          outDir: leafSymlinkBaseDir,
+          releaseId: "release test/unsafe",
+          timeoutMs: 1000
+        })
+      ).rejects.toThrow(/symbolic link/u);
+      expect(await readdir(realLeafOutDir)).toHaveLength(0);
+
+      await mkdir(artifactOutputDirectory, { recursive: true });
+      const verifyTargetPath = join(tempDir, "reviewed-verify-production.json");
+      await writeFile(verifyTargetPath, "reviewed verify production\n", "utf8");
+      await symlink(verifyTargetPath, join(artifactOutputDirectory, "verify-production.json"));
+      const verifyTargetContent = await readFile(verifyTargetPath, "utf8");
+
+      await expect(
+        collectHostedProofBundle({
+          url: "https://sentinel.example.com",
+          outDir: artifactOutDir,
+          releaseId: "release test/unsafe",
+          timeoutMs: 1000
+        })
+      ).rejects.toThrow(/already contains files/u);
+      expect(await readFile(verifyTargetPath, "utf8")).toBe(verifyTargetContent);
+
+      const manifest = await collectHostedProofBundle({
+        url: "https://sentinel.example.com",
+        outDir: readmeOutDir,
+        releaseId: "release test/unsafe",
+        timeoutMs: 1000
+      });
+      const readmePath = join(manifest.outputDirectory, "README.md");
+      const verifyJsonPath = join(manifest.outputDirectory, "verify-production.json");
+      const verifyJsonBefore = await readFile(verifyJsonPath, "utf8");
+      const readmeTargetPath = join(tempDir, "reviewed-hosted-proof-readme.md");
+      await writeFile(readmeTargetPath, await readFile(readmePath, "utf8"), "utf8");
+      await rm(readmePath, { force: true });
+      await symlink(readmeTargetPath, readmePath);
+      const readmeTargetContent = await readFile(readmeTargetPath, "utf8");
+
+      await expect(
+        collectHostedProofBundle({
+          url: "https://sentinel.example.com",
+          outDir: readmeOutDir,
+          releaseId: "release test/unsafe",
+          timeoutMs: 1000
+        })
+      ).rejects.toThrow(/already contains files/u);
+      expect(await readFile(verifyJsonPath, "utf8")).toBe(verifyJsonBefore);
+      expect(await readFile(readmeTargetPath, "utf8")).toBe(readmeTargetContent);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
