@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -594,6 +595,7 @@ describe("local XPRIZE submission verifier", () => {
 
   it("verifies local-submission bundle integrity and blocks tampered handoff files", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-bundle-verify-"));
+    const outsideDir = mkdtempSync(join(tmpdir(), "sentinel-local-bundle-outside-"));
     const bundleManifestPath = join(tempDir, "local-submission-bundle-manifest.json");
 
     try {
@@ -628,13 +630,41 @@ describe("local XPRIZE submission verifier", () => {
       expect(tampered.overallStatus).toBe("blocked");
       expect(tampered.blockers.join(" ")).toContain("bundle-file-2-sha256");
       expect(() => runLocalBundleVerifier(bundleManifestPath, ["--strict"])).toThrow();
+
+      const escapedContent = "# Outside bundle\n";
+      const escapedPath = join(outsideDir, "outside.md");
+      writeFileSync(escapedPath, escapedContent);
+      const bundleManifest = JSON.parse(readFileSync(bundleManifestPath, "utf8")) as {
+        files: Array<{
+          id: string;
+          path: string;
+          relativePath?: string;
+          sha256: string;
+          bytes: number;
+        }>;
+      };
+      bundleManifest.files[0] = {
+        ...bundleManifest.files[0],
+        path: escapedPath,
+        relativePath: undefined,
+        sha256: sha256Hex(escapedContent),
+        bytes: Buffer.byteLength(escapedContent, "utf8")
+      };
+      writeFileSync(bundleManifestPath, `${JSON.stringify(bundleManifest, null, 2)}\n`);
+      const escaped = runLocalBundleVerifier(bundleManifestPath);
+
+      expect(escaped.overallStatus).toBe("blocked");
+      expect(escaped.blockers.join(" ")).toContain("bundle-file-1-path-boundary");
+      expect(escaped.blockers.join(" ")).toContain("escapes bundle directory");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
     }
   });
 
   it("verifies manual-intervention packet manifest integrity and blocks tampered packets", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-manual-manifest-"));
+    const outsideDir = mkdtempSync(join(tmpdir(), "sentinel-manual-outside-"));
     const manifestPath = join(tempDir, "manual-intervention-manifest.json");
 
     try {
@@ -659,8 +689,35 @@ describe("local XPRIZE submission verifier", () => {
       expect(tampered.overallStatus).toBe("blocked");
       expect(tampered.blockers.join(" ")).toContain("file-2-sha256");
       expect(() => runManualManifestVerifier(manifestPath, ["--strict"])).toThrow();
+
+      const escapedContent = "# Outside manual packet\n";
+      const escapedPath = join(outsideDir, "outside.md");
+      writeFileSync(escapedPath, escapedContent);
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+        files: Array<{
+          owner: string;
+          path: string;
+          relativePath?: string;
+          sha256: string;
+          bytes: number;
+        }>;
+      };
+      manifest.files[1] = {
+        ...manifest.files[1],
+        path: escapedPath,
+        relativePath: undefined,
+        sha256: sha256Hex(escapedContent),
+        bytes: Buffer.byteLength(escapedContent, "utf8")
+      };
+      writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+      const escaped = runManualManifestVerifier(manifestPath);
+
+      expect(escaped.overallStatus).toBe("blocked");
+      expect(escaped.blockers.join(" ")).toContain("file-2-path-boundary");
+      expect(escaped.blockers.join(" ")).toContain("escapes manifest directory");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
     }
   });
 
@@ -836,4 +893,8 @@ function runLocalBundleVerifier(bundleManifestPath: string, args: string[] = [])
   });
 
   return JSON.parse(output) as LocalBundleVerificationReport;
+}
+
+function sha256Hex(value: string) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
 }

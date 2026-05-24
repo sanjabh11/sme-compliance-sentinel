@@ -1637,9 +1637,19 @@ function resolveBundleEntryPath(file, bundleDir) {
     return { status: "blocked", path: "", evidence: "missing path and relativePath" };
   }
 
+  const candidate = isAbsolute(rawPath) ? rawPath : resolve(bundleDir, rawPath);
+
+  if (!pathIsInside(bundleDir, candidate)) {
+    return {
+      status: "blocked",
+      path: candidate,
+      evidence: `path=${rawPath} escapes bundle directory ${bundleDir}.`
+    };
+  }
+
   return {
     status: "passed",
-    path: isAbsolute(rawPath) ? rawPath : resolve(bundleDir, rawPath),
+    path: candidate,
     evidence: rawPath
   };
 }
@@ -1655,7 +1665,11 @@ function verifyManifestFileEntry(file, index, manifestDir = "") {
   const checks = [];
   const rawPath = typeof file?.path === "string" ? file.path : "";
   const relativePath = typeof file?.relativePath === "string" ? file.relativePath : "";
-  const path = relativePath && manifestDir ? resolve(manifestDir, relativePath) : rawPath;
+  const path = relativePath && manifestDir ? resolve(manifestDir, relativePath) : rawPath
+    ? isAbsolute(rawPath)
+      ? rawPath
+      : resolve(manifestDir, rawPath)
+    : "";
   const expectedSha256 = typeof file?.sha256 === "string" ? file.sha256 : "";
   const expectedBytes = Number(file?.bytes ?? 0);
 
@@ -1674,6 +1688,26 @@ function verifyManifestFileEntry(file, index, manifestDir = "") {
   if (relativePath && manifestDir && !pathIsInside(manifestDir, path)) {
     checks.push(verificationCheck(`${idPrefix}-path-boundary`, "blocked", `relativePath=${relativePath} escapes manifest directory ${manifestDir}.`));
     return checks;
+  }
+
+  if (manifestDir && !relativePath && !pathIsInside(manifestDir, path)) {
+    checks.push(verificationCheck(`${idPrefix}-path-boundary`, "blocked", `path=${rawPath} escapes manifest directory ${manifestDir}.`));
+    return checks;
+  }
+
+  if (relativePath && rawPath) {
+    const rawResolved = isAbsolute(rawPath) ? rawPath : resolve(manifestDir, rawPath);
+    checks.push(
+      verificationCheck(
+        `${idPrefix}-path-consistency`,
+        rawResolved === path ? "passed" : "blocked",
+        `path=${rawPath}; relativePath=${relativePath}.`
+      )
+    );
+
+    if (rawResolved !== path) {
+      return checks;
+    }
   }
 
   let content = "";
