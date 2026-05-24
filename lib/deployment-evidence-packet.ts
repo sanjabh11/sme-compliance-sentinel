@@ -107,6 +107,7 @@ function buildRunbook(input: {
       ),
       requiredArtifactIds: [
         "cloudrun-render-values-audit-json",
+        "cloudrun-render-evidence-packet-json",
         "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
         "cloudrun-dry-run-preflight-json",
@@ -114,6 +115,7 @@ function buildRunbook(input: {
       ],
       proofFiles: proofFiles(
         "cloudrun-render-values-audit-json",
+        "cloudrun-render-evidence-packet-json",
         "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
         "cloudrun-dry-run-preflight-json",
@@ -257,7 +259,23 @@ function buildArtifactManifest(input: {
         "Keep the filled render-values file private; it can expose project ids, URLs, budget ids, and evidence-state decisions.",
         "Share only after reviewing valuesPath, project ids, URLs, billing ids, and manual evidence flags."
       ],
-      nextAction: "Audit the private render-values file before rendering; stop if status is not ready-to-render."
+      nextAction: "Audit the private render-values file before rendering; stop if status is not ready-to-render and use the evidence packet to assign owner fixes."
+    }),
+    artifact({
+      id: "cloudrun-render-evidence-packet-json",
+      label: "Cloud Run render evidence owner packet",
+      ownerRole: "engineering",
+      status: localVerifierStatus,
+      sourceCommand:
+        "npm run audit:cloudrun-values -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
+      privateStorePath: `${basePath}/cloudrun-render-evidence-packet.json`,
+      evidenceVaultTarget: "cloud-run-proof",
+      redactionRules: [
+        "Keep owner queues, accepted-proof notes, and local paths private until redacted for judges.",
+        "Do not share any filled values file, billing id, customer artifact, private testing instruction, or raw proof flag rationale publicly."
+      ],
+      nextAction:
+        "Use the owner queues to clear requiredBeforeDryRun rows before rendering and to keep public XPRIZE proof flags false until private evidence exists."
     }),
     artifact({
       id: "cloudrun-render-summary-json",

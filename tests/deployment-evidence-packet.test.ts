@@ -31,6 +31,7 @@ describe("deployment evidence packet", () => {
       expect.arrayContaining([
         "local-quality-gates-log",
         "cloudrun-render-values-audit-json",
+        "cloudrun-render-evidence-packet-json",
         "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
         "cloudrun-dry-run-preflight-json",
@@ -152,6 +153,7 @@ describe("deployment evidence packet", () => {
       phase: "manifest-render",
       requiredArtifactIds: [
         "cloudrun-render-values-audit-json",
+        "cloudrun-render-evidence-packet-json",
         "cloudrun-render-summary-json",
         "cloudrun-manifest-verifier-json",
         "cloudrun-dry-run-preflight-json",
@@ -161,6 +163,7 @@ describe("deployment evidence packet", () => {
     expect(packet.runbook[1].proofFiles).toEqual(
       expect.arrayContaining([
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-values-audit.json",
+        "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-evidence-packet.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-render-summary.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-manifest-verifier.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/cloudrun-dry-run-preflight-packet.json",

@@ -327,7 +327,7 @@ function buildPhasePlan(gateReports) {
       ],
       evidenceNeeded: [
         "filled private render-values file with no raw secrets",
-        "render-values audit JSON/Markdown",
+        "render-values audit JSON/Markdown plus owner-routed render evidence packet",
         "dry-run preflight packet and digest verifier"
       ],
       stopConditions: [

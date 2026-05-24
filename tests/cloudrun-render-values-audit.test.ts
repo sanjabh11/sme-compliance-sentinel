@@ -21,6 +21,62 @@ interface CloudRunRenderValuesAuditModule {
     outputDirectory: string;
     auditPath: string;
     markdownPath: string;
+    evidencePacketPath: string;
+    evidencePacketMarkdownPath: string;
+    evidencePacket: {
+      status: string;
+      readiness: {
+        readyForStrictRender: boolean;
+        requiredBeforeDryRunPending: number;
+        claimFlagsPending: number;
+        missingStrictKeyCount: number;
+        placeholderKeyCount: number;
+        valueConsistencyBlockerCount: number;
+      };
+      phaseProgress: {
+        phaseId: string;
+        ratingOutOf5: number;
+        currentSliceRemainingPercent: number;
+      };
+      commandSequence: Array<{
+        id: string;
+        owner: string;
+        command: string;
+        expectedArtifact: string;
+        stopCondition: string;
+      }>;
+      requiredBeforeDryRun: Array<{ key: string; owner: string; status: string; fix: string }>;
+      publicClaimEvidenceQueue: Array<{ key: string; owner: string; status: string; acceptedProof: string }>;
+      ownerQueues: Array<{
+        owner: string;
+        total: number;
+        requiredBeforeDryRun: number;
+        publicClaimEvidence: number;
+        rows: Array<{ key: string; status: string; category: string; fix: string }>;
+      }>;
+      artifactRequests: Array<{
+        category: string;
+        owner: string;
+        keyCount: number;
+        keys: string[];
+        requiredBeforeDryRun: string[];
+        requiredBeforePublicClaim: string[];
+        acceptedProof: string;
+        privateHandling: string;
+      }>;
+      manualInterventions: Array<{
+        owner: string;
+        key: string;
+        requiredBefore: string;
+        action: string;
+        acceptedProof: string;
+        privateHandling: string;
+      }>;
+      stopConditions: string[];
+      redactionChecklist: string[];
+      nextActions: string[];
+      disclaimer: string;
+    };
     missingStrictKeys: string[];
     placeholderKeys: string[];
     valueConsistencyChecks: Array<{ id: string; key: string; status: string; fix: string }>;
@@ -112,6 +168,11 @@ describe("Cloud Run render-values audit", () => {
     });
     const packetJson = JSON.parse(await readFile(packet.auditPath, "utf8")) as { status: string };
     const markdown = await readFile(packet.markdownPath, "utf8");
+    const evidencePacketJson = JSON.parse(await readFile(packet.evidencePacketPath, "utf8")) as {
+      status: string;
+      publicClaimEvidenceQueue: Array<{ key: string; status: string }>;
+    };
+    const evidenceMarkdown = await readFile(packet.evidencePacketMarkdownPath, "utf8");
 
     expect(packet.status).toBe("ready-to-render");
     expect(packet.readyForStrictRender).toBe(true);
@@ -154,6 +215,74 @@ describe("Cloud Run render-values audit", () => {
     });
     expect(packet.renderValueIntakeSummary.manualReview).toBeGreaterThan(0);
     expect(packet.renderValueIntakeSummary.claimFlagsPending).toBeGreaterThan(0);
+    expect(packet.evidencePacket).toMatchObject({
+      status: "ready-for-dry-run-claim-review-pending",
+      readiness: {
+        readyForStrictRender: true,
+        requiredBeforeDryRunPending: 0,
+        missingStrictKeyCount: 0,
+        placeholderKeyCount: 0,
+        valueConsistencyBlockerCount: 0
+      },
+      phaseProgress: {
+        phaseId: "cloudrun-render-dry-run",
+        ratingOutOf5: 3
+      }
+    });
+    expect(packet.evidencePacket.phaseProgress.currentSliceRemainingPercent).toBeGreaterThan(0);
+    expect(packet.evidencePacket.commandSequence.map((command) => command.id)).toEqual([
+      "fill-private-render-values",
+      "audit-render-values",
+      "render-cloudrun-manifest",
+      "prepare-dry-run-preflight"
+    ]);
+    expect(packet.evidencePacket.requiredBeforeDryRun).toEqual([]);
+    expect(packet.evidencePacket.publicClaimEvidenceQueue).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
+          owner: "founder/sales",
+          status: "manual-review"
+        }),
+        expect.objectContaining({
+          key: "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
+          owner: "engineering",
+          status: "manual-review"
+        })
+      ])
+    );
+    expect(packet.evidencePacket.ownerQueues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          owner: "engineering",
+          requiredBeforeDryRun: 0
+        }),
+        expect.objectContaining({
+          owner: "founder/sales",
+          publicClaimEvidence: expect.any(Number)
+        })
+      ])
+    );
+    expect(packet.evidencePacket.artifactRequests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "google-cloud-proof",
+          requiredBeforePublicClaim: expect.arrayContaining(["XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED"])
+        }),
+        expect.objectContaining({
+          category: "business-evidence",
+          requiredBeforePublicClaim: expect.arrayContaining(["XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED"])
+        })
+      ])
+    );
+    expect(packet.evidencePacket.manualInterventions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED",
+          requiredBefore: "public-or-judge-claim"
+        })
+      ])
+    );
     expect(packet.renderValueIntake).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -242,9 +371,17 @@ describe("Cloud Run render-values audit", () => {
     expect(packetJson.status).toBe("ready-to-render");
     expect(markdown).toContain("Ready for strict render: yes");
     expect(markdown).toContain("## Render Value Intake");
+    expect(markdown).toContain("## Cloud Run Evidence Packet");
     expect(markdown).toContain("XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED [manual-review/business-evidence/founder/sales]");
     expect(markdown).toContain("Status: matched");
     expect(markdown).toContain("Value consistency blockers: 0");
+    expect(evidencePacketJson.status).toBe("ready-for-dry-run-claim-review-pending");
+    expect(evidencePacketJson.publicClaimEvidenceQueue).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: "XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED" })])
+    );
+    expect(evidenceMarkdown).toContain("Cloud Run Render Evidence Packet");
+    expect(evidenceMarkdown).toContain("## Public Claim Evidence Queue");
+    expect(evidenceMarkdown).toContain("XPRIZE_TOTAL_REVENUE_EVIDENCE_CONFIGURED");
     expect(JSON.stringify(packet)).not.toContain("AIza");
     expect(JSON.stringify(packet)).not.toContain("private-admin-token");
   });
@@ -304,6 +441,37 @@ describe("Cloud Run render-values audit", () => {
       readyForStrictRender: false
     });
     expect(packet.renderValueIntakeSummary.placeholder).toBeGreaterThan(0);
+    expect(packet.evidencePacket).toMatchObject({
+      status: "needs-values",
+      readiness: {
+        readyForStrictRender: false
+      }
+    });
+    expect(packet.evidencePacket.phaseProgress.ratingOutOf5).toBe(2);
+    expect(packet.evidencePacket.requiredBeforeDryRun).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "GOOGLE_CLOUD_PROJECT",
+          status: "placeholder"
+        }),
+        expect.objectContaining({
+          key: "NEXT_PUBLIC_PRODUCT_URL",
+          status: "placeholder"
+        })
+      ])
+    );
+    expect(packet.evidencePacket.ownerQueues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          owner: "engineering",
+          requiredBeforeDryRun: expect.any(Number)
+        }),
+        expect.objectContaining({
+          owner: "founder/legal",
+          requiredBeforeDryRun: expect.any(Number)
+        })
+      ])
+    );
     expect(packet.renderValueIntake).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -326,6 +494,7 @@ describe("Cloud Run render-values audit", () => {
     );
     expect(packet.nextActions.join(" ")).toContain("Fill the missing non-secret values");
     expect(packet.auditPath).toContain("cloudrun-render-values-audit.json");
+    expect(packet.evidencePacketPath).toContain("cloudrun-render-evidence-packet.json");
   });
 
   it("blocks stale production values before strict rendering", async () => {
@@ -376,6 +545,21 @@ describe("Cloud Run render-values audit", () => {
       ])
     );
     expect(packet.renderValueIntakeSummary.blocked).toBeGreaterThan(0);
+    expect(packet.evidencePacket.status).toBe("blocked");
+    expect(packet.evidencePacket.phaseProgress.ratingOutOf5).toBe(1);
+    expect(packet.evidencePacket.requiredBeforeDryRun).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "NEXT_PUBLIC_PRODUCT_URL",
+          status: "blocked"
+        }),
+        expect.objectContaining({
+          key: "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
+          status: "blocked"
+        })
+      ])
+    );
+    expect(packet.evidencePacket.stopConditions.join(" ")).toContain("Do not move to Cloud Run dry-run");
     expect(packet.renderValueIntake).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
