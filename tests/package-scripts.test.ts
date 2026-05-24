@@ -15,5 +15,6 @@ describe("package verification scripts", () => {
     expect(packageJson.scripts["verify:provenance"]).toBe("node scripts/verify-project-provenance.mjs");
     expect(packageJson.scripts["verify:license-manifest"]).toBe("node scripts/verify-license-manifest.mjs");
     expect(packageJson.scripts["verify:cloudrun-deployment"]).toBe("node scripts/verify-cloudrun-deployment.mjs");
+    expect(packageJson.scripts["prepare:xprize-attestation"]).toBe("node scripts/prepare-xprize-attestation-packet.mjs");
   });
 });
