@@ -146,6 +146,8 @@ describe("hosted proof bundle collector", () => {
           "project-provenance",
           "license-manifest",
           "workspace-sync-status",
+          "deployment-command-results-template-json",
+          "deployment-execution-checklist-json",
           "release-evidence-manifest",
           "manifest"
         ])
@@ -171,8 +173,19 @@ describe("hosted proof bundle collector", () => {
         expect.arrayContaining(requiredProofFlagEnvNames)
       );
       expect(releaseEvidence.slots.map((slot) => slot.id)).toEqual(
-        expect.arrayContaining(["cloud-run-deployment", "workspace-sync", "live-gemini", "judge-access", "business-viability"])
+        expect.arrayContaining([
+          "cloud-run-deployment",
+          "workspace-sync",
+          "live-gemini",
+          "judge-access",
+          "deployment-execution-control",
+          "business-viability"
+        ])
       );
+      expect(
+        releaseEvidence.slots.find((slot) => slot.id === "deployment-execution-control")?.evidence.map((item) => item.id)
+      ).toEqual(expect.arrayContaining(["deployment-command-results-template-json", "deployment-execution-checklist-json"]));
+      expect(releaseEvidence.slots.find((slot) => slot.id === "deployment-execution-control")?.status).toBe("missing");
       expect(releaseEvidence.slots.find((slot) => slot.id === "workspace-sync")?.evidence.map((item) => item.id)).toContain(
         "workspace-watch-renewal"
       );

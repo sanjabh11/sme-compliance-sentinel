@@ -171,8 +171,18 @@ function buildRunbook(input: {
       label: "Import redacted proof and prepare judge packet",
       ownerRole: "legal",
       commandIds: commandIds("hosted-proof-import-dry-run", "deployment-execution-checklist", "hosted-proof-import-confirm"),
-      requiredArtifactIds: ["deployment-execution-checklist-json", "evidence-vault-import-request-json", "evidence-vault-import-response-json"],
-      proofFiles: proofFiles("deployment-execution-checklist-json", "evidence-vault-import-request-json", "evidence-vault-import-response-json"),
+      requiredArtifactIds: [
+        "deployment-command-results-template-json",
+        "deployment-execution-checklist-json",
+        "evidence-vault-import-request-json",
+        "evidence-vault-import-response-json"
+      ],
+      proofFiles: proofFiles(
+        "deployment-command-results-template-json",
+        "deployment-execution-checklist-json",
+        "evidence-vault-import-request-json",
+        "evidence-vault-import-response-json"
+      ),
       stopCondition:
         "Stop if the deployment execution checklist is not passed, import input is not redacted, release integrity is not passed, checksums are missing, or customer consent and Devpost disclosure review are incomplete.",
       redactionCheck: "Share checksums, statuses, consent flags, and aggregate evidence; keep raw logs, invoices, security findings, and customer contact data private.",
@@ -421,6 +431,21 @@ function buildArtifactManifest(input: {
       evidenceVaultTarget: "redacted import request preview",
       redactionRules: ["Human-review the redacted request before making the hosted Evidence Vault write."],
       nextAction: "Run the dry-run import and confirm the request contains only redacted hosted verify:production JSON."
+    }),
+    artifact({
+      id: "deployment-command-results-template-json",
+      label: "Deployment command results template JSON",
+      ownerRole: "engineering",
+      status: "external-required",
+      sourceCommand:
+        "npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --write-results-template /secure/local/deployment-command-results.json",
+      privateStorePath: `${basePath}/hosted-proof-bundle/deployment-command-results.json`,
+      evidenceVaultTarget: "operator command-result template lineage",
+      redactionRules: [
+        "Keep the filled template outside source and free of credentials, raw customer data, security findings, invoices, and shell environment dumps.",
+        "Preserve the generated template checksum and release id lineage so confirm-import cannot use a hand-written checklist."
+      ],
+      nextAction: "Generate the private command-results template after dry-run import and before filling command outcomes."
     }),
     artifact({
       id: "deployment-execution-checklist-json",

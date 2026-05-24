@@ -207,6 +207,7 @@ export async function collectHostedProofBundle(options) {
       })
     );
   }
+  artifacts.push(...buildDeploymentExecutionEvidenceArtifacts(endpointPayloads));
 
   const releaseIntegrity = buildReleaseIntegrity({
     baseUrl,
@@ -311,6 +312,57 @@ async function writeJsonArtifact(outputDirectory, artifact) {
     status: statusFromPayload(redactedPayload),
     path: absolutePath
   };
+}
+
+function buildDeploymentExecutionEvidenceArtifacts(endpointPayloads) {
+  const deploymentPacket = endpointPayloads.get("deployment-packet")?.payload ?? {};
+  const packetArtifacts = new Map(
+    (Array.isArray(deploymentPacket.artifactManifest) ? deploymentPacket.artifactManifest : [])
+      .filter((artifact) => artifact && typeof artifact === "object")
+      .map((artifact) => [String(artifact.id ?? ""), artifact])
+  );
+
+  return [
+    expectedPrivateArtifact({
+      id: "deployment-command-results-template-json",
+      fallbackFileName: "deployment-command-results.json",
+      fallbackSource:
+        "npm run prepare:deployment-execution-checklist -- --write-results-template /secure/local/deployment-command-results.json",
+      fallbackPrivateHandling:
+        "Expected private command-results template; keep outside source and fill only from reviewed operator command output.",
+      packetArtifact: packetArtifacts.get("deployment-command-results-template-json")
+    }),
+    expectedPrivateArtifact({
+      id: "deployment-execution-checklist-json",
+      fallbackFileName: "deployment-execution-checklist.json",
+      fallbackSource:
+        "npm run prepare:deployment-execution-checklist -- --results /secure/local/deployment-command-results.json --strict",
+      fallbackPrivateHandling:
+        "Expected private deployment execution checklist; generated after the command-results template is filled and before confirmed Evidence Vault import.",
+      packetArtifact: packetArtifacts.get("deployment-execution-checklist-json")
+    })
+  ];
+}
+
+function expectedPrivateArtifact(input) {
+  const packetArtifact = input.packetArtifact ?? {};
+
+  return {
+    id: input.id,
+    fileName: fileNameFromPrivatePath(packetArtifact.privateStorePath, input.fallbackFileName),
+    source: cleanString(packetArtifact.sourceCommand) || input.fallbackSource || `deployment-packet:artifactManifest:${input.id}`,
+    redacted: false,
+    expectedOnly: true,
+    privateHandling:
+      cleanString(packetArtifact.nextAction) || cleanString(packetArtifact.evidenceVaultTarget) || input.fallbackPrivateHandling,
+    status: normalizeStatus(packetArtifact.status) === "missing" ? "external-required" : cleanString(packetArtifact.status) || "external-required"
+  };
+}
+
+function fileNameFromPrivatePath(privateStorePath, fallback) {
+  const path = cleanString(privateStorePath);
+  const segment = path.split("/").filter(Boolean).pop();
+  return segment || fallback;
 }
 
 function buildReleaseIntegrity(input) {
@@ -515,7 +567,8 @@ function buildManifest(input) {
       source: artifact.source,
       redacted: artifact.redacted,
       privateHandling: artifact.privateHandling,
-      status: artifact.status
+      status: artifact.status,
+      expectedOnly: Boolean(artifact.expectedOnly)
     })),
     blockers: [
       ...(failedArtifacts.length ? [`Transport failed for ${failedArtifacts.map((artifact) => artifact.id).join(", ")}.`] : []),
@@ -529,6 +582,7 @@ function buildManifest(input) {
       "Review every JSON artifact for redaction before sharing with judges or importing into the Evidence Vault.",
       "Import only after release integrity passes and the redacted verify-production JSON matches this bundle release id.",
       "Use release-evidence-manifest.json as the release-level proof index; do not treat missing or mock-only slots as complete.",
+      "Generate the deployment command-results template and passed execution checklist before confirmed Evidence Vault import.",
       "If any XPRIZE proof flag is true in hosted launch readiness, matching repository, Google Cloud, and provider=gemini-api proof must be present before import.",
       "Attach Cloud Run revision, Gemini usage, GCP persistence, Workspace sync, revenue, cost, CAC, user, demo-video, and judge-access proof privately.",
       "Rerun this collector after every hosted deployment or evidence-status change."
@@ -694,10 +748,10 @@ function buildProofFlagChecks(input) {
       envName: "XPRIZE_EVIDENCE_RESPONSE_READY",
       label: "Evidence response readiness proof flag",
       ruleBucket: "Judge follow-up evidence response",
-      evidenceIds: ["judge-access", "devpost-submission"],
-      passed: () => slotsVerified(slotsById, ["judge-access", "devpost-submission"]),
+      evidenceIds: ["judge-access", "devpost-submission", "deployment-execution-control"],
+      passed: () => slotsVerified(slotsById, ["judge-access", "devpost-submission", "deployment-execution-control"]),
       requiredEvidence:
-        "judge-access and devpost-submission release slots verified with private follow-up response materials ready."
+        "judge-access, devpost-submission, and deployment-execution-control release slots verified with private follow-up response materials ready."
     }
   ];
 
@@ -868,6 +922,19 @@ function releaseEvidenceSlotDefinitions() {
       privateHandling: "Credentials belong only in private Devpost fields or approved private channels, never in generated repository artifacts."
     },
     {
+      id: "deployment-execution-control",
+      label: "Deployment execution command-result gate",
+      ruleBucket: "Evidence import controls and operator command proof",
+      sources: [
+        artifactSource("deployment-command-results-template-json"),
+        artifactSource("deployment-execution-checklist-json")
+      ],
+      nextAction:
+        "Generate the command-results template, fill it from reviewed private operator output, then create a passed deployment execution checklist before confirmed Evidence Vault import.",
+      privateHandling:
+        "Keep command results, raw terminal output, private evidence paths, customer proof, invoices, and credentials in the private evidence store."
+    },
+    {
       id: "demo-video",
       label: "Public demo video proof",
       ruleBucket: "Public demo video under three minutes",
@@ -929,7 +996,11 @@ function evidenceForSource(source, rowsById, artifactsById) {
     type: "artifact",
     status: artifact ? String(artifact.status ?? "unknown") : "missing-source",
     fileName: artifact?.fileName,
-    detail: artifact ? "Redacted artifact captured in this bundle." : "Artifact was not captured in this release bundle."
+    detail: artifact?.expectedOnly
+      ? "Expected private artifact declared for this release; the collector does not capture the filled operator evidence."
+      : artifact
+        ? "Redacted artifact captured in this bundle."
+        : "Artifact was not captured in this release bundle."
   };
 }
 

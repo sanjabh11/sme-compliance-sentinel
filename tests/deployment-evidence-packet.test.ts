@@ -45,6 +45,7 @@ describe("deployment evidence packet", () => {
         "hosted-proof-bundle-manifest-json",
         "hosted-proof-release-evidence-json",
         "evidence-vault-import-request-json",
+        "deployment-command-results-template-json",
         "deployment-execution-checklist-json",
         "evidence-vault-import-response-json",
         "source-release-json",
@@ -193,6 +194,7 @@ describe("deployment evidence packet", () => {
     expect(packet.runbook[3].stopCondition).toContain("release integrity is not passed");
     expect(packet.runbook[4].requiredArtifactIds).toEqual(
       expect.arrayContaining([
+        "deployment-command-results-template-json",
         "deployment-execution-checklist-json",
         "evidence-vault-import-request-json",
         "evidence-vault-import-response-json"
@@ -200,6 +202,7 @@ describe("deployment evidence packet", () => {
     );
     expect(packet.runbook[4].proofFiles).toEqual(
       expect.arrayContaining([
+        "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/hosted-proof-bundle/deployment-command-results.json",
         "gs://PROJECT_ID-sentinel-private-evidence/releases/RELEASE_ID/hosted-proof-bundle/deployment-execution-checklist.json"
       ])
     );
