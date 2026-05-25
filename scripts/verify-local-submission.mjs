@@ -10,7 +10,10 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
 const operationalBestPracticeSources = [
   "https://docs.cloud.google.com/run/docs/configuring/services/secrets",
-  "https://docs.cloud.google.com/run/docs/securing/service-identity"
+  "https://docs.cloud.google.com/run/docs/securing/service-identity",
+  "https://cloud.google.com/run/docs/configuring/static-outbound-ip",
+  "https://docs.cloud.google.com/nat/docs/nat-product-interactions",
+  "https://docs.cloud.google.com/docs/authentication/api-keys"
 ];
 const defaultPrivateRoot = "/secure/local";
 const derivedCloudRunRenderValueGuidance = {
@@ -419,6 +422,7 @@ function bestPracticeNotesForPhase(phaseId) {
     return [
       "Use Secret Manager-backed Cloud Run secret references, pin environment-variable secrets to explicit versions, and keep raw secret values out of source and CLI output.",
       "Use a user-managed Cloud Run service account with minimal permissions instead of relying on the default Compute Engine service account.",
+      "For Gemini API key server-IP restrictions, capture API Keys API restriction proof and a hosted Gemini smoke result; do not assume a Cloud NAT public IP proves Google API source identity because Google documents Private Google Access behavior for Google APIs/services.",
       "Preserve dry-run, deploy, describe, hosted smoke, and digest-verifier artifacts in private or ignored paths before any public evidence summary is created."
     ];
   }

@@ -725,7 +725,7 @@ describe("Cloud Run render-values audit", () => {
           key: "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
           category: "gemini-controls",
           status: "blocked",
-          fix: expect.stringContaining("comma-separated allowlist")
+          fix: expect.stringContaining("hosted Gemini smoke proof")
         }),
         expect.objectContaining({
           key: "GEMINI_API_KEY_VERSION",
@@ -744,6 +744,41 @@ describe("Cloud Run render-values audit", () => {
         strict: true
       })
     ).rejects.toThrow(/value-consistency-blocked/u);
+  });
+
+  it("blocks CIDR Gemini API server allowlists so operators use reviewed concrete IP values", async () => {
+    const { writeCloudRunRenderValuesAudit } = await loadAudit();
+    const tempDir = await makeTempDir();
+    const valuesPath = await writeValues(tempDir, {
+      ...safeRenderValues(),
+      SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS: "34.10.10.10/32"
+    });
+
+    const packet = await writeCloudRunRenderValuesAudit({
+      valuesPath,
+      outDir: tempDir,
+      releaseId: "release-20260523-001"
+    });
+
+    expect(packet.status).toBe("value-consistency-blocked");
+    expect(packet.valueConsistencyBlockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "gemini-ip-allowlist",
+          key: "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
+          fix: expect.stringContaining("do not use CIDR ranges")
+        })
+      ])
+    );
+    expect(packet.evidencePacket.requiredBeforeDryRun).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
+          status: "blocked",
+          fix: expect.stringContaining("Private Google Access")
+        })
+      ])
+    );
   });
 
   it("fails strict mode when render values are not ready", async () => {

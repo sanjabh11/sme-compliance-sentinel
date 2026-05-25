@@ -253,7 +253,7 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
       `Run npm run collect:cloudrun-deployment after Cloud Run dry-run, deploy, and describe; save raw gcloud logs under ${cloudRunTranscriptDir}/, keep them private, and share only the redacted transcript packet.`,
       "Run npm run collect:hosted-proof, npm run import:hosted-proof --dry-run, npm run prepare:deployment-execution-checklist -- --write-results-template, and npm run prepare:deployment-execution-checklist -- --results before the final hosted Evidence Vault import; do not bypass release-integrity checks with raw curl.",
       "Use Secret Manager for the runtime secrets and grant access only to the Cloud Run runtime service account.",
-      "Use the Serverless VPC Access connector and Cloud NAT static IP path before relying on Gemini API key server-IP restrictions.",
+      "Use the Serverless VPC Access connector and Cloud NAT static IP path for external egress proof, but do not rely on that alone for Gemini API key server-IP proof; Google API traffic can use Private Google Access behavior, so retain API Keys API output and hosted Gemini smoke evidence.",
       "Use Devpost private testing instructions for judge credentials; keep public README and video free of login secrets.",
       "Use the admin action token only from private operator tooling when importing hosted proof JSON.",
       "Capture Cloud Run, Firestore, BigQuery, Secret Manager, Pub/Sub, Gemini, and Workspace proof as redacted screenshots or JSON logs for the private binder.",
@@ -264,6 +264,8 @@ export function buildProductionProvisioningPack(): ProductionProvisioningPack {
       "https://docs.cloud.google.com/run/docs/configuring/services/environment-variables",
       "https://cloud.google.com/run/docs/configuring/vpc-connectors",
       "https://cloud.google.com/run/docs/configuring/static-outbound-ip",
+      "https://docs.cloud.google.com/nat/docs/nat-product-interactions",
+      "https://docs.cloud.google.com/docs/authentication/api-keys",
       "https://cloud.google.com/sdk/gcloud/reference/run/services/replace",
       "https://ai.google.dev/api/all-methods"
     ],
@@ -346,9 +348,9 @@ function buildChecklist(): ProductionProvisioningChecklistItem[] {
           sentinelConfig.geminiApiAllowedServerIps.length
       ),
       "security",
-      "Gemini API key server-IP restrictions and public-launch cost/security control.",
-      "Create the Serverless VPC Access connector, Cloud Router, Cloud NAT, static IP, and set SENTINEL_CLOUD_RUN_VPC_CONNECTOR, SENTINEL_CLOUD_RUN_VPC_EGRESS, and SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS before production render.",
-      "Static egress IPs and network names are non-secret but should stay in private deployment proof until launch."
+      "Server-side Gemini API key restriction evidence plus hosted Gemini smoke proof.",
+      "Create the reviewed egress path and API key restriction evidence, then set SENTINEL_CLOUD_RUN_VPC_CONNECTOR, SENTINEL_CLOUD_RUN_VPC_EGRESS, and SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS before production render.",
+      "Static egress IPs and network names are non-secret, but Cloud NAT proof alone does not prove Google API source identity; keep API Keys API output and hosted provider=gemini-api smoke proof in the private deployment packet."
     ),
     item(
       "oauth-client",

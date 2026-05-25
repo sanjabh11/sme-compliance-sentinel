@@ -46,7 +46,7 @@ export function buildCloudCostControlCenter(snapshot: { agentRuns: AgentRun[] })
     runbook: [
       "Create a project-level Cloud Billing budget before the first paid pilot.",
       "Route budget notifications to Pub/Sub and connect the alert handler to pause Tier 2 Gemini calls.",
-      "Restrict the Gemini API key to the Generative Language API and a controlled server egress path.",
+      "Restrict the Gemini API key to the Generative Language API and record API Keys API restriction proof; keep hosted Gemini smoke proof separate because Google APIs can use Private Google Access behavior.",
       "Keep the application-level Gemini monthly budget lower than the Cloud Billing budget because billing data can lag.",
       "Attach budget screenshots, alert test logs, API key restriction screenshots, and AI usage logs to the private judge binder."
     ],
@@ -142,6 +142,11 @@ export function buildApiKeyRestrictionPlan(): ApiKeyRestrictionPlan {
       ...(allowedServerIps.length && !staticEgressReady
         ? [
             "Gemini server IP restrictions are configured, but SENTINEL_CLOUD_RUN_VPC_CONNECTOR and SENTINEL_CLOUD_RUN_VPC_EGRESS=all-traffic are not both configured."
+          ]
+        : []),
+      ...(allowedServerIps.length && staticEgressReady
+        ? [
+            "Cloud NAT/static egress proof is not by itself Gemini API source-identity proof for Google APIs; Private Google Access can apply, so retain API Keys API restriction proof and hosted provider=gemini-api smoke evidence."
           ]
         : [])
     ]
@@ -315,9 +320,9 @@ function buildEvidenceChecklist(
       item: "Gemini key client restriction",
       status: clientRestricted ? "configured" : "planned",
       proof: clientRestricted
-        ? `${apiKeyRestrictionPlan.allowedServerIps.length} server IP restriction(s) configured.`
+        ? `${apiKeyRestrictionPlan.allowedServerIps.length} server IP restriction value(s) configured; still requires hosted Gemini smoke proof for Google API source behavior.`
         : "No static server egress IP configured.",
-      fix: "Use static Cloud Run egress or an equivalent server-only restriction before public launch."
+      fix: "Use reviewed server-side API key restrictions where applicable, then verify with API Keys API output and hosted provider=gemini-api smoke proof before public launch."
     },
     {
       item: "Gemini quota and usage-limit proof captured",

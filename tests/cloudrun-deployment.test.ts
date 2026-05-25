@@ -499,6 +499,18 @@ describe("Cloud Run deployment evidence verifier", () => {
     }
   });
 
+  it("blocks CIDR Gemini API server allowlists in rendered Cloud Run manifests", () => {
+    const manifest = renderProductionCandidateManifest().replace(
+      'name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS\n              value: "34.10.10.10"',
+      'name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS\n              value: "34.10.10.10/32"'
+    );
+    const evidence = buildCloudRunDeploymentEvidence(manifest);
+    const checksByName = Object.fromEntries(evidence.envChecks.map((check) => [check.name, check]));
+
+    expect(checksByName.INVALID_SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS).toMatchObject({ status: "blocked" });
+    expect(checksByName.INVALID_SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS.fix).toContain("hosted Gemini smoke");
+  });
+
   it("keeps deployment evidence language inside the claim guard boundary", () => {
     const evidence = collectCloudRunDeploymentEvidence();
     const violations = scanClaimText({

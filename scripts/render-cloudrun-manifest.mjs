@@ -1178,8 +1178,8 @@ function buildValueConsistencyChecks(values, releaseIdConsistency) {
     valueCheck(
       "gemini-ip-allowlist",
       "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
-      parseCsv(values.SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS).every(isValidIpv4OrCidr),
-      "Use a comma-separated allowlist of concrete server IPv4 addresses; do not use wildcards or placeholders."
+      parseCsv(values.SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS).every(isConcreteIpv4Address),
+      "Use a comma-separated allowlist of concrete reviewed external IPv4 addresses for the API key server restriction; do not use CIDR ranges, wildcards, or placeholders, and keep hosted Gemini smoke proof separate because Google APIs can use Private Google Access behavior."
     ),
     ...secretVersionKeys.map((key) =>
       valueCheck(
@@ -1750,27 +1750,19 @@ function unique(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
-function isValidIpv4OrCidr(value) {
-  if (value === "0.0.0.0/0") {
+function isConcreteIpv4Address(value) {
+  const text = String(value ?? "");
+  if (text.includes("/")) {
     return false;
   }
 
-  const [address, prefix] = String(value).split("/");
-  const parts = address.split(".");
+  const parts = text.split(".");
   const validAddress =
     parts.length === 4 &&
     parts.every((part) => /^\d{1,3}$/u.test(part) && Number(part) >= 0 && Number(part) <= 255) &&
-    address !== "0.0.0.0";
+    text !== "0.0.0.0";
 
-  if (!validAddress) {
-    return false;
-  }
-
-  if (prefix === undefined) {
-    return true;
-  }
-
-  return /^[0-9]{1,2}$/u.test(prefix) && Number(prefix) >= 1 && Number(prefix) <= 32;
+  return validAddress;
 }
 
 function isCloudRunVpcConnector(value) {

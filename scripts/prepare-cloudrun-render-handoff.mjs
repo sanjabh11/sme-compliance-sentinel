@@ -452,6 +452,7 @@ function buildPrivateValueChecklist({ audit }) {
     process: [
       "Open the private render-values file in the private operator environment only.",
       "Fill direct input rows first using non-secret production values or Secret Manager resource/version references; never paste secret values.",
+      "Before filling SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS, record API Keys API restriction proof and a hosted Gemini smoke result; do not treat Cloud NAT static IP proof alone as Google API source-identity proof.",
       "Rerun the audit after direct inputs are real, then verify derived values and override them only if generated values are wrong for the environment.",
       "Resolve value consistency blockers before strict audit, manifest render, or dry-run preflight.",
       "Leave public XPRIZE, revenue, user, Gemini, Workspace, judge-access, demo, and AI-operation evidence flags false until matching private proof exists.",

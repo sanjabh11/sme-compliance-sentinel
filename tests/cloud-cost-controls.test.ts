@@ -76,6 +76,7 @@ describe("cloud cost controls", () => {
       "https://apikeys.googleapis.com/v2/projects/123456789012/locations/global/keys/gemini-key-123?updateMask=restrictions"
     );
     expect(JSON.stringify(restrictionPlan.requestBody)).toContain("serverKeyRestrictions");
+    expect(restrictionPlan.warnings.join(" ")).toContain("Private Google Access");
   });
 
   it("exposes missing production proof instead of treating local cost limits as GCP evidence", () => {

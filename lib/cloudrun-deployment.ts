@@ -1418,7 +1418,7 @@ function checkGeminiServerIpAllowlist(envByName: Map<string, ParsedEnvEntry>): C
   }
 
   const entries = value.split(",").map((item) => item.trim()).filter(Boolean);
-  const invalidEntries = entries.filter((entry) => !isValidIpv4OrCidr(entry) || entry === "0.0.0.0/0");
+  const invalidEntries = entries.filter((entry) => !isConcreteIpv4Address(entry));
   if (invalidEntries.length) {
     return [
       envCheck(
@@ -1427,8 +1427,8 @@ function checkGeminiServerIpAllowlist(envByName: Map<string, ParsedEnvEntry>): C
         "blocked",
         false,
         invalidEntries.join(","),
-        "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS must be a comma-separated allowlist of concrete IPv4 addresses or narrow CIDR ranges, not wildcards.",
-        "Use the reviewed static Cloud Run egress IP addresses configured on the Gemini API key restriction."
+        "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS must be a comma-separated allowlist of concrete reviewed external IPv4 addresses, not CIDR ranges, wildcards, or placeholders.",
+        "Use reviewed API key server-IP restriction values and verify with a hosted Gemini smoke; do not rely on Cloud NAT public IP alone for Google API source identity because Private Google Access can apply."
       )
     ];
   }
@@ -1605,13 +1605,12 @@ function isAllowedDemoVideoHost(value: string) {
   }
 }
 
-function isValidIpv4OrCidr(value: string) {
-  if (value === "0.0.0.0/0") {
+function isConcreteIpv4Address(value: string) {
+  if (value.includes("/")) {
     return false;
   }
 
-  const [address, prefix] = value.split("/");
-  const octets = address.split(".");
+  const octets = value.split(".");
   if (octets.length !== 4) {
     return false;
   }
@@ -1628,16 +1627,7 @@ function isValidIpv4OrCidr(value: string) {
     return false;
   }
 
-  if (prefix === undefined) {
-    return true;
-  }
-
-  if (!/^[0-9]{1,2}$/u.test(prefix)) {
-    return false;
-  }
-
-  const parsedPrefix = Number(prefix);
-  return parsedPrefix >= 1 && parsedPrefix <= 32;
+  return value !== "0.0.0.0";
 }
 
 function isCloudRunVpcConnector(value: string) {

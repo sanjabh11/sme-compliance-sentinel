@@ -422,9 +422,16 @@ describe("local XPRIZE submission verifier", () => {
     expect(report.manualInterventionPlan.bestPracticeSourceUrls).toEqual(
       expect.arrayContaining([
         "https://docs.cloud.google.com/run/docs/configuring/services/secrets",
-        "https://docs.cloud.google.com/run/docs/securing/service-identity"
+        "https://docs.cloud.google.com/run/docs/securing/service-identity",
+        "https://docs.cloud.google.com/nat/docs/nat-product-interactions",
+        "https://docs.cloud.google.com/docs/authentication/api-keys"
       ])
     );
+    expect(
+      report.manualInterventionPlan.phaseFocusPlan.rows
+        .find((row) => row.phaseId === "cloudrun-render-dry-run")
+        ?.bestPracticeNotes.join(" ")
+    ).toContain("Private Google Access");
     expect(report.phasePlan.phases.map((phase) => phase.id)).toEqual([
       "human-attestation-review",
       "cloudrun-render-dry-run",
@@ -560,6 +567,7 @@ describe("local XPRIZE submission verifier", () => {
       expect(engineeringMarkdown).toContain("## Phase Focus Context");
       expect(engineeringMarkdown).toContain("Best-practice notes");
       expect(engineeringMarkdown).toContain("user-managed service account");
+      expect(engineeringMarkdown).toContain("Private Google Access");
       expect(engineeringMarkdown).toContain("## Step-by-step Actions");
       expect(engineeringMarkdown).toContain("Cloud Run");
       expect(engineeringMarkdown).toContain("/secure/local/cloudrun-render-values.json");
@@ -597,6 +605,7 @@ describe("local XPRIZE submission verifier", () => {
       expect(markdown).toContain("Prepare and verify the Cloud Run render handoff");
       expect(markdown).toContain("Secret Manager");
       expect(markdown).toContain("user-managed service account");
+      expect(markdown).toContain("Private Google Access");
       expect(markdown).toContain("## Manual Intervention Owners");
       expect(markdown).toContain("Rating");
       expect(markdown).toContain("Phase remaining");
@@ -765,7 +774,10 @@ describe("local XPRIZE submission verifier", () => {
         "Secret Manager"
       );
       expect(bundleManifest.bestPracticeSourceUrls).toEqual(
-        expect.arrayContaining(["https://docs.cloud.google.com/run/docs/securing/service-identity"])
+        expect.arrayContaining([
+          "https://docs.cloud.google.com/run/docs/securing/service-identity",
+          "https://docs.cloud.google.com/nat/docs/nat-product-interactions"
+        ])
       );
       expect(bundleManifest.manualInterventionSummary?.total).toBeGreaterThan(0);
       expect(bundleManifest.stopConditions.join(" ")).toContain("Do not set XPRIZE");

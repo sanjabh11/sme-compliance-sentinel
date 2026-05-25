@@ -219,6 +219,8 @@ describe("Cloud Run render handoff", () => {
     expect(handoff.privateValueChecklist.consistencyBlockers.some((row) => row.key === "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS")).toBe(true);
     expect(handoff.privateValueChecklist.process.join(" ")).toContain("never paste secret values");
     expect(handoff.privateValueChecklist.process.join(" ")).toContain("Fill direct input rows first");
+    expect(handoff.privateValueChecklist.process.join(" ")).toContain("API Keys API restriction proof");
+    expect(handoff.privateValueChecklist.process.join(" ")).toContain("Cloud NAT static IP proof alone");
     expect(handoff.privateValueChecklist.process.join(" ")).toContain("verify derived values");
     expect(handoff.privateValueChecklist.process.join(" ")).toContain("before any gcloud dry-run");
     expect(handoff.evidencePacketVerification.overallStatus).toBe("verified");
