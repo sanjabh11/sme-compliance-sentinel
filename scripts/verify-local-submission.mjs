@@ -1237,6 +1237,15 @@ function buildRecommendedNextCodeControllableAction(phases) {
 
 function codeControllableActionForPhase(phase) {
   if (phase.id === "cloudrun-render-dry-run") {
+    const state = readCloudRunRenderArtifactState();
+    const firstRenderValueBlocker = state.auditJsonExists
+      ? cloudRunRenderValueBlockers(state).find((blocker) => isActionableCloudRunProgressBlocker(blocker))
+      : "";
+
+    if (firstRenderValueBlocker) {
+      return firstRenderValueBlocker;
+    }
+
     return "Prepare and verify the Cloud Run render handoff to generate the release-prefilled private Cloud Run render-values file and verified owner packet, fill the remaining non-secret production values privately, run the render-values audit, verify the render-evidence owner packet, render the ignored manifest, produce and verify the dry-run preflight packet, and review its operator handoff. Stop before gcloud dry-run/deploy until private production values and owner approvals exist.";
   }
 

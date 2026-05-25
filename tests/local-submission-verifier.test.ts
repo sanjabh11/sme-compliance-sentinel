@@ -1081,6 +1081,11 @@ describe("local XPRIZE submission verifier", () => {
       expect(row?.pending.join(" ")).toContain("SENTINEL_GEMINI_API_KEY_ID");
       expect(row?.pending.join(" ")).not.toContain("+1 more");
       expect(row?.pending.join(" ")).toContain("Replace 1 placeholder render value(s)");
+      expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain(
+        "Fill 9 required non-secret Cloud Run render value(s)"
+      );
+      expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("SENTINEL_GEMINI_API_KEY_ID");
+      expect(report.phasePlan.recommendedNextCodeControllableAction.action).not.toContain("Prepare and verify");
       expect(row?.pending.join(" ")).toContain("Resolve render-value consistency blocker SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS");
       expect(row?.pending.join(" ")).toContain("Generate the dry-run preflight packet only after the render-values audit is ready-to-render");
       expect(row?.evidence).toContain("private-artifact:render-values-audit=blocked");
