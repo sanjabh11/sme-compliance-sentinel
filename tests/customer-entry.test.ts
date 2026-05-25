@@ -36,4 +36,15 @@ describe("customer entry route", () => {
     expect(text).toContain("SOC2 readiness evidence");
     expect(text).toContain("Sample data only");
   });
+
+  it("keeps the customer entry CTA first-person for the conversion gate", async () => {
+    const customerClient = await readFile("app/demo/customer/customer-demo-client.tsx", "utf8");
+    const customerCopy = JSON.stringify(buildCustomerDemoCopyBundle(), null, 2);
+    const text = `${customerClient}\n${customerCopy}`;
+
+    expect(text).toContain("Get my sample risk scan");
+    expect(text).toContain("Book my one-day scan");
+    expect(text).not.toContain("Start sample demo");
+    expect(text).not.toContain("View pilot next step");
+  });
 });

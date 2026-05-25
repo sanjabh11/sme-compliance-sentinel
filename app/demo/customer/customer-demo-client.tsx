@@ -46,16 +46,25 @@ export function CustomerDemoClient({
           <p className="eyebrow">Customer demo mode</p>
           <h1>One-day Google Workspace risk scan for buyer-ready trust evidence.</h1>
           <p className="customer-hero-copy">
-            Built for {demo.scenario.customerSegment} The demo shows one sample exposure moving from detection to
-            human-approved action, redacted Trust Packet, questionnaire answer, and fixed-scope paid pilot.
+            Built for {demo.scenario.customerSegment}. Find exposed Workspace risk fast, then turn the review into
+            buyer-ready evidence.
           </p>
+          <p className="customer-hero-copy customer-hero-copy-tight">{demo.scenario.sampleDataNotice}</p>
+          <ul className="customer-value-stack" aria-label="Pilot value summary">
+            {demo.scenario.valueStack.map((item) => (
+              <li key={item}>
+                <CheckCircle2 size={16} aria-hidden="true" />
+                {item}
+              </li>
+            ))}
+          </ul>
           <div className="customer-cta-row">
             <button type="button" onClick={startDemo}>
               <SearchCheck size={18} aria-hidden="true" />
-              Start sample demo
+              Get my sample risk scan
             </button>
             <a className="customer-secondary-link" href="#pilot-next-step">
-              View pilot next step
+              Book my one-day scan
               <ArrowRight size={16} aria-hidden="true" />
             </a>
           </div>
@@ -88,6 +97,9 @@ export function CustomerDemoClient({
           </div>
         </aside>
       </section>
+      <a className="customer-mobile-sticky-cta" href="#pilot-next-step">
+        Book my one-day scan
+      </a>
 
       <section id="customer-flow" className="customer-stage-tabs" aria-label="Customer demo sequence">
         {demo.steps.map((step) => (
@@ -227,15 +239,26 @@ export function CustomerDemoClient({
           <p className="eyebrow">Next step</p>
           <h2>{demo.scenario.pilotCta.headline}</h2>
           <p>
-            The pilot stays narrow: consent first, scan only approved sources, review staged recommendations, and export
+            The pilot stays narrow: consent first. We scan approved sources, review staged recommendations, and export
             buyer-ready evidence.
           </p>
+          <small>{demo.scenario.pilotCta.optimizationNote}</small>
         </div>
-        <ul className="customer-compact-list">
-          {demo.scenario.pilotCta.checklist.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
+        <div className="customer-pilot-actions">
+          <ul className="customer-compact-list">
+            {demo.scenario.pilotCta.checklist.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <div className="customer-follow-up-plan">
+            <span>Lead follow-up</span>
+            <ul className="customer-compact-list">
+              {demo.scenario.pilotCta.followUpPlan.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </section>
     </main>
   );

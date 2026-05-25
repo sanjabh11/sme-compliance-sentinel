@@ -19,6 +19,7 @@ export interface CustomerDemoScenario {
   customerSegment: string;
   offer: string;
   sampleDataNotice: string;
+  valueStack: string[];
   scenarioTitle: string;
   scenarioSummary: string;
   sampleFinding: {
@@ -46,6 +47,8 @@ export interface CustomerDemoScenario {
   pilotCta: {
     headline: string;
     checklist: string[];
+    followUpPlan: string[];
+    optimizationNote: string;
   };
 }
 
@@ -226,12 +229,13 @@ export const customerDemoSteps: CustomerDemoStep[] = [
 ];
 
 export const customerDemoScenario: CustomerDemoScenario = {
-  customerSegment: "Seed-stage B2B SaaS or founder-led services team using Google Workspace before an enterprise security review.",
+  customerSegment: "seed-stage B2B SaaS and founder-led services teams facing an enterprise security review",
   offer: "$199 one-day Google Workspace risk scan plus SOC2 readiness evidence packet.",
   sampleDataNotice: "Sample data only. Live scans require signed consent before Workspace access.",
+  valueStack: ["Consent first", "AI only when justified", "Redacted Trust Packet"],
   scenarioTitle: "Sample high-risk Workspace exposure",
   scenarioSummary:
-    "A customer proposal draft is externally shared and includes sensitive operational details. The demo shows how Sentinel detects, explains, stages, and packages the evidence.",
+    "A proposal draft is externally shared and includes sensitive operational details. Sentinel detects it, explains the risk, and stages the evidence.",
   sampleFinding: {
     title: "Public proposal draft contains sensitive access details",
     severity: "high",
@@ -264,14 +268,16 @@ export const customerDemoScenario: CustomerDemoScenario = {
   copilotAnswer:
     "The cited proof is the scan scope, the redacted finding, the human-approved recommendation record, and the Trust Packet preview. Missing proof remains live customer consent and paid pilot artifacts.",
   pilotCta: {
-    headline: "Book the one-day Workspace risk scan",
+    headline: "Book my one-day Workspace risk scan",
     checklist: [
       "Confirm buyer deadline and Workspace sources in scope",
       "Approve consent and excluded-content boundary",
       "Run the scan and review staged recommendations",
       "Export redacted Trust Packet and questionnaire answer",
       "Register invoice, payment, and consent evidence privately"
-    ]
+    ],
+    followUpPlan: ["1 hour: send scope confirmation", "24 hours: send consent checklist reminder"],
+    optimizationNote: "First experiment: CTA clicks to pilot-interest call."
   }
 };
 
