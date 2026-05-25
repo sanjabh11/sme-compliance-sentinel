@@ -59,7 +59,7 @@ export const sentinelConfig = {
   adminActionToken: process.env.SENTINEL_ADMIN_ACTION_TOKEN ?? "",
   evidenceSigningSecretConfigured: Boolean(process.env.SENTINEL_EVIDENCE_SIGNING_SECRET),
   evidenceSigningSecret: process.env.SENTINEL_EVIDENCE_SIGNING_SECRET ?? "",
-  productUrl: process.env.NEXT_PUBLIC_PRODUCT_URL ?? "",
+  productUrl: resolveProductUrlFromEnv(),
   repositoryUrl: process.env.XPRIZE_REPOSITORY_URL ?? "",
   xprizeRepositoryAccessConfigured: process.env.XPRIZE_REPOSITORY_ACCESS_CONFIGURED === "true",
   xprizeSourceCodeCompleteConfirmed: process.env.XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED === "true",
@@ -143,6 +143,25 @@ function parseCsv(value: string) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+export function resolveProductUrlFromEnv(env: Record<string, string | undefined> = process.env) {
+  const configured = env.NEXT_PUBLIC_PRODUCT_URL?.trim();
+  if (configured) {
+    return configured;
+  }
+
+  const productionUrl = env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  if (productionUrl) {
+    return productionUrl.startsWith("http") ? productionUrl : `https://${productionUrl}`;
+  }
+
+  const deploymentUrl = env.VERCEL_URL?.trim();
+  if (deploymentUrl) {
+    return deploymentUrl.startsWith("http") ? deploymentUrl : `https://${deploymentUrl}`;
+  }
+
+  return "";
 }
 
 function parsePositiveNumber(value: string | undefined, fallback: number) {

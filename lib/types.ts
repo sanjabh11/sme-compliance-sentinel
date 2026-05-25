@@ -2185,6 +2185,59 @@ export interface MarketPositioningCommandCenter {
   disclaimer: string;
 }
 
+export type MvpOutreachStatus = "ready-for-outreach" | "needs-deployment" | "needs-customer-proof" | "blocked";
+
+export interface MvpFeatureMaturity {
+  rank: number;
+  feature: string;
+  buyerAngle: string;
+  currentEvidence: string;
+  maturity: number;
+  leadWith: boolean;
+  gap: string;
+  nextAction: string;
+}
+
+export interface MvpGapFix {
+  priority: number;
+  gap: string;
+  bucket: "code-controllable" | "external-proof" | "human-attestation";
+  owner: "engineering" | "founder/sales" | "founder/legal";
+  status: "done" | "next" | "external-required" | "human-review";
+  fix: string;
+  successCheck: string;
+}
+
+export interface MvpOutreachStep {
+  day: number;
+  channel: "email" | "linkedin" | "call" | "demo" | "follow-up";
+  subject: string;
+  copy: string;
+  proofToAttach: string[];
+  claimBoundary: string;
+  nextAction: string;
+}
+
+export interface MvpOutreachPlan {
+  generatedAt: string;
+  status: MvpOutreachStatus;
+  headline: string;
+  targetSegment: string;
+  primaryOffer: string;
+  hostedUrl: string;
+  hostedUrlStatus: "configured" | "missing";
+  readinessScore: number;
+  leadFeatures: MvpFeatureMaturity[];
+  gapFixes: MvpGapFix[];
+  outreachSteps: MvpOutreachStep[];
+  demoPath: string[];
+  manualInterventions: string[];
+  adversarialRisks: string[];
+  sourceUrls: string[];
+  proofBoundary: string;
+  disclaimer: string;
+}
+
 export interface OAuthReadiness {
   mode: "pilot-test-users" | "oauth-verification" | "marketplace-ready";
   requiredScopes: Array<{

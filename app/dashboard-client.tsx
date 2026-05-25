@@ -48,6 +48,7 @@ import type {
   JudgeAccessPack,
   MarketPositioningCommandCenter,
   MetricQueryResult,
+  MvpOutreachPlan,
   PersistenceVerificationResult,
   PilotConsentPacket,
   PilotConversionKit,
@@ -146,6 +147,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
   const [deploymentEvidencePacket, setDeploymentEvidencePacket] = useState<DeploymentEvidencePacket | null>(null);
   const [productionGeminiProof, setProductionGeminiProof] = useState<ProductionGeminiProofResult | null>(null);
   const [marketPositioning, setMarketPositioning] = useState<MarketPositioningCommandCenter | null>(null);
+  const [mvpOutreachPlan, setMvpOutreachPlan] = useState<MvpOutreachPlan | null>(null);
   const [copilotQuery, setCopilotQuery] = useState("What evidence supports Workspace risk detection and Gemini usage?");
   const [copilotResult, setCopilotResult] = useState<EvidenceCopilotResult | null>(null);
   const [synthesisType, setSynthesisType] = useState<EvidenceSynthesisPackType>("judge-summary");
@@ -1227,6 +1229,26 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
     }
   }
 
+  async function checkMvpOutreachPlan() {
+    setActionState("running");
+    setLastMessage("Building MVP outreach plan...");
+
+    try {
+      const response = await fetch("/api/mvp/outreach-plan");
+      const payload = (await response.json()) as MvpOutreachPlan;
+      setMvpOutreachPlan(payload);
+      setActionState(payload.status === "blocked" ? "error" : "idle");
+      setLastMessage(
+        payload.status === "ready-for-outreach"
+          ? "MVP outreach plan is ready for private pilot outreach on current evidence."
+          : `MVP outreach plan is ${payload.status.replaceAll("-", " ")} with score ${payload.readinessScore}%.`
+      );
+    } catch (error) {
+      setActionState("error");
+      setLastMessage(error instanceof Error ? error.message : "Unable to build MVP outreach plan.");
+    }
+  }
+
   async function exportFrameworkPack() {
     setActionState("running");
     setLastMessage(`Exporting ${frameworkSelection} ${frameworkAudience} readiness evidence pack...`);
@@ -1567,6 +1589,86 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
         <Metric label="Public exposures closed" value={metrics.remediated.toString()} hint="Approved remediations only" />
         <Metric label="Agent runs" value={metrics.agentRuns.toString()} hint="AI-native operations evidence" />
         <Metric label="Gemini spend" value={`$${metrics.geminiCost.toFixed(4)}`} hint="Cost discipline for SME margin" />
+      </section>
+
+      <section className="content-grid" aria-label="MVP outreach readiness">
+        <div className="panel strategy-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>MVP Outreach Command</h2>
+              <p>Lead with the one-day Workspace risk scan; keep revenue, customer, and XPRIZE proof separate.</p>
+            </div>
+            <UserPlus size={24} aria-hidden="true" />
+          </div>
+          <div className="button-row">
+            <button type="button" className="secondary" onClick={checkMvpOutreachPlan} disabled={actionState === "running"}>
+              <Target size={16} aria-hidden="true" />
+              Build outreach plan
+            </button>
+            <button type="button" className="secondary" onClick={checkPilotConversionKit} disabled={actionState === "running"}>
+              <UserPlus size={16} aria-hidden="true" />
+              Conversion kit
+            </button>
+          </div>
+          {mvpOutreachPlan ? (
+            <div className="verification-list">
+              <span data-status={mvpOutreachPlan.status}>{mvpOutreachPlan.status.replaceAll("-", " ")}</span>
+              <article>
+                <strong>{mvpOutreachPlan.headline}</strong>
+                <p>
+                  {mvpOutreachPlan.primaryOffer} · readiness score {mvpOutreachPlan.readinessScore}% · hosted URL{" "}
+                  {mvpOutreachPlan.hostedUrlStatus}
+                </p>
+              </article>
+              <article>
+                <strong>Lead features</strong>
+                <p>
+                  {mvpOutreachPlan.leadFeatures
+                    .filter((feature) => feature.leadWith)
+                    .slice(0, 3)
+                    .map((feature) => `${feature.rank}. ${feature.feature} (${feature.maturity}/5)`)
+                    .join(" · ")}
+                </p>
+              </article>
+              <article>
+                <strong>Next code/external gaps</strong>
+                <p>
+                  {mvpOutreachPlan.gapFixes
+                    .filter((gap) => gap.status !== "done")
+                    .slice(0, 2)
+                    .map((gap) => `${gap.gap}: ${gap.owner}`)
+                    .join(" · ")}
+                </p>
+              </article>
+              <article>
+                <strong>First outreach action</strong>
+                <p>
+                  Day {mvpOutreachPlan.outreachSteps[0]?.day}: {mvpOutreachPlan.outreachSteps[0]?.subject} ·{" "}
+                  {mvpOutreachPlan.outreachSteps[0]?.nextAction}
+                </p>
+              </article>
+              <small>{mvpOutreachPlan.proofBoundary}</small>
+            </div>
+          ) : (
+            <div className="empty-state">Build the plan to see the current MVP outreach gap table and first pilot action.</div>
+          )}
+        </div>
+
+        <aside className="panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Private Pilot Wedge</h2>
+              <p>Use the current product for outreach; do not present local demo data as paid traction.</p>
+            </div>
+            <ShieldCheck size={24} aria-hidden="true" />
+          </div>
+          <ul className="check-list">
+            <li>Primary offer: one-day Google Workspace risk scan.</li>
+            <li>Proof artifact: redacted Trust Packet plus questionnaire pack.</li>
+            <li>Trust control: human approval before non-trivial remediation.</li>
+            <li>Manual blocker: arms-length paid pilot evidence is still founder/sales work.</li>
+          </ul>
+        </aside>
       </section>
 
       <section className="workspace-band">

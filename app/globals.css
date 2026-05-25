@@ -962,6 +962,11 @@ dd {
   color: var(--low);
 }
 
+.verification-list > span[data-status="ready-for-outreach"] {
+  background: #e7f3ea;
+  color: var(--low);
+}
+
 .verification-list > span[data-status="blocked"] {
   background: #fff5dd;
   color: var(--medium);
@@ -1014,6 +1019,12 @@ dd {
 }
 
 .verification-list > span[data-status="external-required"] {
+  background: #fff5dd;
+  color: var(--medium);
+}
+
+.verification-list > span[data-status="needs-deployment"],
+.verification-list > span[data-status="needs-customer-proof"] {
   background: #fff5dd;
   color: var(--medium);
 }
