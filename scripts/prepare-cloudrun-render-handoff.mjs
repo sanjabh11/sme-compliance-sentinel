@@ -431,6 +431,10 @@ function buildPrivateValueChecklist({ audit }) {
   const requiredBeforeDryRun = Array.isArray(evidencePacket.requiredBeforeDryRun) ? evidencePacket.requiredBeforeDryRun : [];
   const publicClaimEvidenceQueue = Array.isArray(evidencePacket.publicClaimEvidenceQueue) ? evidencePacket.publicClaimEvidenceQueue : [];
   const consistencyBlockers = Array.isArray(audit.valueConsistencyBlockers) ? audit.valueConsistencyBlockers : [];
+  const requiredRows = requiredBeforeDryRun.map(checklistRow);
+  const placeholderHelperRows = buildPlaceholderHelperRows({ audit, requiredRows });
+  const pendingRenderRows = uniqueChecklistRows([...requiredRows, ...placeholderHelperRows]);
+  const groupedRows = groupChecklistRowsByEntryMode(pendingRenderRows);
   const status = audit.readyForStrictRender
     ? publicClaimEvidenceQueue.length
       ? "ready-for-render-claim-review-pending"
@@ -440,16 +444,23 @@ function buildPrivateValueChecklist({ audit }) {
   return {
     status,
     requiredBeforeDryRunCount: requiredBeforeDryRun.length,
+    placeholderHelperCount: placeholderHelperRows.length,
+    directInputCount: groupedRows.direct.length,
+    derivedValueCount: groupedRows.derived.length,
     publicClaimEvidenceCount: publicClaimEvidenceQueue.length,
     consistencyBlockerCount: consistencyBlockers.length,
     process: [
       "Open the private render-values file in the private operator environment only.",
-      "Fill required-before-dry-run rows first using non-secret production values or Secret Manager resource/version references; never paste secret values.",
+      "Fill direct input rows first using non-secret production values or Secret Manager resource/version references; never paste secret values.",
+      "Rerun the audit after direct inputs are real, then verify derived values and override them only if generated values are wrong for the environment.",
       "Resolve value consistency blockers before strict audit, manifest render, or dry-run preflight.",
       "Leave public XPRIZE, revenue, user, Gemini, Workspace, judge-access, demo, and AI-operation evidence flags false until matching private proof exists.",
       "Rerun the handoff verifier, render-values audit, render-evidence verifier, manifest render, dry-run preflight, and dry-run packet verifier before any gcloud dry-run."
     ],
-    requiredBeforeDryRun: requiredBeforeDryRun.map(checklistRow),
+    placeholderHelperRows,
+    directInputsBeforeDryRun: groupedRows.direct,
+    derivedValuesBeforeDryRun: groupedRows.derived,
+    requiredBeforeDryRun: requiredRows,
     publicClaimEvidenceQueue: publicClaimEvidenceQueue.map(checklistRow),
     consistencyBlockers: consistencyBlockers.map((blocker) => ({
       id: blocker.id,
@@ -457,6 +468,40 @@ function buildPrivateValueChecklist({ audit }) {
       status: blocker.status,
       fix: blocker.fix
     }))
+  };
+}
+
+function buildPlaceholderHelperRows({ audit, requiredRows }) {
+  const requiredKeys = new Set(requiredRows.map((row) => row.key));
+  const placeholderKeys = new Set((audit.placeholderKeys ?? []).map(String));
+
+  return (audit.renderValueIntake ?? [])
+    .filter((item) => item?.key && placeholderKeys.has(String(item.key)))
+    .filter((item) => !requiredKeys.has(String(item.key)))
+    .filter((item) => !["ready", "attested"].includes(String(item.status)))
+    .map(checklistRow);
+}
+
+function uniqueChecklistRows(rows) {
+  const seen = new Set();
+  const uniqueRows = [];
+
+  for (const row of rows) {
+    if (!row.key || seen.has(row.key)) {
+      continue;
+    }
+
+    seen.add(row.key);
+    uniqueRows.push(row);
+  }
+
+  return uniqueRows;
+}
+
+function groupChecklistRowsByEntryMode(rows) {
+  return {
+    direct: rows.filter((row) => !row.derivationHint),
+    derived: rows.filter((row) => row.derivationHint)
   };
 }
 
@@ -486,6 +531,9 @@ function verifyPrivateValueChecklist({ handoff, evidencePacket }) {
     checklist &&
     typeof checklist === "object" &&
     Array.isArray(checklist.process) &&
+    Array.isArray(checklist.placeholderHelperRows) &&
+    Array.isArray(checklist.directInputsBeforeDryRun) &&
+    Array.isArray(checklist.derivedValuesBeforeDryRun) &&
     Array.isArray(checklist.requiredBeforeDryRun) &&
     Array.isArray(checklist.publicClaimEvidenceQueue) &&
     Array.isArray(checklist.consistencyBlockers);
@@ -495,11 +543,16 @@ function verifyPrivateValueChecklist({ handoff, evidencePacket }) {
       verificationCheck(
         "handoff-private-value-checklist-shape",
         "blocked",
-        "privateValueChecklist must include process, requiredBeforeDryRun, publicClaimEvidenceQueue, and consistencyBlockers arrays."
+        "privateValueChecklist must include process, placeholderHelperRows, directInputsBeforeDryRun, derivedValuesBeforeDryRun, requiredBeforeDryRun, publicClaimEvidenceQueue, and consistencyBlockers arrays."
       )
     ];
   }
 
+  const placeholderKeys = new Set((handoff.renderValuesAudit?.placeholderKeys ?? []).map(String));
+  const requiredKeys = new Set(requiredBeforeDryRun.map((row) => row.key));
+  const placeholderHelperRows = checklist.placeholderHelperRows.map(checklistRow);
+  const placeholderHelpersValid = placeholderHelperRows.every((row) => placeholderKeys.has(row.key) && !requiredKeys.has(row.key));
+  const groupedPendingRows = groupChecklistRowsByEntryMode(uniqueChecklistRows([...requiredBeforeDryRun, ...placeholderHelperRows]));
   const expectedStatus = handoff.renderValuesAudit?.readyForStrictRender
     ? publicClaimEvidenceQueue.length
       ? "ready-for-render-claim-review-pending"
@@ -507,18 +560,28 @@ function verifyPrivateValueChecklist({ handoff, evidencePacket }) {
     : "needs-private-values";
   const countsOk =
     checklist.requiredBeforeDryRunCount === checklist.requiredBeforeDryRun.length &&
+    checklist.placeholderHelperCount === checklist.placeholderHelperRows.length &&
+    checklist.directInputCount === checklist.directInputsBeforeDryRun.length &&
+    checklist.derivedValueCount === checklist.derivedValuesBeforeDryRun.length &&
     checklist.publicClaimEvidenceCount === checklist.publicClaimEvidenceQueue.length &&
     checklist.consistencyBlockerCount === checklist.consistencyBlockers.length &&
     checklist.requiredBeforeDryRunCount === requiredBeforeDryRun.length &&
+    checklist.directInputCount === groupedPendingRows.direct.length &&
+    checklist.derivedValueCount === groupedPendingRows.derived.length &&
     checklist.publicClaimEvidenceCount === publicClaimEvidenceQueue.length &&
     checklist.consistencyBlockerCount === consistencyBlockers.length;
   const processText = checklist.process.join(" ");
   const processOk =
     processText.includes("never paste secret values") &&
+    processText.includes("Fill direct input rows first") &&
+    processText.includes("verify derived values") &&
     processText.includes("before any gcloud dry-run") &&
     processText.includes("Leave public XPRIZE") &&
     processText.includes("matching private proof exists");
   const rowsOk =
+    placeholderHelpersValid &&
+    stableJson(checklist.directInputsBeforeDryRun.map(checklistRow)) === stableJson(groupedPendingRows.direct) &&
+    stableJson(checklist.derivedValuesBeforeDryRun.map(checklistRow)) === stableJson(groupedPendingRows.derived) &&
     stableJson(checklist.requiredBeforeDryRun.map(checklistRow)) === stableJson(requiredBeforeDryRun) &&
     stableJson(checklist.publicClaimEvidenceQueue.map(checklistRow)) === stableJson(publicClaimEvidenceQueue) &&
     stableJson(checklist.consistencyBlockers.map(consistencyBlockerRow)) === stableJson(consistencyBlockers);
@@ -537,7 +600,7 @@ function verifyPrivateValueChecklist({ handoff, evidencePacket }) {
     verificationCheck(
       "handoff-private-value-checklist-counts",
       countsOk ? "passed" : "blocked",
-      `requiredBeforeDryRun=${checklist.requiredBeforeDryRunCount}/${requiredBeforeDryRun.length}; publicClaimEvidence=${checklist.publicClaimEvidenceCount}/${publicClaimEvidenceQueue.length}; consistencyBlockers=${checklist.consistencyBlockerCount}/${consistencyBlockers.length}.`
+      `requiredBeforeDryRun=${checklist.requiredBeforeDryRunCount}/${requiredBeforeDryRun.length}; placeholderHelpers=${checklist.placeholderHelperCount}/${placeholderHelperRows.length}; directInputs=${checklist.directInputCount}/${groupedPendingRows.direct.length}; derivedValues=${checklist.derivedValueCount}/${groupedPendingRows.derived.length}; publicClaimEvidence=${checklist.publicClaimEvidenceCount}/${publicClaimEvidenceQueue.length}; consistencyBlockers=${checklist.consistencyBlockerCount}/${consistencyBlockers.length}.`
     ),
     verificationCheck(
       "handoff-private-value-checklist-process",
@@ -603,11 +666,56 @@ function renderMarkdown(handoff) {
     "## Private Value Fill Checklist",
     `- Status: ${handoff.privateValueChecklist.status}`,
     `- Required before Cloud Run dry-run: ${handoff.privateValueChecklist.requiredBeforeDryRunCount}`,
+    `- Placeholder helper bases: ${handoff.privateValueChecklist.placeholderHelperCount}`,
+    `- Direct inputs to fill first: ${handoff.privateValueChecklist.directInputCount}`,
+    `- Derived values to verify after direct inputs: ${handoff.privateValueChecklist.derivedValueCount}`,
     `- Public-claim evidence rows: ${handoff.privateValueChecklist.publicClaimEvidenceCount}`,
     `- Value consistency blockers: ${handoff.privateValueChecklist.consistencyBlockerCount}`,
     "",
     "### Process",
     ...handoff.privateValueChecklist.process.map((item) => `- ${item}`),
+    "",
+    "### Placeholder Helper Bases",
+    ...(handoff.privateValueChecklist.placeholderHelperRows.length
+      ? [
+          markdownTable(
+            ["Key", "Owner", "Status", "Derivation / Override Guidance", "Fix"],
+            handoff.privateValueChecklist.placeholderHelperRows.map((item) => [
+              item.key,
+              item.owner,
+              item.status,
+              item.derivationHint || "direct operator value",
+              item.fix
+            ])
+          )
+        ]
+      : ["- none"]),
+    "",
+    "### Direct Inputs To Fill First",
+    ...(handoff.privateValueChecklist.directInputsBeforeDryRun.length
+      ? [
+          markdownTable(
+            ["Key", "Owner", "Status", "Fix"],
+            handoff.privateValueChecklist.directInputsBeforeDryRun.map((item) => [item.key, item.owner, item.status, item.fix])
+          )
+        ]
+      : ["- none"]),
+    "",
+    "### Derived Values To Verify After Direct Inputs",
+    ...(handoff.privateValueChecklist.derivedValuesBeforeDryRun.length
+      ? [
+          markdownTable(
+            ["Key", "Owner", "Status", "Derivation / Override Guidance", "Fix"],
+            handoff.privateValueChecklist.derivedValuesBeforeDryRun.map((item) => [
+              item.key,
+              item.owner,
+              item.status,
+              item.derivationHint,
+              item.fix
+            ])
+          )
+        ]
+      : ["- none"]),
     "",
     "### Required Before Cloud Run Dry-Run",
     ...(handoff.privateValueChecklist.requiredBeforeDryRun.length

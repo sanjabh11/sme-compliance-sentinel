@@ -37,13 +37,37 @@ interface CloudRunRenderHandoffModule {
     privateValueChecklist: {
       status: string;
       requiredBeforeDryRunCount: number;
+      placeholderHelperCount: number;
+      directInputCount: number;
+      derivedValueCount: number;
       publicClaimEvidenceCount: number;
       consistencyBlockerCount: number;
       process: string[];
+      placeholderHelperRows: Array<{
+        key: string;
+        owner: string;
+        status: string;
+        derivationHint?: string;
+        fix: string;
+      }>;
+      directInputsBeforeDryRun: Array<{
+        key: string;
+        owner: string;
+        status: string;
+        fix: string;
+      }>;
+      derivedValuesBeforeDryRun: Array<{
+        key: string;
+        owner: string;
+        status: string;
+        derivationHint: string;
+        fix: string;
+      }>;
       requiredBeforeDryRun: Array<{
         key: string;
         owner: string;
         status: string;
+        derivationHint?: string;
         fix: string;
       }>;
       publicClaimEvidenceQueue: Array<{
@@ -143,8 +167,46 @@ describe("Cloud Run render handoff", () => {
     expect(handoff.renderValuesAudit.intakeSummary.ready).toBeGreaterThan(0);
     expect(handoff.privateValueChecklist.status).toBe("needs-private-values");
     expect(handoff.privateValueChecklist.requiredBeforeDryRunCount).toBeGreaterThan(0);
+    expect(handoff.privateValueChecklist.placeholderHelperCount).toBeGreaterThan(0);
+    expect(handoff.privateValueChecklist.directInputCount).toBeGreaterThan(0);
+    expect(handoff.privateValueChecklist.derivedValueCount).toBeGreaterThan(0);
+    expect(handoff.privateValueChecklist.directInputCount + handoff.privateValueChecklist.derivedValueCount).toBe(
+      handoff.privateValueChecklist.requiredBeforeDryRunCount + handoff.privateValueChecklist.placeholderHelperCount
+    );
     expect(handoff.privateValueChecklist.publicClaimEvidenceCount).toBeGreaterThan(0);
     expect(handoff.privateValueChecklist.requiredBeforeDryRun.some((row) => row.key === "GOOGLE_CLOUD_PROJECT")).toBe(true);
+    expect(handoff.privateValueChecklist.placeholderHelperRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "SENTINEL_GCP_BUDGET_SHORT_ID",
+          fix: expect.stringContaining("Fill SENTINEL_GCP_BUDGET_SHORT_ID")
+        }),
+        expect.objectContaining({
+          key: "SENTINEL_GEMINI_API_KEY_SHORT_ID"
+        })
+      ])
+    );
+    expect(handoff.privateValueChecklist.directInputsBeforeDryRun).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "GOOGLE_CLOUD_PROJECT",
+          fix: expect.stringContaining("Fill GOOGLE_CLOUD_PROJECT")
+        }),
+        expect.objectContaining({
+          key: "SENTINEL_GCP_BUDGET_SHORT_ID"
+        })
+      ])
+    );
+    expect(handoff.privateValueChecklist.derivedValuesBeforeDryRun).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "SENTINEL_CLOUD_RUN_IMAGE",
+          derivationHint: expect.stringContaining("SENTINEL_RELEASE_ID"),
+          fix: expect.stringContaining("normally derived")
+        })
+      ])
+    );
+    expect(handoff.privateValueChecklist.directInputsBeforeDryRun.some((row) => row.key === "SENTINEL_CLOUD_RUN_IMAGE")).toBe(false);
     expect(handoff.privateValueChecklist.requiredBeforeDryRun).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -156,6 +218,8 @@ describe("Cloud Run render handoff", () => {
     );
     expect(handoff.privateValueChecklist.consistencyBlockers.some((row) => row.key === "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS")).toBe(true);
     expect(handoff.privateValueChecklist.process.join(" ")).toContain("never paste secret values");
+    expect(handoff.privateValueChecklist.process.join(" ")).toContain("Fill direct input rows first");
+    expect(handoff.privateValueChecklist.process.join(" ")).toContain("verify derived values");
     expect(handoff.privateValueChecklist.process.join(" ")).toContain("before any gcloud dry-run");
     expect(handoff.evidencePacketVerification.overallStatus).toBe("verified");
     expect(evidenceVerifier.overallStatus).toBe("verified");
@@ -176,6 +240,9 @@ describe("Cloud Run render handoff", () => {
     expect(handoffMarkdown).toContain("Cloud Run Render Handoff");
     expect(handoffMarkdown).toContain("ready-for-private-values");
     expect(handoffMarkdown).toContain("Private Value Fill Checklist");
+    expect(handoffMarkdown).toContain("Placeholder Helper Bases");
+    expect(handoffMarkdown).toContain("Direct Inputs To Fill First");
+    expect(handoffMarkdown).toContain("Derived Values To Verify After Direct Inputs");
     expect(handoffMarkdown).toContain("Derivation / Override Guidance");
     expect(handoffMarkdown).toContain("Derived from SENTINEL_CLOUD_RUN_REGION");
     expect(handoffMarkdown).toContain("GOOGLE_CLOUD_PROJECT");
