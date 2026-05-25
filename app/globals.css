@@ -1274,6 +1274,24 @@ dd {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.evidence-copilot-panel {
+  margin-top: 18px;
+}
+
+.evidence-copilot-panel textarea,
+.evidence-copilot-panel select {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.45;
+  min-height: 38px;
+  padding: 8px 10px;
+  resize: vertical;
+  width: 100%;
+}
+
 .pilot-launch-grid {
   display: grid;
   gap: 8px;

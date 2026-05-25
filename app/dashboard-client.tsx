@@ -30,8 +30,13 @@ import type {
   DemoVideoCompliancePack,
   DevpostSubmissionPack,
   EligibilityDisclosurePacket,
+  EvidenceCopilotResult,
+  EvidenceDocumentAnalysisResult,
+  EvidenceDocumentInputKind,
   EvidenceExport,
   EvidenceIntakeQueue,
+  EvidenceSynthesisPack,
+  EvidenceSynthesisPackType,
   EvidenceVault,
   EvidenceVaultImportResult,
   Finding,
@@ -42,6 +47,7 @@ import type {
   HostedEvidenceCapturePacket,
   JudgeAccessPack,
   MarketPositioningCommandCenter,
+  MetricQueryResult,
   PersistenceVerificationResult,
   PilotConsentPacket,
   PilotConversionKit,
@@ -140,6 +146,15 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
   const [deploymentEvidencePacket, setDeploymentEvidencePacket] = useState<DeploymentEvidencePacket | null>(null);
   const [productionGeminiProof, setProductionGeminiProof] = useState<ProductionGeminiProofResult | null>(null);
   const [marketPositioning, setMarketPositioning] = useState<MarketPositioningCommandCenter | null>(null);
+  const [copilotQuery, setCopilotQuery] = useState("What evidence supports Workspace risk detection and Gemini usage?");
+  const [copilotResult, setCopilotResult] = useState<EvidenceCopilotResult | null>(null);
+  const [synthesisType, setSynthesisType] = useState<EvidenceSynthesisPackType>("judge-summary");
+  const [synthesisPack, setSynthesisPack] = useState<EvidenceSynthesisPack | null>(null);
+  const [metricQuestion, setMetricQuestion] = useState("Show findings by severity");
+  const [metricResult, setMetricResult] = useState<MetricQueryResult | null>(null);
+  const [documentInputKind, setDocumentInputKind] = useState<EvidenceDocumentInputKind>("security-questionnaire");
+  const [documentText, setDocumentText] = useState("How do you monitor Google Workspace for sensitive-data exposure?");
+  const [documentAnalysis, setDocumentAnalysis] = useState<EvidenceDocumentAnalysisResult | null>(null);
   const [pilotForm, setPilotForm] = useState({
     customerAlias: "Private pilot customer",
     segment: "Seed-stage B2B SaaS preparing enterprise security review",
@@ -1349,6 +1364,103 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
     }
   }
 
+  async function runCopilotQuery() {
+    setActionState("running");
+    setLastMessage("Searching redacted evidence with citations...");
+
+    try {
+      const response = await fetch("/api/evidence/copilot/query", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: copilotQuery, mode: "judge", maxCitations: 5 })
+      });
+      const payload = (await response.json()) as EvidenceCopilotResult;
+      if (!response.ok) {
+        throw new Error("Evidence Copilot query failed.");
+      }
+      setCopilotResult(payload);
+      setActionState("idle");
+      setLastMessage(`Evidence Copilot returned ${payload.citations.length} cited source(s).`);
+    } catch (error) {
+      setActionState("error");
+      setLastMessage(error instanceof Error ? error.message : "Evidence Copilot query failed.");
+    }
+  }
+
+  async function runEvidenceSynthesis() {
+    setActionState("running");
+    setLastMessage("Generating cited evidence synthesis pack...");
+
+    try {
+      const response = await fetch("/api/evidence/synthesis", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ packType: synthesisType, mode: "judge" })
+      });
+      const payload = (await response.json()) as EvidenceSynthesisPack;
+      if (!response.ok) {
+        throw new Error("Evidence synthesis failed.");
+      }
+      setSynthesisPack(payload);
+      setActionState("idle");
+      setLastMessage(`Evidence synthesis generated ${payload.sections.length} section(s).`);
+    } catch (error) {
+      setActionState("error");
+      setLastMessage(error instanceof Error ? error.message : "Evidence synthesis failed.");
+    }
+  }
+
+  async function runMetricQuery() {
+    setActionState("running");
+    setLastMessage("Compiling allowlisted evidence metric...");
+
+    try {
+      const response = await fetch("/api/evidence/metrics/query", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: metricQuestion })
+      });
+      const payload = (await response.json()) as MetricQueryResult;
+      setMetricResult(payload);
+      setActionState(payload.blocked ? "error" : "idle");
+      setLastMessage(payload.blocked ? "Metric query was blocked by safety policy." : `Metric query returned ${payload.rows.length} row(s).`);
+    } catch (error) {
+      setActionState("error");
+      setLastMessage(error instanceof Error ? error.message : "Evidence metric query failed.");
+    }
+  }
+
+  async function analyzeDocumentInput() {
+    setActionState("running");
+    setLastMessage("Analyzing evidence document fixture...");
+
+    try {
+      const response = await fetch("/api/evidence/documents/analyze", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          documentName: `copilot-${documentInputKind}.txt`,
+          inputKind: documentInputKind,
+          text: documentText
+        })
+      });
+      const payload = (await response.json()) as EvidenceDocumentAnalysisResult;
+      if (!response.ok) {
+        throw new Error("Evidence document analysis failed.");
+      }
+      setDocumentAnalysis(payload);
+      setActionState(payload.blockers.length ? "error" : "idle");
+      setLastMessage(
+        payload.blockers.length
+          ? `Document analysis found ${payload.blockers.length} review blocker(s).`
+          : `Document analysis routed ${payload.documentKind.replaceAll("-", " ")} evidence.`
+      );
+    } catch (error) {
+      setActionState("error");
+      setLastMessage(error instanceof Error ? error.message : "Evidence document analysis failed.");
+    }
+  }
+
   async function checkPilotLaunchPlan() {
     setActionState("running");
     setLastMessage("Building one-day paid pilot launch plan...");
@@ -1589,6 +1701,133 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
             <pre className="export-preview">{JSON.stringify(exportPreview, null, 2).slice(0, 1600)}</pre>
           ) : null}
         </aside>
+      </section>
+
+      <section className="panel evidence-copilot-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>Evidence Copilot</h2>
+            <p>Redacted evidence search, cited synthesis, allowlisted metrics, and document intake for local review.</p>
+          </div>
+          <Sparkles size={24} aria-hidden="true" />
+        </div>
+        <div className="pilot-conversion-grid">
+          <article>
+            <b>RAG Search</b>
+            <textarea
+              aria-label="Evidence Copilot query"
+              value={copilotQuery}
+              onChange={(event) => setCopilotQuery(event.target.value)}
+              rows={4}
+            />
+            <button type="button" className="secondary wide" onClick={runCopilotQuery} disabled={actionState === "running"}>
+              <FileSearch size={16} aria-hidden="true" />
+              Search citations
+            </button>
+          </article>
+          <article>
+            <b>Synthesis Pack</b>
+            <select
+              aria-label="Evidence synthesis pack type"
+              value={synthesisType}
+              onChange={(event) => setSynthesisType(event.target.value as EvidenceSynthesisPackType)}
+            >
+              <option value="judge-summary">Judge summary</option>
+              <option value="customer-security-packet">Customer security packet</option>
+              <option value="remediation-timeline">Remediation timeline</option>
+              <option value="business-evidence-brief">Business evidence brief</option>
+              <option value="ai-operations-proof">AI operations proof</option>
+            </select>
+            <button type="button" className="secondary wide" onClick={runEvidenceSynthesis} disabled={actionState === "running"}>
+              <Sparkles size={16} aria-hidden="true" />
+              Generate synthesis
+            </button>
+          </article>
+          <article>
+            <b>Metrics Explorer</b>
+            <textarea
+              aria-label="Evidence metric question"
+              value={metricQuestion}
+              onChange={(event) => setMetricQuestion(event.target.value)}
+              rows={4}
+            />
+            <button type="button" className="secondary wide" onClick={runMetricQuery} disabled={actionState === "running"}>
+              <Database size={16} aria-hidden="true" />
+              Compile metric
+            </button>
+          </article>
+          <article>
+            <b>Document Intake</b>
+            <select
+              aria-label="Evidence document input kind"
+              value={documentInputKind}
+              onChange={(event) => setDocumentInputKind(event.target.value as EvidenceDocumentInputKind)}
+            >
+              <option value="security-questionnaire">Security questionnaire</option>
+              <option value="pdf-text">PDF text</option>
+              <option value="csv">CSV</option>
+              <option value="spreadsheet-text">Spreadsheet text</option>
+              <option value="image-metadata">Image metadata</option>
+              <option value="contract">Contract</option>
+              <option value="invoice">Invoice</option>
+              <option value="soc2-readiness">SOC2 readiness</option>
+              <option value="gcp-proof">GCP proof</option>
+            </select>
+            <textarea
+              aria-label="Evidence document text"
+              value={documentText}
+              onChange={(event) => setDocumentText(event.target.value)}
+              rows={4}
+            />
+            <button type="button" className="secondary wide" onClick={analyzeDocumentInput} disabled={actionState === "running"}>
+              <FileSearch size={16} aria-hidden="true" />
+              Analyze document
+            </button>
+          </article>
+        </div>
+        <div className="verification-list">
+          {copilotResult ? (
+            <article>
+              <strong>Copilot answer · {copilotResult.confidence}</strong>
+              <p>{copilotResult.answer}</p>
+              <small>{copilotResult.citations.map((citation) => citation.sourceId).join(" · ") || "No citations returned"}</small>
+            </article>
+          ) : null}
+          {synthesisPack ? (
+            <article>
+              <strong>
+                {synthesisPack.title} · {synthesisPack.citationCoverageScore}% cited
+              </strong>
+              <p>{synthesisPack.executiveSummary}</p>
+              <small>
+                {synthesisPack.humanReviewStatus} review · {synthesisPack.redactionStatus} ·{" "}
+                {synthesisPack.missingEvidence.length} missing proof item(s)
+              </small>
+            </article>
+          ) : null}
+          {metricResult ? (
+            <article>
+              <strong>{metricResult.intent.label}</strong>
+              <p>{metricResult.summary}</p>
+              <small>
+                {metricResult.blocked ? "blocked" : "allowlisted"} · {metricResult.sqlPlan.readOnlyView} ·{" "}
+                {metricResult.sqlPlan.tenantFilter}
+              </small>
+            </article>
+          ) : null}
+          {documentAnalysis ? (
+            <article>
+              <strong>
+                {documentAnalysis.documentKind.replaceAll("-", " ")} · {documentAnalysis.evidenceVaultSuggestion.kind}
+              </strong>
+              <p>{documentAnalysis.normalizedTextPreview}</p>
+              <small>
+                {documentAnalysis.evidenceVaultSuggestion.status.replaceAll("-", " ")} · checksum{" "}
+                {documentAnalysis.checksumValid ? "valid" : "needed"} · {documentAnalysis.sensitiveMarkers.length} sensitive marker(s)
+              </small>
+            </article>
+          ) : null}
+        </div>
       </section>
 
       <section className="content-grid">

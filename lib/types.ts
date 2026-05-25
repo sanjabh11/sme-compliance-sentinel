@@ -409,6 +409,206 @@ export interface DashboardSnapshot {
   readiness: ReadinessCommandCenter;
 }
 
+export type EvidenceCopilotMode = "judge" | "admin";
+
+export type EvidenceCopilotSourceKind =
+  | "finding"
+  | "audit-event"
+  | "agent-run"
+  | "remediation"
+  | "evidence-vault"
+  | "questionnaire-pack"
+  | "answer-library"
+  | "trust-document"
+  | "pilot-record"
+  | "risk-score";
+
+export interface EvidenceCopilotSourceRecord {
+  sourceId: string;
+  tenantId: string;
+  kind: EvidenceCopilotSourceKind;
+  title: string;
+  summary: string;
+  redactedExcerpt: string;
+  tags: string[];
+  status?: string;
+  occurredAt?: string;
+  private: boolean;
+  consented: boolean;
+  metadata: Record<string, string | number | boolean | null>;
+}
+
+export interface EvidenceCopilotCitation {
+  sourceId: string;
+  kind: EvidenceCopilotSourceKind;
+  title: string;
+  excerpt: string;
+  relevance: number;
+}
+
+export interface EvidenceCopilotQuery {
+  query: string;
+  mode?: EvidenceCopilotMode;
+  maxCitations?: number;
+}
+
+export interface EvidenceCopilotResult {
+  generatedAt: string;
+  mode: EvidenceCopilotMode;
+  query: string;
+  answer: string;
+  confidence: "high" | "medium" | "low";
+  citations: EvidenceCopilotCitation[];
+  sourceIds: string[];
+  missingEvidence: string[];
+  unsafeClaimWarnings: string[];
+  nextAction: string;
+  redactionStatus: "redacted" | "admin-private";
+  adapter: "local-deterministic" | "gemini-file-search-ready";
+}
+
+export type EvidenceSynthesisPackType =
+  | "judge-summary"
+  | "customer-security-packet"
+  | "remediation-timeline"
+  | "business-evidence-brief"
+  | "ai-operations-proof";
+
+export interface EvidenceSynthesisRequest {
+  packType: EvidenceSynthesisPackType;
+  mode?: EvidenceCopilotMode;
+  prompt?: string;
+  useGemini?: boolean;
+}
+
+export interface EvidenceSynthesisSection {
+  title: string;
+  body: string;
+  citationIds: string[];
+}
+
+export interface EvidenceSynthesisPack {
+  generatedAt: string;
+  packType: EvidenceSynthesisPackType;
+  mode: EvidenceCopilotMode;
+  title: string;
+  executiveSummary: string;
+  sections: EvidenceSynthesisSection[];
+  citations: EvidenceCopilotCitation[];
+  citationCoverageScore: number;
+  unsupportedClaims: string[];
+  missingEvidence: string[];
+  redactionStatus: "redacted" | "admin-private";
+  humanReviewStatus: "required";
+  claimBoundaries: string[];
+  provider: "deterministic" | "gemini-api" | "mock-gemini";
+  fallbackReason?: string;
+}
+
+export type MetricId =
+  | "findings_by_severity"
+  | "findings_by_status"
+  | "remediations_approved"
+  | "false_positive_rate"
+  | "public_exposures_closed"
+  | "agent_run_cost"
+  | "bytes_routed_to_gemini"
+  | "audit_events_by_type"
+  | "evidence_vault_readiness"
+  | "pilot_mrr_users";
+
+export interface MetricIntent {
+  metricId: MetricId;
+  label: string;
+  tenantId: string;
+  filters: Record<string, string | number | boolean>;
+  rejectedTerms: string[];
+  source: "deterministic" | "gemini-structured";
+}
+
+export interface MetricSqlPlan {
+  sql: string;
+  parameters: Array<{ name: string; type: "STRING" | "TIMESTAMP" | "INT64"; value: string | number }>;
+  tenantFilter: string;
+  readOnlyView: string;
+  dryRunRequired: boolean;
+  maximumBytesBilled: number;
+  rawContentColumnsExcluded: string[];
+  executionMode: "mock" | "production-plan";
+}
+
+export interface MetricQueryResult {
+  generatedAt: string;
+  question: string;
+  intent: MetricIntent;
+  rows: Array<Record<string, string | number | boolean>>;
+  summary: string;
+  sqlPlan: MetricSqlPlan;
+  blocked: boolean;
+  safetyWarnings: string[];
+  nextAction: string;
+}
+
+export type EvidenceDocumentInputKind =
+  | "pdf-text"
+  | "csv"
+  | "tsv"
+  | "spreadsheet-text"
+  | "image-metadata"
+  | "security-questionnaire"
+  | "contract"
+  | "invoice"
+  | "soc2-readiness"
+  | "gcp-proof"
+  | "plain-text";
+
+export interface EvidenceDocumentAnalysisRequest {
+  documentName: string;
+  inputKind: EvidenceDocumentInputKind;
+  text?: string;
+  metadata?: Record<string, string | number | boolean | null>;
+  checksumSha256?: string;
+}
+
+export interface EvidenceDocumentCitation {
+  label: string;
+  page?: number;
+  section?: string;
+  excerpt: string;
+}
+
+export interface EvidenceDocumentAnalysisResult {
+  generatedAt: string;
+  documentName: string;
+  inputKind: EvidenceDocumentInputKind;
+  documentKind:
+    | "security-questionnaire"
+    | "contract"
+    | "invoice"
+    | "soc2-readiness"
+    | "gcp-proof"
+    | "spreadsheet"
+    | "image-only"
+    | "unknown";
+  normalizedTextPreview: string;
+  detectedDates: string[];
+  customerAlias?: string;
+  sensitiveMarkers: string[];
+  redactionChecklist: string[];
+  checksumRequired: boolean;
+  checksumValid: boolean;
+  evidenceVaultSuggestion: {
+    kind: EvidenceVaultArtifactKind;
+    status: EvidenceVaultArtifactStatus;
+    ownerRole: EvidenceVaultArtifact["ownerRole"];
+    nextAction: string;
+  };
+  citations: EvidenceDocumentCitation[];
+  blockers: string[];
+  privateHandling: string[];
+  disclaimer: string;
+}
+
 export interface EvidenceExport {
   generatedAt: string;
   redacted: boolean;
