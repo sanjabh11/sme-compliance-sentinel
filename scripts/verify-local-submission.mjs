@@ -8,6 +8,10 @@ import { lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, renameS
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
+const operationalBestPracticeSources = [
+  "https://docs.cloud.google.com/run/docs/configuring/services/secrets",
+  "https://docs.cloud.google.com/run/docs/securing/service-identity"
+];
 const defaultPrivateRoot = "/secure/local";
 const derivedCloudRunRenderValueGuidance = {
   SENTINEL_CLOUD_RUN_IMAGE:
@@ -289,6 +293,7 @@ function buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReport
   });
   const dedupedActionRows = dedupeManualRows(actionRows);
   const ownerPackets = buildOwnerPackets(dedupedActionRows);
+  const phaseFocusPlan = buildPhaseFocusPlan({ phasePlan, phaseProgressChart, actionRows: dedupedActionRows });
 
   return {
     generatedFrom: "verify-local-submission",
@@ -303,8 +308,10 @@ function buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReport
       highestPriority: dedupedActionRows.reduce((highest, row) => Math.max(highest, row.priority), 0)
     },
     nextOwner: ownerPackets.find((packet) => packet.openActionCount > 0)?.owner ?? "none",
+    phaseFocusPlan,
     ownerPackets,
     actionRows: dedupedActionRows,
+    bestPracticeSourceUrls: operationalBestPracticeSources,
     stopConditions: [
       "Do not set manual XPRIZE or business proof flags while the related action row is still pending, blocked, external-required, or needs-review.",
       "Do not treat generated local packets, templates, seeded data, or mock output as hosted Cloud Run, live Gemini, Workspace, revenue, active-user, or judge-access proof.",
@@ -316,6 +323,121 @@ function buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReport
       "Keep owner signoff notes and source evidence private until a human reviewer approves a redacted judge packet."
     ]
   };
+}
+
+function buildPhaseFocusPlan({ phasePlan, phaseProgressChart, actionRows }) {
+  const phasesById = new Map(phasePlan.phases.map((phase) => [phase.id, phase]));
+  const actionsByPhase = new Map();
+
+  for (const row of actionRows) {
+    const rows = actionsByPhase.get(row.phaseId) ?? [];
+    rows.push(row);
+    actionsByPhase.set(row.phaseId, rows);
+  }
+
+  return {
+    generatedFrom: "verify-local-submission",
+    confidenceBoundary:
+      "Phase ratings are local evidence-gate ratings only. They are not win probability, market adoption probability, legal clearance, audit assurance, or organizer approval.",
+    rows: phaseProgressChart.rows.map((progress) => {
+      const phase = phasesById.get(progress.phaseId);
+      const phaseActions = actionsByPhase.get(progress.phaseId) ?? [];
+      const nextAction = phaseActions[0]?.action ?? progress.pending[0] ?? "No open action.";
+
+      return {
+        phaseId: progress.phaseId,
+        label: progress.label,
+        bucket: progress.bucket,
+        owner: progress.owner,
+        priority: progress.priority,
+        status: progress.status,
+        ratingOutOf5: progress.ratingOutOf5,
+        currentPhaseRemainingPercent: progress.currentPhaseRemainingPercent,
+        overallGoalRemainingPercent: progress.overallGoalRemainingPercent,
+        currentFocus: nextAction,
+        done: progress.done,
+        pending: progress.pending,
+        successChecklist: successChecklistForPhase({ phase, progress }),
+        bestPracticeNotes: bestPracticeNotesForPhase(progress.phaseId),
+        ownerActions: phaseActions.slice(0, 5).map((row) => ({
+          owner: row.owner,
+          status: row.status,
+          action: row.action,
+          privateArtifactPaths: row.privateArtifactPaths
+        })),
+        stopCondition: progress.stopConditions[0] ?? phase?.stopConditions?.[0] ?? "Stop until the required evidence exists.",
+        proofBoundary: proofBoundaryForBucket(progress.bucket)
+      };
+    })
+  };
+}
+
+function successChecklistForPhase({ phase, progress }) {
+  if (!phase) {
+    return progress.successCheckpoints ?? [];
+  }
+
+  if (phase.id === "cloudrun-render-dry-run") {
+    return [
+      "Private render-values file is release-prefilled and stays outside Git.",
+      "All direct non-secret render inputs are filled with reviewed production metadata or Secret Manager resource/version references.",
+      "Derived Cloud Run, Pub/Sub, OAuth redirect, and Gemini resource values are regenerated and then verified or explicitly overridden.",
+      "Render-values audit, render-evidence verifier, manifest render, dry-run preflight, and dry-run packet verifier all pass before any gcloud dry-run.",
+      "Cloud Run uses Secret Manager references and a user-managed service account; no raw API keys, OAuth secrets, service-account keys, or judge credentials are committed."
+    ];
+  }
+
+  if (phase.id === "human-attestation-review") {
+    return [
+      "Project-newness, entrant authority, organization size, and pre-existing-work disclosure are reviewed by a human owner.",
+      "Third-party package, Google API, OAuth, demo asset, screenshot, trademark, and IP-review flags stay false until reviewed.",
+      "Private attestation packet is generated, retained, and redacted before any public submission copy uses it."
+    ];
+  }
+
+  if (phase.id === "hosted-proof-capture") {
+    return [
+      "Cloud Run service URL, revision, service account, deployment transcript, and describe output are captured privately.",
+      "Hosted production verifier proves live Gemini API usage with provider=gemini-api and separates it from mock/local output.",
+      "Hosted persistence, Workspace sync/OAuth, judge-access, and redaction checks pass before evidence is imported into the vault."
+    ];
+  }
+
+  if (phase.id === "business-traction-proof") {
+    return [
+      "Paid pilot, active-user, invoice/payment, MRR, CAC, and cost evidence is captured from private records.",
+      "Related-party revenue is disclosed separately and not mixed with arms-length third-party revenue.",
+      "Testimonials and customer/user evidence have explicit consent before inclusion in public or judge-facing packets."
+    ];
+  }
+
+  return phase.evidenceNeeded ?? [];
+}
+
+function bestPracticeNotesForPhase(phaseId) {
+  if (phaseId === "cloudrun-render-dry-run" || phaseId === "hosted-proof-capture") {
+    return [
+      "Use Secret Manager-backed Cloud Run secret references, pin environment-variable secrets to explicit versions, and keep raw secret values out of source and CLI output.",
+      "Use a user-managed Cloud Run service account with minimal permissions instead of relying on the default Compute Engine service account.",
+      "Preserve dry-run, deploy, describe, hosted smoke, and digest-verifier artifacts in private or ignored paths before any public evidence summary is created."
+    ];
+  }
+
+  if (phaseId === "human-attestation-review") {
+    return [
+      "Treat official-rule, eligibility, IP, license, API-terms, and public-claim decisions as human-attested evidence gates.",
+      "Keep project-newness and pre-existing-work disclosures explicit instead of converting generated code or templates into originality claims."
+    ];
+  }
+
+  if (phaseId === "business-traction-proof") {
+    return [
+      "Separate arms-length revenue, related-party revenue, total costs, customer-acquisition spend, active-user proof, and consented testimonial evidence.",
+      "Keep customer-identifying security findings, invoices, contact details, and testimonials private until redaction and consent review are complete."
+    ];
+  }
+
+  return ["Keep local, mock, seeded, and template artifacts separate from hosted production, revenue, user, and judge-access proof."];
 }
 
 function manualRowsForPhaseProgress({ phase, phaseProgress }) {
@@ -1663,7 +1785,9 @@ function writeLocalSubmissionBundle(path, report) {
         overallGoalRemainingPercent: row.overallGoalRemainingPercent
       }))
     },
+    phaseFocusPlan: report.manualInterventionPlan.phaseFocusPlan,
     manualInterventionSummary: report.manualInterventionPlan.summary,
+    bestPracticeSourceUrls: report.manualInterventionPlan.bestPracticeSourceUrls,
     proofBoundary:
       "This bundle records private local readiness artifacts and packet integrity only. It is not hosted Cloud Run proof, live Gemini proof, Workspace proof, revenue proof, active-user proof, legal/IP review, human attestation, organizer approval, or judging evidence.",
     stopConditions: [
@@ -1863,6 +1987,8 @@ function buildManualInterventionManifest({ report, indexFile, packetFiles }) {
     proofBoundary:
       "This manifest records private packet integrity only. It is not hosted proof, revenue proof, human signoff, legal review, or judging evidence.",
     summary: report.manualInterventionPlan.summary,
+    phaseFocusPlan: report.manualInterventionPlan.phaseFocusPlan,
+    bestPracticeSourceUrls: report.manualInterventionPlan.bestPracticeSourceUrls,
     files: [indexFile, ...packetFiles],
     stopConditions: report.manualInterventionPlan.stopConditions,
     privateHandling: report.manualInterventionPlan.privateHandling
@@ -2438,6 +2564,17 @@ function renderManualInterventionIndexMarkdown(report, packetFiles) {
       packet.nextAction
     ];
   });
+  const phaseRows = report.manualInterventionPlan.phaseFocusPlan.rows.map((row) => [
+    row.label,
+    row.bucket,
+    row.owner,
+    `${row.ratingOutOf5}/5`,
+    `${row.currentPhaseRemainingPercent}%`,
+    `${row.overallGoalRemainingPercent}%`,
+    row.currentFocus,
+    row.successChecklist.join("<br>"),
+    row.stopCondition
+  ]);
 
   return [
     "# Manual Intervention Plan",
@@ -2450,6 +2587,19 @@ function renderManualInterventionIndexMarkdown(report, packetFiles) {
     `Next owner: ${report.manualInterventionPlan.nextOwner}`,
     "",
     markdownTable(["Owner", "Priority", "Open actions", "Buckets", "Private packet", "Next action"], rows),
+    "",
+    "## Phase Focus Plan",
+    "",
+    report.manualInterventionPlan.phaseFocusPlan.confidenceBoundary,
+    "",
+    markdownTable(
+      ["Phase", "Bucket", "Owner", "Rating", "Phase remaining", "Overall remaining", "Current focus", "Success checklist", "Stop condition"],
+      phaseRows
+    ),
+    "",
+    "## Best-Practice Sources",
+    "",
+    markdownList(report.manualInterventionPlan.bestPracticeSourceUrls),
     "",
     "## Stop Conditions",
     "",
@@ -2467,6 +2617,19 @@ function renderManualInterventionIndexMarkdown(report, packetFiles) {
 }
 
 function renderOwnerPacketMarkdown(packet, report) {
+  const ownerPhaseIds = unique(packet.rows.map((row) => row.phaseId));
+  const ownerPhaseRows = report.manualInterventionPlan.phaseFocusPlan.rows
+    .filter((row) => ownerPhaseIds.includes(row.phaseId))
+    .map((row) => [
+      row.label,
+      row.bucket,
+      `${row.ratingOutOf5}/5`,
+      `${row.currentPhaseRemainingPercent}%`,
+      row.currentFocus,
+      row.successChecklist.join("<br>"),
+      row.bestPracticeNotes.join("<br>")
+    ]);
+
   return [
     `# Manual Intervention Packet: ${packet.owner}`,
     "",
@@ -2479,6 +2642,10 @@ function renderOwnerPacketMarkdown(packet, report) {
     "## Private Artifact Paths",
     "",
     markdownList(packet.privateArtifactPaths),
+    "",
+    "## Phase Focus Context",
+    "",
+    markdownTable(["Phase", "Bucket", "Rating", "Phase remaining", "Current focus", "Success checklist", "Best-practice notes"], ownerPhaseRows),
     "",
     "## Step-by-step Actions",
     "",
@@ -2574,6 +2741,17 @@ function renderLocalSubmissionMarkdown(report) {
     packet.nextAction,
     packet.privateArtifactPaths.join("<br>")
   ]);
+  const phaseFocusRows = report.manualInterventionPlan.phaseFocusPlan.rows.map((row) => [
+    row.label,
+    row.bucket,
+    row.owner,
+    `${row.ratingOutOf5}/5`,
+    `${row.currentPhaseRemainingPercent}%`,
+    `${row.overallGoalRemainingPercent}%`,
+    row.currentFocus,
+    row.successChecklist.join("<br>"),
+    row.bestPracticeNotes.join("<br>")
+  ]);
 
   return [
     "# Local Submission Readiness Summary",
@@ -2594,6 +2772,10 @@ function renderLocalSubmissionMarkdown(report) {
     "",
     markdownList(report.sourceUrls),
     "",
+    "## Operational Best-Practice Sources",
+    "",
+    markdownList(report.manualInterventionPlan.bestPracticeSourceUrls),
+    "",
     "## Gate Summary",
     "",
     markdownTable(["Gate", "Status", "External", "Priority", "Evidence", "Next blocker/action"], gateRows),
@@ -2601,6 +2783,15 @@ function renderLocalSubmissionMarkdown(report) {
     "## Phase Progress Chart",
     "",
     markdownTable(["Phase", "Bucket", "Owner", "Rating", "Phase remaining", "Overall remaining", "Done", "Pending", "Stop condition"], phaseRows),
+    "",
+    "## Phase Focus Checklist",
+    "",
+    report.manualInterventionPlan.phaseFocusPlan.confidenceBoundary,
+    "",
+    markdownTable(
+      ["Phase", "Bucket", "Owner", "Rating", "Phase remaining", "Overall remaining", "Current focus", "Success checklist", "Best-practice notes"],
+      phaseFocusRows
+    ),
     "",
     "## Next Code-Controllable Action",
     "",

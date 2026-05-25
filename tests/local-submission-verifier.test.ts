@@ -110,6 +110,34 @@ type LocalSubmissionReport = {
       highestPriority: number;
     };
     nextOwner: string;
+    phaseFocusPlan: {
+      generatedFrom: string;
+      confidenceBoundary: string;
+      rows: Array<{
+        phaseId: string;
+        label: string;
+        bucket: "code-controllable" | "external-proof" | "human-attestation";
+        owner: string;
+        priority: number;
+        status: string;
+        ratingOutOf5: number;
+        currentPhaseRemainingPercent: number;
+        overallGoalRemainingPercent: number;
+        currentFocus: string;
+        done: string[];
+        pending: string[];
+        successChecklist: string[];
+        bestPracticeNotes: string[];
+        ownerActions: Array<{
+          owner: string;
+          status: string;
+          action: string;
+          privateArtifactPaths: string[];
+        }>;
+        stopCondition: string;
+        proofBoundary: string;
+      }>;
+    };
     ownerPackets: Array<{
       owner: string;
       openActionCount: number;
@@ -180,6 +208,7 @@ type LocalSubmissionReport = {
       }>;
       proofBoundary: string;
     };
+    bestPracticeSourceUrls: string[];
     stopConditions: string[];
     privateHandling: string[];
   };
@@ -379,6 +408,23 @@ describe("local XPRIZE submission verifier", () => {
     expect(report.manualInterventionPlan.summary.byOwner["founder/legal"]).toBeGreaterThan(0);
     expect(report.manualInterventionPlan.summary.highestPriority).toBe(5);
     expect(report.manualInterventionPlan.nextOwner).not.toBe("none");
+    expect(report.manualInterventionPlan.phaseFocusPlan.generatedFrom).toBe("verify-local-submission");
+    expect(report.manualInterventionPlan.phaseFocusPlan.confidenceBoundary).toContain("not win probability");
+    expect(report.manualInterventionPlan.phaseFocusPlan.rows.map((row) => row.phaseId)).toEqual(report.phasePlan.phases.map((phase) => phase.id));
+    expect(report.manualInterventionPlan.phaseFocusPlan.rows.every((row) => row.ratingOutOf5 >= 1 && row.ratingOutOf5 <= 5)).toBe(true);
+    expect(report.manualInterventionPlan.phaseFocusPlan.rows.every((row) => row.successChecklist.length > 0)).toBe(true);
+    expect(report.manualInterventionPlan.phaseFocusPlan.rows.every((row) => row.bestPracticeNotes.length > 0)).toBe(true);
+    expect(
+      report.manualInterventionPlan.phaseFocusPlan.rows
+        .find((row) => row.phaseId === "cloudrun-render-dry-run")
+        ?.successChecklist.join(" ")
+    ).toContain("Secret Manager");
+    expect(report.manualInterventionPlan.bestPracticeSourceUrls).toEqual(
+      expect.arrayContaining([
+        "https://docs.cloud.google.com/run/docs/configuring/services/secrets",
+        "https://docs.cloud.google.com/run/docs/securing/service-identity"
+      ])
+    );
     expect(report.phasePlan.phases.map((phase) => phase.id)).toEqual([
       "human-attestation-review",
       "cloudrun-render-dry-run",
@@ -475,6 +521,10 @@ describe("local XPRIZE submission verifier", () => {
         status: string;
         digestAlgorithm: string;
         proofBoundary: string;
+        phaseFocusPlan?: {
+          rows: Array<{ phaseId: string; successChecklist: string[]; bestPracticeNotes: string[] }>;
+        };
+        bestPracticeSourceUrls?: string[];
         files: Array<{ owner: string; path: string; sha256: string; bytes: number; actionCount: number }>;
       };
 
@@ -490,13 +540,26 @@ describe("local XPRIZE submission verifier", () => {
       expect(manifest.status).toBe("manual-intervention-required");
       expect(manifest.digestAlgorithm).toBe("sha256");
       expect(manifest.proofBoundary).toContain("private packet integrity only");
+      expect(manifest.phaseFocusPlan?.rows.map((row) => row.phaseId)).toEqual(
+        expect.arrayContaining(["human-attestation-review", "cloudrun-render-dry-run", "hosted-proof-capture", "business-traction-proof"])
+      );
+      expect(manifest.phaseFocusPlan?.rows.every((row) => row.successChecklist.length > 0 && row.bestPracticeNotes.length > 0)).toBe(true);
+      expect(manifest.bestPracticeSourceUrls).toEqual(
+        expect.arrayContaining(["https://docs.cloud.google.com/run/docs/configuring/services/secrets"])
+      );
       expect(manifest.files.map((file) => file.owner)).toEqual(expect.arrayContaining(["index", "engineering", "founder/legal", "founder/sales"]));
       expect(manifest.files.every((file) => /^[a-f0-9]{64}$/u.test(file.sha256))).toBe(true);
       expect(manifest.files.every((file) => file.bytes > 0 && file.path.startsWith(tempDir))).toBe(true);
       expect(indexMarkdown).toContain("# Manual Intervention Plan");
       expect(indexMarkdown).toContain("These packets are step-by-step instructions only");
+      expect(indexMarkdown).toContain("## Phase Focus Plan");
+      expect(indexMarkdown).toContain("Success checklist");
+      expect(indexMarkdown).toContain("## Best-Practice Sources");
       expect(indexMarkdown).toContain("founder/legal");
       expect(engineeringMarkdown).toContain("# Manual Intervention Packet: engineering");
+      expect(engineeringMarkdown).toContain("## Phase Focus Context");
+      expect(engineeringMarkdown).toContain("Best-practice notes");
+      expect(engineeringMarkdown).toContain("user-managed service account");
       expect(engineeringMarkdown).toContain("## Step-by-step Actions");
       expect(engineeringMarkdown).toContain("Cloud Run");
       expect(engineeringMarkdown).toContain("/secure/local/cloudrun-render-values.json");
@@ -528,8 +591,12 @@ describe("local XPRIZE submission verifier", () => {
       expect(markdown).toContain("Overall goal remaining:");
       expect(markdown).toContain("## Gate Summary");
       expect(markdown).toContain("## Phase Progress Chart");
+      expect(markdown).toContain("## Phase Focus Checklist");
+      expect(markdown).toContain("## Operational Best-Practice Sources");
       expect(markdown).toContain("## Next Code-Controllable Action");
       expect(markdown).toContain("Prepare and verify the Cloud Run render handoff");
+      expect(markdown).toContain("Secret Manager");
+      expect(markdown).toContain("user-managed service account");
       expect(markdown).toContain("## Manual Intervention Owners");
       expect(markdown).toContain("Rating");
       expect(markdown).toContain("Phase remaining");
@@ -639,6 +706,13 @@ describe("local XPRIZE submission verifier", () => {
             privateArtifactPaths: string[];
           };
         };
+        manualInterventionSummary?: {
+          total: number;
+        };
+        phaseFocusPlan?: {
+          rows: Array<{ phaseId: string; successChecklist: string[]; bestPracticeNotes: string[] }>;
+        };
+        bestPracticeSourceUrls?: string[];
       };
       const combined = [
         readFileSync(join(tempDir, "local-submission-readiness.json"), "utf8"),
@@ -687,6 +761,13 @@ describe("local XPRIZE submission verifier", () => {
           "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-packet-verifier.json"
         ])
       );
+      expect(bundleManifest.phaseFocusPlan?.rows.find((row) => row.phaseId === "cloudrun-render-dry-run")?.successChecklist.join(" ")).toContain(
+        "Secret Manager"
+      );
+      expect(bundleManifest.bestPracticeSourceUrls).toEqual(
+        expect.arrayContaining(["https://docs.cloud.google.com/run/docs/securing/service-identity"])
+      );
+      expect(bundleManifest.manualInterventionSummary?.total).toBeGreaterThan(0);
       expect(bundleManifest.stopConditions.join(" ")).toContain("Do not set XPRIZE");
       expect(combined).not.toContain("Bearer ");
       expect(combined).not.toContain("password:");
