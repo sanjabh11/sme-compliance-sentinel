@@ -1,9 +1,10 @@
 /* global console, process, URL */
 
 import { execFile, execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const deploymentContract = JSON.parse(
@@ -272,17 +273,26 @@ export async function renderCloudRunManifest(options) {
   assertNoUnsafeRenderedSecrets(renderedManifest);
 
   const renderedManifestPath = join(outputDirectory, renderedFileName);
+  const verifierPath = join(outputDirectory, verifierFileName);
+  const dryRunCommandPath = join(outputDirectory, dryRunCommandFileName);
+  const deployCommandPath = join(outputDirectory, deployCommandFileName);
+  const summaryPath = join(outputDirectory, summaryFileName);
+  await assertWritableTextFilePath(renderedManifestPath, "Cloud Run rendered manifest");
+  await assertWritableTextFilePath(verifierPath, "Cloud Run manifest verifier JSON");
+  await assertWritableTextFilePath(dryRunCommandPath, "Cloud Run dry-run command file");
+  await assertWritableTextFilePath(deployCommandPath, "Cloud Run deploy command file");
+  await assertWritableTextFilePath(summaryPath, "Cloud Run render summary JSON");
   await writeTextFile(renderedManifestPath, renderedManifest, "Cloud Run rendered manifest");
 
   const verifier = await runManifestVerifier(renderedManifestPath);
-  await writeJson(join(outputDirectory, verifierFileName), verifier);
+  await writeJson(verifierPath, verifier);
 
   const projectId = renderValues.GOOGLE_CLOUD_PROJECT || verifier.projectId || "PROJECT_ID";
   const region = renderValues.SENTINEL_CLOUD_RUN_REGION || "REGION";
   const dryRunCommand = `gcloud run services replace ${shellQuote(renderedManifestPath)} --region ${shellQuote(region)} --project ${shellQuote(projectId)} --dry-run`;
   const deployCommand = `gcloud run services replace ${shellQuote(renderedManifestPath)} --region ${shellQuote(region)} --project ${shellQuote(projectId)}`;
-  await writeTextFile(join(outputDirectory, dryRunCommandFileName), `${dryRunCommand}\n`, "Cloud Run dry-run command file");
-  await writeTextFile(join(outputDirectory, deployCommandFileName), `${deployCommand}\n`, "Cloud Run deploy command file");
+  await writeTextFile(dryRunCommandPath, `${dryRunCommand}\n`, "Cloud Run dry-run command file");
+  await writeTextFile(deployCommandPath, `${deployCommand}\n`, "Cloud Run deploy command file");
 
   const summary = {
     generatedAt: new Date().toISOString(),
@@ -325,7 +335,7 @@ export async function renderCloudRunManifest(options) {
     disclaimer:
       "This renderer creates a private deployment candidate and local verifier output. It does not deploy Cloud Run or prove production readiness."
   };
-  await writeJson(join(outputDirectory, summaryFileName), summary);
+  await writeJson(summaryPath, summary);
 
   if (options.strict && verifier.overallStatus !== "ready-to-dry-run") {
     const error = new Error(`Rendered manifest is ${verifier.overallStatus}; see ${join(outputDirectory, verifierFileName)}.`);
@@ -815,7 +825,10 @@ async function loadValuesFile(valuesPath) {
     return {};
   }
 
-  const parsed = JSON.parse(await readFile(valuesPath, "utf8"));
+  const absolutePath = resolve(valuesPath);
+  await assertDirectoryPathSafe(dirname(absolutePath), "Cloud Run render values parent directory");
+  await assertRegularFileIfExists(absolutePath, "Cloud Run render values file");
+  const parsed = JSON.parse(await readFile(absolutePath, "utf8"));
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("--values must point to a JSON object of non-secret render values.");
   }
@@ -1438,15 +1451,24 @@ function isIsoLikeTimestamp(value) {
 }
 
 async function writeJson(path, payload) {
-  await assertDirectoryPathSafe(dirname(path), "Cloud Run render output parent directory");
-  await assertRegularFileIfExists(path, "Cloud Run render output file");
-  await writeFile(path, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  await writeTextFile(path, `${JSON.stringify(payload, null, 2)}\n`, "Cloud Run render JSON");
 }
 
 async function writeTextFile(path, content, label) {
-  await assertDirectoryPathSafe(dirname(path), `${label} parent directory`);
-  await assertRegularFileIfExists(path, label);
-  await writeFile(path, content, "utf8");
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+  const tempPath = join(parentDirectory, `.${basename(absolutePath)}.${randomUUID()}.tmp`);
+  const parentIdentity = await assertWritableTextFilePath(absolutePath, label);
+
+  try {
+    await writeFile(tempPath, content, { encoding: "utf8", flag: "wx" });
+    await assertSameDirectoryIdentity(parentDirectory, parentIdentity, `${label} parent directory`);
+    await rename(tempPath, absolutePath);
+    await assertSameDirectoryIdentity(parentDirectory, parentIdentity, `${label} parent directory`);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
 }
 
 async function assertDirectoryPathSafe(path, label) {
@@ -1494,6 +1516,41 @@ async function assertDirectoryExistsSafe(path, label) {
   if (!fileStat.isDirectory()) {
     throw new Error(`${label} ${path} is not a directory; use a regular private directory before Cloud Run render.`);
   }
+}
+
+async function assertWritableTextFilePath(path, label) {
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+
+  await assertDirectoryPathSafe(parentDirectory, `${label} parent directory`);
+  await assertRegularFileIfExists(absolutePath, label);
+
+  return readDirectoryIdentity(parentDirectory, `${label} parent directory`);
+}
+
+async function assertSameDirectoryIdentity(path, expected, label) {
+  const actual = await readDirectoryIdentity(path, label);
+
+  if (actual.dev !== expected.dev || actual.ino !== expected.ino) {
+    throw new Error(`${label} ${resolve(path)} changed while writing; regenerate the render artifacts in a stable private directory.`);
+  }
+}
+
+async function readDirectoryIdentity(path, label) {
+  const fileStat = await lstat(resolve(path));
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${resolve(path)} is a symbolic link; use a regular private directory before Cloud Run render.`);
+  }
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${resolve(path)} is not a directory; use a regular private directory before Cloud Run render.`);
+  }
+
+  return {
+    dev: fileStat.dev,
+    ino: fileStat.ino
+  };
 }
 
 async function assertRegularFileIfExists(path, label) {

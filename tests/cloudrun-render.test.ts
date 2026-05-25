@@ -1,6 +1,6 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 interface CloudRunRenderModule {
@@ -175,6 +175,49 @@ describe("Cloud Run manifest renderer", () => {
     await expect(
       renderCloudRunManifest({
         valuesPath,
+        outDir: tempDir,
+        releaseId: "release-20260523-001",
+        strict: true
+      })
+    ).rejects.toThrow(/symbolic link/u);
+  });
+
+  it("fails closed before partial writes when render outputs or values input parents are symlinked", async () => {
+    const { renderCloudRunManifest } = await loadRenderer();
+    const tempDir = await makeTempDir();
+    const valuesPath = await writeValues(tempDir, safeRenderValues());
+    const rendered = await renderCloudRunManifest({
+      valuesPath,
+      outDir: tempDir,
+      releaseId: "release-20260523-001",
+      strict: true
+    });
+    const originalManifest = await readFile(rendered.renderedManifestPath, "utf8");
+    const verifierTargetPath = join(tempDir, "reviewed-cloudrun-manifest-verifier.json");
+    const verifierPath = join(rendered.outputDirectory, "cloudrun-manifest-verifier.json");
+    await writeFile(verifierTargetPath, "unchanged-verifier\n", "utf8");
+    await rm(verifierPath, { force: true });
+    await symlink(verifierTargetPath, verifierPath);
+
+    await expect(
+      renderCloudRunManifest({
+        valuesPath,
+        outDir: tempDir,
+        releaseId: "release-20260523-001",
+        strict: true
+      })
+    ).rejects.toThrow(/symbolic link/u);
+    expect(await readFile(rendered.renderedManifestPath, "utf8")).toBe(originalManifest);
+    expect(await readFile(verifierTargetPath, "utf8")).toBe("unchanged-verifier\n");
+    expect((await readdir(rendered.outputDirectory)).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+
+    const realValuesDir = dirname(valuesPath);
+    const symlinkedValuesDir = join(tempDir, "symlinked-render-values-parent");
+    await symlink(realValuesDir, symlinkedValuesDir);
+
+    await expect(
+      renderCloudRunManifest({
+        valuesPath: join(symlinkedValuesDir, "render-values.json"),
         outDir: tempDir,
         releaseId: "release-20260523-001",
         strict: true
