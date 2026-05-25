@@ -1037,6 +1037,10 @@ function buildCloudRunRenderValueCheckpoints({ bucket, state }) {
 }
 
 function cloudRunRenderValueBlockers(state) {
+  if (state.renderValuesReady) {
+    return [];
+  }
+
   const blockers = [];
   const pendingKeys = uniqueStrings([...state.missingStrictKeys, ...state.placeholderKeys]);
 
@@ -1129,7 +1133,9 @@ function readCloudRunRenderArtifactState() {
     evidencePacketVerified: evidenceVerifier?.overallStatus === "verified" && evidenceVerifier?.releaseId === releaseId,
     dryRunPreflightExists: isRegularFile(join(outDir, "cloudrun-dry-run-preflight-packet.json")),
     dryRunVerifierExists: Boolean(dryRunVerifier),
-    dryRunVerifierVerified: dryRunVerifier?.overallStatus === "verified" && dryRunVerifier?.releaseId === releaseId
+    dryRunVerifierVerified:
+      (dryRunVerifier?.overallStatus === "verified" || dryRunVerifier?.status === "verified") &&
+      dryRunVerifier?.releaseId === releaseId
   };
 }
 
