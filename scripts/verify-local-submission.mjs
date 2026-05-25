@@ -613,6 +613,7 @@ function buildPhaseProgressChart(phasePlan, gateReports) {
 
 function buildPhaseCheckpoints(phase, gatesById) {
   const bucket = phase.bucket ?? bucketForPhase(phase);
+  const cloudRunArtifactState = phase.id === "cloudrun-render-dry-run" ? readCloudRunRenderArtifactState() : null;
   const gateCheckpoints = phase.relatedGateIds
     .map((id) => gatesById.get(id))
     .filter(Boolean)
@@ -624,16 +625,168 @@ function buildPhaseCheckpoints(phase, gatesById) {
       blockers: gate.status === "passed" ? [] : gate.blockers,
       evidence: gate.evidence
     }));
-  const evidenceCheckpoints = phase.evidenceNeeded.map((item) => ({
+  const evidenceCheckpoints = phase.evidenceNeeded.map((item) =>
+    buildEvidenceCheckpoint({ phase, item, bucket, cloudRunArtifactState })
+  );
+
+  return [...evidenceCheckpoints, ...gateCheckpoints];
+}
+
+function buildEvidenceCheckpoint({ phase, item, bucket, cloudRunArtifactState }) {
+  if (phase.id === "cloudrun-render-dry-run" && cloudRunArtifactState) {
+    return buildCloudRunEvidenceCheckpoint({ item, bucket, state: cloudRunArtifactState });
+  }
+
+  return {
     label: item,
     source: "required-evidence",
     bucket,
     status: phase.status === "passed" ? "done" : bucket === "external-proof" ? "external-required" : "pending",
     blockers: phase.status === "passed" ? [] : [item],
     evidence: item
-  }));
+  };
+}
 
-  return [...evidenceCheckpoints, ...gateCheckpoints];
+function buildCloudRunEvidenceCheckpoint({ item, bucket, state }) {
+  const base = {
+    label: item,
+    source: "private-artifact",
+    bucket,
+    evidence: state.releaseId ? `release=${state.releaseId}` : "release=missing"
+  };
+
+  if (item.startsWith("cloudrun-render-handoff JSON/Markdown")) {
+    if (state.handoffJsonExists && state.handoffMarkdownExists && state.evidencePacketVerified) {
+      return { ...base, status: "done", blockers: [] };
+    }
+
+    if (state.handoffJsonExists || state.handoffMarkdownExists || state.evidencePacketExists) {
+      return {
+        ...base,
+        status: "partial",
+        blockers: ["Verify cloudrun-render-handoff JSON/Markdown and owner packet before private values are filled."]
+      };
+    }
+  }
+
+  if (item.startsWith("cloudrun-render-handoff-verifier JSON")) {
+    if (state.handoffVerifierVerified) {
+      return { ...base, status: "done", blockers: [] };
+    }
+
+    if (state.handoffVerifierExists) {
+      return { ...base, status: "partial", blockers: ["Rerun verify:cloudrun-render-handoff until the verifier is verified."] };
+    }
+  }
+
+  if (item.startsWith("release-prefilled private render-values file")) {
+    if (state.valuesFileReleasePrefilled) {
+      return { ...base, status: "done", blockers: [] };
+    }
+
+    if (state.valuesFileExists) {
+      return {
+        ...base,
+        status: "partial",
+        blockers: ["Refresh the private render-values file with current release id, source commit, source timestamp, branch, and repository URL."]
+      };
+    }
+  }
+
+  if (item.startsWith("render-values audit JSON/Markdown")) {
+    if (state.auditJsonExists && state.auditMarkdownExists && state.evidencePacketExists && state.evidencePacketMarkdownExists && state.evidencePacketVerified) {
+      return { ...base, status: "done", blockers: [] };
+    }
+
+    if (state.auditJsonExists || state.auditMarkdownExists || state.evidencePacketExists || state.evidencePacketMarkdownExists) {
+      return {
+        ...base,
+        status: "partial",
+        blockers: ["Rerun audit:cloudrun-values and verify:cloudrun-render-evidence for the current release."]
+      };
+    }
+  }
+
+  if (item.startsWith("dry-run preflight packet")) {
+    if (state.dryRunPreflightExists && state.dryRunVerifierVerified) {
+      return { ...base, status: "done", blockers: [] };
+    }
+
+    if (state.dryRunPreflightExists || state.dryRunVerifierExists) {
+      return {
+        ...base,
+        status: "partial",
+        blockers: ["Rerun prepare:cloudrun-dry-run and verify:cloudrun-dry-run-packet before any gcloud dry-run."]
+      };
+    }
+  }
+
+  return { ...base, status: "pending", blockers: [item] };
+}
+
+function readCloudRunRenderArtifactState() {
+  const valuesPath = resolve(process.env.SENTINEL_CLOUD_RUN_VALUES_PATH || "/secure/local/cloudrun-render-values.json");
+  const values = readPrivateJsonIfRegular(valuesPath);
+  const releaseId = safePathSegment(
+    process.env.SENTINEL_RELEASE_ID || values?.SENTINEL_RELEASE_ID || ""
+  );
+  const outDir = resolve(process.env.SENTINEL_CLOUD_RUN_RENDER_OUT_DIR || "artifacts/deployment", releaseId || "missing-release");
+  const handoff = readPrivateJsonIfRegular(join(outDir, "cloudrun-render-handoff.json"));
+  const handoffVerifier = readPrivateJsonIfRegular(join(outDir, "cloudrun-render-handoff-verifier.json"));
+  const evidenceVerifier = readPrivateJsonIfRegular(join(outDir, "cloudrun-render-evidence-packet-verifier.json"));
+  const dryRunVerifier = readPrivateJsonIfRegular(join(outDir, "cloudrun-dry-run-packet-verifier.json"));
+
+  return {
+    releaseId,
+    valuesFileExists: Boolean(values),
+    valuesFileReleasePrefilled: Boolean(
+      values?.SENTINEL_RELEASE_ID &&
+        values?.SENTINEL_SOURCE_COMMIT &&
+        values?.SENTINEL_SOURCE_COMMIT_AT &&
+        values?.SENTINEL_SOURCE_BRANCH &&
+        values?.XPRIZE_REPOSITORY_URL
+    ),
+    handoffJsonExists: Boolean(handoff),
+    handoffMarkdownExists: isRegularFile(join(outDir, "cloudrun-render-handoff.md")),
+    handoffVerifierExists: Boolean(handoffVerifier),
+    handoffVerifierVerified: handoffVerifier?.overallStatus === "verified" && handoffVerifier?.releaseId === releaseId,
+    auditJsonExists: isRegularFile(join(outDir, "cloudrun-render-values-audit.json")),
+    auditMarkdownExists: isRegularFile(join(outDir, "cloudrun-render-values-audit.md")),
+    evidencePacketExists: isRegularFile(join(outDir, "cloudrun-render-evidence-packet.json")),
+    evidencePacketMarkdownExists: isRegularFile(join(outDir, "cloudrun-render-evidence-packet.md")),
+    evidencePacketVerified: evidenceVerifier?.overallStatus === "verified" && evidenceVerifier?.releaseId === releaseId,
+    dryRunPreflightExists: isRegularFile(join(outDir, "cloudrun-dry-run-preflight-packet.json")),
+    dryRunVerifierExists: Boolean(dryRunVerifier),
+    dryRunVerifierVerified: dryRunVerifier?.overallStatus === "verified" && dryRunVerifier?.releaseId === releaseId
+  };
+}
+
+function readPrivateJsonIfRegular(path) {
+  if (!isRegularFile(path)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function isRegularFile(path) {
+  try {
+    const fileStat = lstatSync(path);
+    return fileStat.isFile() && !fileStat.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+function safePathSegment(value) {
+  return String(value || "")
+    .replace(/[^A-Za-z0-9._-]/gu, "-")
+    .replace(/-+/gu, "-")
+    .slice(0, 120);
 }
 
 function countCheckpoints(checkpoints) {

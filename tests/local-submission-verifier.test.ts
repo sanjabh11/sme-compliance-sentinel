@@ -956,15 +956,68 @@ describe("local XPRIZE submission verifier", () => {
     expect(rowsById["business-traction-proof"].pending.join(" ")).not.toContain("project-created-after-start");
   });
 
+  it("reflects verified Cloud Run handoff artifacts without treating them as hosted proof", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-cloudrun-artifacts-"));
+    const valuesPath = join(tempDir, "cloudrun-render-values.json");
+    const outDir = join(tempDir, "deployment");
+    const releaseId = "release-20260525-deadbee";
+    const releaseDir = join(outDir, releaseId);
+
+    try {
+      mkdirSync(releaseDir, { recursive: true });
+      writeFileSync(
+        valuesPath,
+        `${JSON.stringify(
+          {
+            SENTINEL_RELEASE_ID: releaseId,
+            SENTINEL_SOURCE_COMMIT: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            SENTINEL_SOURCE_COMMIT_AT: "2026-05-25T02:00:00.000Z",
+            SENTINEL_SOURCE_BRANCH: "origin/main",
+            XPRIZE_REPOSITORY_URL: "https://github.com/sanjabh11/sme-compliance-sentinel.git"
+          },
+          null,
+          2
+        )}\n`,
+        "utf8"
+      );
+      writeFileSync(join(releaseDir, "cloudrun-render-handoff.json"), `${JSON.stringify({ overallStatus: "ready-for-private-values", releaseId }, null, 2)}\n`, "utf8");
+      writeFileSync(join(releaseDir, "cloudrun-render-handoff.md"), "# Cloud Run Render Handoff\n", "utf8");
+      writeFileSync(join(releaseDir, "cloudrun-render-handoff-verifier.json"), `${JSON.stringify({ overallStatus: "verified", releaseId }, null, 2)}\n`, "utf8");
+      writeFileSync(join(releaseDir, "cloudrun-render-values-audit.json"), `${JSON.stringify({ status: "needs-values", releaseId }, null, 2)}\n`, "utf8");
+      writeFileSync(join(releaseDir, "cloudrun-render-values-audit.md"), "# Cloud Run Render Values Audit\n", "utf8");
+      writeFileSync(join(releaseDir, "cloudrun-render-evidence-packet.json"), `${JSON.stringify({ overallStatus: "needs-values", releaseId }, null, 2)}\n`, "utf8");
+      writeFileSync(join(releaseDir, "cloudrun-render-evidence-packet.md"), "# Cloud Run Render Evidence Packet\n", "utf8");
+      writeFileSync(join(releaseDir, "cloudrun-render-evidence-packet-verifier.json"), `${JSON.stringify({ overallStatus: "verified", releaseId }, null, 2)}\n`, "utf8");
+
+      const report = runVerifier([], {
+        SENTINEL_CLOUD_RUN_VALUES_PATH: valuesPath,
+        SENTINEL_CLOUD_RUN_RENDER_OUT_DIR: outDir,
+        SENTINEL_RELEASE_ID: releaseId
+      });
+      const row = report.phaseProgressChart.rows.find((item) => item.phaseId === "cloudrun-render-dry-run");
+
+      expect(row?.done.join(" ")).toContain("release-prefilled private render-values file");
+      expect(row?.done.join(" ")).toContain("cloudrun-render-handoff JSON/Markdown");
+      expect(row?.done.join(" ")).toContain("cloudrun-render-handoff-verifier JSON");
+      expect(row?.done.join(" ")).toContain("render-values audit JSON/Markdown");
+      expect(row?.pending.join(" ")).toContain("dry-run preflight packet and digest verifier");
+      expect(row?.evidence).toContain("private-artifact=done");
+      expect(report.phasePlan.phases.find((phase) => phase.id === "hosted-proof-capture")?.status).toBe("external-required");
+      expect(report.overallStatus).toBe("blocked");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("rejects raw secret-shaped CLI arguments", () => {
     expect(() => runVerifier(["--api-key=raw-secret"])).toThrow();
   });
 });
 
-function runVerifier(args: string[] = []) {
+function runVerifier(args: string[] = [], envOverrides: Partial<NodeJS.ProcessEnv> = {}) {
   const output = execFileSync(process.execPath, ["scripts/verify-local-submission.mjs", ...args], {
     cwd: process.cwd(),
-    env: localSubmissionEnv,
+    env: { ...localSubmissionEnv, ...envOverrides },
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
   });
