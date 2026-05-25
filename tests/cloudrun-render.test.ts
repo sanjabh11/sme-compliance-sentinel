@@ -373,7 +373,7 @@ describe("Cloud Run manifest renderer", () => {
       GOOGLE_OAUTH_REQUESTED_SCOPES: "https://www.googleapis.com/auth/drive.metadata.readonly,https://www.googleapis.com/auth/gmail.metadata",
       GOOGLE_OAUTH_DEFERRED_RESTRICTED_SCOPES: "https://www.googleapis.com/auth/drive",
       GOOGLE_OAUTH_SCOPE_REVIEW_CONFIRMED: "false",
-      SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS: "STATIC_EGRESS_IPS"
+      SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS: "CONCRETE_EXTERNAL_IPV4_NO_CIDR"
     });
     expect(Object.keys(templateValues)).not.toEqual(
       expect.arrayContaining(["GEMINI_API_KEY", "GOOGLE_OAUTH_CLIENT_SECRET", "SENTINEL_ADMIN_ACTION_TOKEN"])

@@ -101,7 +101,8 @@ const placeholderPatterns = [
   /SOURCE_COMMIT/u,
   /SOURCE_COMMIT_AT/u,
   /SOURCE_BRANCH/u,
-  /STATIC_EGRESS_IPS/u
+  /STATIC_EGRESS_IPS/u,
+  /CONCRETE_EXTERNAL_IPV4_NO_CIDR/u
 ];
 
 const unsafeRawValuePatterns = [

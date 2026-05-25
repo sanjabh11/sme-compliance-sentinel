@@ -203,8 +203,8 @@ The **Low-risk skip** button verifies that metadata-only events do not call Gemi
 - `XPRIZE_RELATED_PARTY_REVENUE_REVIEWED`: set to `true` only after related-party customer relationships are reviewed and separated from arms-length revenue.
 - `XPRIZE_PRODUCT_RUNNING_EVIDENCE_CONFIGURED` / `XPRIZE_AGENT_EXECUTION_LOGS_CONFIGURED`: set to `true` only after hosted product-running proof and redacted Gemini/agent execution logs are captured.
 - `SENTINEL_GEMINI_API_KEY_ID`: API Keys API resource id for the server-side Gemini key; do not put the secret key here.
-- `SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS`: comma-separated static egress IP allowlist for server key restrictions.
-- `SENTINEL_CLOUD_RUN_VPC_CONNECTOR` / `SENTINEL_CLOUD_RUN_VPC_EGRESS`: Cloud Run static-egress path for server-side Gemini key restrictions. Keep egress as `all-traffic` when using server IP allowlists.
+- `SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS`: comma-separated concrete reviewed external IPv4 allowlist for the server-side Gemini key restriction. Do not use CIDR ranges, wildcards, `localhost`, internal IPs, or placeholders in the render-values file; retain API Keys API restriction output and hosted `provider=gemini-api` smoke proof separately.
+- `SENTINEL_CLOUD_RUN_VPC_CONNECTOR` / `SENTINEL_CLOUD_RUN_VPC_EGRESS`: Cloud Run static-egress path for external endpoints that require stable source IP. Keep egress as `all-traffic` for the deployment path, but do not treat Cloud NAT/static egress proof alone as Gemini or Google API source-identity proof because Google API traffic can use Private Google Access behavior.
 - `SENTINEL_GEMINI_DAILY_REQUEST_QUOTA` / `SENTINEL_GEMINI_DAILY_TOKEN_QUOTA`: documented quota targets for the production runbook.
 - `SENTINEL_GEMINI_QUOTA_EVIDENCE_CONFIRMED`: set to `true` only after private Gemini quota or usage-limit proof is captured; keep `false` in templates.
 
@@ -217,7 +217,7 @@ The intended production deployment uses:
 - Firestore or a durable database for tenants, findings, approvals, and audit state.
 - BigQuery for append-only evidence analytics.
 - Secret Manager for per-tenant OAuth tokens.
-- Serverless VPC Access plus Cloud NAT static egress before relying on Gemini API-key server IP restrictions.
+- Serverless VPC Access plus Cloud NAT static egress for external endpoints that require stable source IP, with separate API Keys API restriction proof and hosted Gemini smoke evidence before making Gemini API-key restriction claims.
 - Sensitive Data Protection for PII/secrets detection.
 - Gemini API for semantic risk classification and evidence summaries.
 

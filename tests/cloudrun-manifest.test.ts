@@ -6,6 +6,10 @@ import contract from "../docs/deployment/cloudrun-deployment-contract.json";
 const manifest = readFileSync(join(process.cwd(), "cloudrun.service.yaml"), "utf8");
 const envExample = readFileSync(join(process.cwd(), ".env.example"), "utf8");
 const dockerfile = readFileSync(join(process.cwd(), "Dockerfile"), "utf8");
+const readme = readFileSync(join(process.cwd(), "README.md"), "utf8");
+const renderValuesTemplate = JSON.parse(
+  readFileSync(join(process.cwd(), "docs/deployment/cloudrun-render-values.template.json"), "utf8")
+) as Record<string, string>;
 
 const requiredDeploymentCapabilityGroups = [
   {
@@ -358,6 +362,17 @@ describe("Cloud Run deployment manifest", () => {
         expect(envExample, `${name} needs a local-only warning because Cloud Run must not use it`).toContain("Local REST smoke fallback only");
       }
     }
+  });
+
+  it("keeps Gemini API-key network guidance aligned with the stricter proof boundary", () => {
+    expect(renderValuesTemplate.SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS).toBe("CONCRETE_EXTERNAL_IPV4_NO_CIDR");
+    expect(renderValuesTemplate.SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS).not.toBe("STATIC_EGRESS_IPS");
+    expect(readme).toContain("concrete reviewed external IPv4 allowlist");
+    expect(readme).toContain("Do not use CIDR ranges");
+    expect(readme).toContain("API Keys API restriction output");
+    expect(readme).toContain("hosted `provider=gemini-api` smoke proof");
+    expect(readme).toContain("do not treat Cloud NAT/static egress proof alone");
+    expect(readme).toContain("Private Google Access behavior");
   });
 });
 
