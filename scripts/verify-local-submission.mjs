@@ -9,6 +9,21 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
 const defaultPrivateRoot = "/secure/local";
+const derivedCloudRunRenderValueGuidance = {
+  SENTINEL_CLOUD_RUN_IMAGE:
+    "Derived from SENTINEL_CLOUD_RUN_REGION, GOOGLE_CLOUD_PROJECT, and SENTINEL_RELEASE_ID.",
+  SENTINEL_CLOUD_RUN_SERVICE_ACCOUNT_EMAIL: "Derived from GOOGLE_CLOUD_PROJECT.",
+  SENTINEL_PRIVATE_EVIDENCE_BUCKET: "Derived from GOOGLE_CLOUD_PROJECT.",
+  SENTINEL_BUDGET_PUBSUB_TOPIC: "Derived from GOOGLE_CLOUD_PROJECT.",
+  WORKSPACE_GMAIL_TOPIC: "Derived from GOOGLE_CLOUD_PROJECT.",
+  WORKSPACE_GMAIL_SUBSCRIPTION: "Derived from GOOGLE_CLOUD_PROJECT.",
+  WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL: "Derived from GOOGLE_CLOUD_PROJECT.",
+  WORKSPACE_DRIVE_WEBHOOK_URL: "Derived from NEXT_PUBLIC_PRODUCT_URL.",
+  WORKSPACE_PUBSUB_PUSH_AUDIENCE: "Derived from NEXT_PUBLIC_PRODUCT_URL.",
+  GOOGLE_OAUTH_REDIRECT_URI: "Derived from NEXT_PUBLIC_PRODUCT_URL.",
+  SENTINEL_GCP_BUDGET_ID: "Derived from GOOGLE_CLOUD_BILLING_ACCOUNT_ID and SENTINEL_GCP_BUDGET_SHORT_ID.",
+  SENTINEL_GEMINI_API_KEY_ID: "Derived from GOOGLE_CLOUD_PROJECT_NUMBER and SENTINEL_GEMINI_API_KEY_SHORT_ID."
+};
 const prohibitedCliPatterns = [
   /(^|-)token($|=)/iu,
   /(^|-)password($|=)/iu,
@@ -336,6 +351,22 @@ function cloudRunActionDetailsForBlocker({ action, state }) {
 
   const text = String(action);
 
+  if (/direct non-secret Cloud Run render input/iu.test(text)) {
+    return cloudRunValueDetailsForKeys({
+      keys: splitCloudRunValueKeysByEntryMode(state.missingStrictKeys, state).direct,
+      state,
+      fallbackStatus: "missing"
+    });
+  }
+
+  if (/derived Cloud Run render value/iu.test(text)) {
+    return cloudRunValueDetailsForKeys({
+      keys: splitCloudRunValueKeysByEntryMode(state.missingStrictKeys, state).derived,
+      state,
+      fallbackStatus: "missing"
+    });
+  }
+
   if (/required non-secret Cloud Run render value/iu.test(text)) {
     return cloudRunValueDetailsForKeys({
       keys: state.missingStrictKeys,
@@ -391,18 +422,24 @@ function cloudRunIntakeByKey(state) {
 }
 
 function cloudRunValueDetail({ key, intake, status, fix }) {
+  const derivationHint = String(intake?.derivationHint || derivedCloudRunRenderValueGuidance[key] || "");
+  const fallbackFix = derivationHint
+    ? `${key} is normally derived. ${derivationHint} Fill the base value(s), rerun the audit, and set ${key} directly only if the generated value is wrong for your environment.`
+    : `Fill ${key} in the private render-values file with a reviewed non-secret production value.`;
+
   return {
     key,
     owner: String(intake?.owner || "engineering"),
     status: String(intake?.status || status || "pending"),
     source: String(intake?.source || "render-values-audit"),
-    fix: String(fix || `Fill ${key} in the private render-values file with a reviewed non-secret production value.`),
+    derivationHint,
+    fix: String(fix || fallbackFix),
     acceptedProof: String(intake?.acceptedProof || "Reviewed non-secret deployment value and private operator evidence.")
   };
 }
 
 function isActionableCloudRunProgressBlocker(action) {
-  return /required non-secret Cloud Run render value|placeholder render value|render-value consistency blocker|render-values audit is ready-to-render/iu.test(
+  return /direct non-secret Cloud Run render input|derived Cloud Run render value|required non-secret Cloud Run render value|placeholder render value|render-value consistency blocker|render-values audit is ready-to-render/iu.test(
     String(action)
   );
 }
@@ -877,9 +914,17 @@ function cloudRunRenderValueBlockers(state) {
   const blockers = [];
 
   if (state.missingStrictKeys.length > 0) {
-    blockers.push(
-      `Fill ${state.missingStrictKeys.length} required non-secret Cloud Run render value(s): ${summarizeList(state.missingStrictKeys)}.`
-    );
+    const groupedKeys = splitCloudRunValueKeysByEntryMode(state.missingStrictKeys, state);
+
+    if (groupedKeys.direct.length > 0) {
+      blockers.push(`Fill ${groupedKeys.direct.length} direct non-secret Cloud Run render input(s): ${summarizeList(groupedKeys.direct)}.`);
+    }
+
+    if (groupedKeys.derived.length > 0) {
+      blockers.push(
+        `Derived Cloud Run render value(s) should be generated after base inputs are real; verify or override ${groupedKeys.derived.length}: ${summarizeList(groupedKeys.derived)}.`
+      );
+    }
   }
 
   if (state.placeholderKeys.length > 0) {
@@ -896,6 +941,15 @@ function cloudRunRenderValueBlockers(state) {
   }
 
   return blockers;
+}
+
+function splitCloudRunValueKeysByEntryMode(keys, state) {
+  const details = cloudRunValueDetailsForKeys({ keys, state, fallbackStatus: "pending" });
+
+  return {
+    direct: details.filter((detail) => !detail.derivationHint).map((detail) => detail.key),
+    derived: details.filter((detail) => detail.derivationHint).map((detail) => detail.key)
+  };
 }
 
 function summarizeList(values) {
@@ -2447,12 +2501,13 @@ function renderOwnerPacketMarkdown(packet, report) {
             "Action details:",
             "",
             markdownTable(
-              ["Key", "Status", "Source", "Owner", "Fix", "Private proof to keep"],
+              ["Key", "Status", "Source", "Owner", "Derivation / Override Guidance", "Fix", "Private proof to keep"],
               row.actionDetails.map((detail) => [
                 detail.key,
                 detail.status,
                 detail.source,
                 detail.owner,
+                detail.derivationHint || "direct operator value",
                 detail.fix,
                 detail.acceptedProof
               ])
@@ -2554,12 +2609,13 @@ function renderLocalSubmissionMarkdown(report) {
           "Action details:",
           "",
           markdownTable(
-            ["Key", "Status", "Source", "Owner", "Fix", "Private proof to keep"],
+            ["Key", "Status", "Source", "Owner", "Derivation / Override Guidance", "Fix", "Private proof to keep"],
             nextCodeAction.actionDetails.map((detail) => [
               detail.key,
               detail.status,
               detail.source,
               detail.owner,
+              detail.derivationHint || "direct operator value",
               detail.fix,
               detail.acceptedProof
             ])

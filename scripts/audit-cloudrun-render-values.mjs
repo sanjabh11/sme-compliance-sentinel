@@ -825,6 +825,7 @@ function evidenceRow(item) {
     requiredBeforePublicClaim: item.requiredBeforePublicClaim,
     acceptedProof: item.acceptedProof,
     privateHandling: item.privateHandling,
+    derivationHint: item.derivationHint,
     fix: item.fix
   };
 }
@@ -881,7 +882,11 @@ function renderMarkdown(packet) {
       ? packet.renderValueIntake
           .filter((item) => !["ready", "attested"].includes(item.status))
           .slice(0, 40)
-          .map((item) => `- ${item.key} [${item.status}/${item.category}/${item.owner}]: ${item.fix}`)
+          .map((item) => {
+            const derivation = item.derivationHint ? ` Derivation / Override Guidance: ${item.derivationHint}` : "";
+
+            return `- ${item.key} [${item.status}/${item.category}/${item.owner}]: ${item.fix}${derivation}`;
+          })
       : ["- none"]),
     "",
     "## Value Consistency",
@@ -936,10 +941,11 @@ function renderEvidenceMarkdown(packet) {
     "## Required Before Cloud Run Dry-Run",
     ...(packet.requiredBeforeDryRun.length
       ? [
-          "| Key | Owner | Status | Fix |",
-          "|---|---|---|---|",
+          "| Key | Owner | Status | Derivation / Override Guidance | Fix |",
+          "|---|---|---|---|---|",
           ...packet.requiredBeforeDryRun.map(
-            (item) => `| ${escapeTable(item.key)} | ${escapeTable(item.owner)} | ${escapeTable(item.status)} | ${escapeTable(item.fix)} |`
+            (item) =>
+              `| ${escapeTable(item.key)} | ${escapeTable(item.owner)} | ${escapeTable(item.status)} | ${escapeTable(item.derivationHint || "direct operator value")} | ${escapeTable(item.fix)} |`
           )
         ]
       : ["- none"]),

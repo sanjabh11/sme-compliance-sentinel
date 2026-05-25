@@ -564,6 +564,7 @@ describe("Cloud Run render-values audit", () => {
       valuesPath: "docs/deployment/cloudrun-render-values.template.json",
       outDir: tempDir
     });
+    const auditMarkdown = await readFile(packet.markdownPath, "utf8");
 
     expect(packet.status).toBe("needs-values");
     expect(packet.readyForStrictRender).toBe(false);
@@ -596,6 +597,10 @@ describe("Cloud Run render-values audit", () => {
         expect.objectContaining({
           key: "NEXT_PUBLIC_PRODUCT_URL",
           status: "placeholder"
+        }),
+        expect.objectContaining({
+          key: "SENTINEL_CLOUD_RUN_IMAGE",
+          derivationHint: expect.stringContaining("SENTINEL_RELEASE_ID")
         })
       ])
     );
@@ -628,9 +633,18 @@ describe("Cloud Run render-values audit", () => {
           key: "SENTINEL_RELEASE_ID",
           category: "release-integrity",
           status: "placeholder"
+        }),
+        expect.objectContaining({
+          key: "SENTINEL_CLOUD_RUN_IMAGE",
+          category: "gcp-foundation",
+          source: "derived-or-env",
+          derivationHint: expect.stringContaining("GOOGLE_CLOUD_PROJECT"),
+          fix: expect.stringContaining("normally derived")
         })
       ])
     );
+    expect(auditMarkdown).toContain("Derivation / Override Guidance");
+    expect(auditMarkdown).toContain("Derived from SENTINEL_CLOUD_RUN_REGION");
     expect(packet.nextActions.join(" ")).toContain("Fill the missing non-secret values");
     expect(packet.auditPath).toContain("cloudrun-render-values-audit.json");
     expect(packet.evidencePacketPath).toContain("cloudrun-render-evidence-packet.json");

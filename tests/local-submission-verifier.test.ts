@@ -44,6 +44,7 @@ type LocalSubmissionReport = {
         owner: string;
         status: string;
         source: string;
+        derivationHint?: string;
         fix: string;
         acceptedProof: string;
       }>;
@@ -128,6 +129,7 @@ type LocalSubmissionReport = {
           owner: string;
           status: string;
           source: string;
+          derivationHint?: string;
           fix: string;
           acceptedProof: string;
         }>;
@@ -153,6 +155,7 @@ type LocalSubmissionReport = {
         owner: string;
         status: string;
         source: string;
+        derivationHint?: string;
         fix: string;
         acceptedProof: string;
       }>;
@@ -623,7 +626,15 @@ describe("local XPRIZE submission verifier", () => {
           recommendedNextCodeControllableAction?: {
             phaseId: string;
             action: string;
-            actionDetails?: Array<{ key: string; status: string; source: string; owner: string; fix: string; acceptedProof: string }>;
+            actionDetails?: Array<{
+              key: string;
+              status: string;
+              source: string;
+              owner: string;
+              derivationHint?: string;
+              fix: string;
+              acceptedProof: string;
+            }>;
             commands: string[];
             privateArtifactPaths: string[];
           };
@@ -1088,14 +1099,16 @@ describe("local XPRIZE submission verifier", () => {
       expect(row?.done.join(" ")).toContain("cloudrun-render-handoff JSON/Markdown");
       expect(row?.done.join(" ")).toContain("cloudrun-render-handoff-verifier JSON");
       expect(row?.done.join(" ")).toContain("render-values audit JSON/Markdown");
-      expect(row?.pending.join(" ")).toContain("Fill 9 required non-secret Cloud Run render value(s)");
+      expect(row?.pending.join(" ")).toContain("Fill 3 direct non-secret Cloud Run render input(s)");
+      expect(row?.pending.join(" ")).toContain("Derived Cloud Run render value(s) should be generated");
       expect(row?.pending.join(" ")).toContain("SENTINEL_GEMINI_API_KEY_ID");
       expect(row?.pending.join(" ")).not.toContain("+1 more");
       expect(row?.pending.join(" ")).toContain("Replace 1 placeholder render value(s)");
       expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain(
-        "Fill 9 required non-secret Cloud Run render value(s)"
+        "Fill 3 direct non-secret Cloud Run render input(s)"
       );
-      expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("SENTINEL_GEMINI_API_KEY_ID");
+      expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("GOOGLE_CLOUD_BILLING_ACCOUNT_ID");
+      expect(report.phasePlan.recommendedNextCodeControllableAction.action).not.toContain("SENTINEL_GEMINI_API_KEY_ID");
       expect(report.phasePlan.recommendedNextCodeControllableAction.action).not.toContain("Prepare and verify");
       expect(report.phasePlan.recommendedNextCodeControllableAction.actionDetails).toEqual(
         expect.arrayContaining([
@@ -1113,12 +1126,14 @@ describe("local XPRIZE submission verifier", () => {
       );
       expect(summaryMarkdown).toContain("Action details:");
       expect(summaryMarkdown).toContain("GOOGLE_CLOUD_PROJECT");
+      expect(summaryMarkdown).toContain("Derivation / Override Guidance");
       expect(summaryMarkdown).toContain("Signed-out hosted product smoke proof.");
       expect(row?.pending.join(" ")).toContain("Resolve render-value consistency blocker SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS");
       expect(row?.pending.join(" ")).toContain("Generate the dry-run preflight packet only after the render-values audit is ready-to-render");
       expect(row?.evidence).toContain("private-artifact:render-values-audit=blocked");
       expect(row?.evidence).toContain("private-artifact=done");
-      expect(progressRows.map((item) => item.action).join(" ")).toContain("Fill 9 required non-secret Cloud Run render value(s)");
+      expect(progressRows.map((item) => item.action).join(" ")).toContain("Fill 3 direct non-secret Cloud Run render input(s)");
+      expect(progressRows.map((item) => item.action).join(" ")).toContain("Derived Cloud Run render value(s) should be generated");
       expect(progressRows.map((item) => item.action).join(" ")).toContain("SENTINEL_GEMINI_API_KEY_ID");
       expect(progressRows.map((item) => item.action).join(" ")).not.toContain("+1 more");
       expect(progressRows.map((item) => item.action).join(" ")).toContain("Replace 1 placeholder render value(s)");
@@ -1129,7 +1144,7 @@ describe("local XPRIZE submission verifier", () => {
       expect(
         progressRows.some((item) => item.checklist?.some((entry) => entry.includes("Fill only non-secret production values")))
       ).toBe(true);
-      expect(progressRows.find((item) => item.action.includes("required non-secret"))?.actionDetails).toEqual(
+      expect(progressRows.find((item) => item.action.includes("direct non-secret"))?.actionDetails).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             key: "GOOGLE_CLOUD_PROJECT",
@@ -1140,6 +1155,15 @@ describe("local XPRIZE submission verifier", () => {
             key: "NEXT_PUBLIC_PRODUCT_URL",
             status: "missing",
             acceptedProof: "Signed-out hosted product smoke proof."
+          })
+        ])
+      );
+      expect(progressRows.find((item) => item.action.includes("Derived Cloud Run render value"))?.actionDetails).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            key: "SENTINEL_GEMINI_API_KEY_ID",
+            derivationHint: expect.stringContaining("GOOGLE_CLOUD_PROJECT_NUMBER"),
+            fix: expect.stringContaining("normally derived")
           })
         ])
       );
@@ -1156,8 +1180,8 @@ describe("local XPRIZE submission verifier", () => {
           acceptedProof: "Gemini API key server restriction proof."
         })
       ]);
-      expect(engineeringPacket?.nextAction).toContain("Fill 9 required non-secret Cloud Run render value(s)");
-      expect(engineeringPacket?.nextAction).toContain("SENTINEL_GEMINI_API_KEY_ID");
+      expect(engineeringPacket?.nextAction).toContain("Fill 3 direct non-secret Cloud Run render input(s)");
+      expect(engineeringPacket?.nextAction).not.toContain("SENTINEL_GEMINI_API_KEY_ID");
       expect(engineeringPacket?.nextAction).not.toContain("+1 more");
       expect(report.phasePlan.phases.find((phase) => phase.id === "hosted-proof-capture")?.status).toBe("external-required");
       expect(report.overallStatus).toBe("blocked");

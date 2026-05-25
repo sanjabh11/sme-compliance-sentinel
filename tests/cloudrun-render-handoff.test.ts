@@ -145,6 +145,15 @@ describe("Cloud Run render handoff", () => {
     expect(handoff.privateValueChecklist.requiredBeforeDryRunCount).toBeGreaterThan(0);
     expect(handoff.privateValueChecklist.publicClaimEvidenceCount).toBeGreaterThan(0);
     expect(handoff.privateValueChecklist.requiredBeforeDryRun.some((row) => row.key === "GOOGLE_CLOUD_PROJECT")).toBe(true);
+    expect(handoff.privateValueChecklist.requiredBeforeDryRun).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "SENTINEL_CLOUD_RUN_IMAGE",
+          derivationHint: expect.stringContaining("SENTINEL_RELEASE_ID"),
+          fix: expect.stringContaining("normally derived")
+        })
+      ])
+    );
     expect(handoff.privateValueChecklist.consistencyBlockers.some((row) => row.key === "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS")).toBe(true);
     expect(handoff.privateValueChecklist.process.join(" ")).toContain("never paste secret values");
     expect(handoff.privateValueChecklist.process.join(" ")).toContain("before any gcloud dry-run");
@@ -167,6 +176,8 @@ describe("Cloud Run render handoff", () => {
     expect(handoffMarkdown).toContain("Cloud Run Render Handoff");
     expect(handoffMarkdown).toContain("ready-for-private-values");
     expect(handoffMarkdown).toContain("Private Value Fill Checklist");
+    expect(handoffMarkdown).toContain("Derivation / Override Guidance");
+    expect(handoffMarkdown).toContain("Derived from SENTINEL_CLOUD_RUN_REGION");
     expect(handoffMarkdown).toContain("GOOGLE_CLOUD_PROJECT");
     expect(handoffMarkdown).toContain("Public Claim Evidence Queue");
     expect(handoffJson).toMatchObject({

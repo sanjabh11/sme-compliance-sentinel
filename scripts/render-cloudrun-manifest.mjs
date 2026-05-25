@@ -35,6 +35,22 @@ const derivedValueKeys = [
 
 const secretVersionKeys = (deploymentContract.requiredSecretEnv ?? []).map((entry) => entry.versionKey);
 
+const derivedValueGuidance = {
+  SENTINEL_CLOUD_RUN_IMAGE:
+    "Derived from SENTINEL_CLOUD_RUN_REGION, GOOGLE_CLOUD_PROJECT, and SENTINEL_RELEASE_ID.",
+  SENTINEL_CLOUD_RUN_SERVICE_ACCOUNT_EMAIL: "Derived from GOOGLE_CLOUD_PROJECT.",
+  SENTINEL_PRIVATE_EVIDENCE_BUCKET: "Derived from GOOGLE_CLOUD_PROJECT.",
+  SENTINEL_BUDGET_PUBSUB_TOPIC: "Derived from GOOGLE_CLOUD_PROJECT.",
+  WORKSPACE_GMAIL_TOPIC: "Derived from GOOGLE_CLOUD_PROJECT.",
+  WORKSPACE_GMAIL_SUBSCRIPTION: "Derived from GOOGLE_CLOUD_PROJECT.",
+  WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL: "Derived from GOOGLE_CLOUD_PROJECT.",
+  WORKSPACE_DRIVE_WEBHOOK_URL: "Derived from NEXT_PUBLIC_PRODUCT_URL.",
+  WORKSPACE_PUBSUB_PUSH_AUDIENCE: "Derived from NEXT_PUBLIC_PRODUCT_URL.",
+  GOOGLE_OAUTH_REDIRECT_URI: "Derived from NEXT_PUBLIC_PRODUCT_URL.",
+  SENTINEL_GCP_BUDGET_ID: "Derived from GOOGLE_CLOUD_BILLING_ACCOUNT_ID and SENTINEL_GCP_BUDGET_SHORT_ID.",
+  SENTINEL_GEMINI_API_KEY_ID: "Derived from GOOGLE_CLOUD_PROJECT_NUMBER and SENTINEL_GEMINI_API_KEY_SHORT_ID."
+};
+
 const secretVersionEnvNames = Object.fromEntries(
   (deploymentContract.requiredSecretEnv ?? []).map((entry) => [entry.versionKey, entry.envName])
 );
@@ -635,6 +651,7 @@ function buildRenderValueIntake({
       requiredBeforePublicClaim: Boolean(manualFlag),
       acceptedProof: metadata.acceptedProof,
       privateHandling: metadata.privateHandling,
+      derivationHint: metadata.derivationHint,
       fix: renderValueIntakeFix({ key, status, blocker, manualFlag, secretVersion, metadata })
     };
   });
@@ -670,6 +687,10 @@ function renderValueIntakeFix({ key, status, blocker, manualFlag, secretVersion,
   }
 
   if (status === "missing" || status === "placeholder") {
+    if (metadata.derivationHint) {
+      return `${key} is normally derived. ${metadata.derivationHint} Fill the base value(s), rerun the audit, and set ${key} directly only if the generated value is wrong for your environment.`;
+    }
+
     return `Fill ${key} in the private render-values file with reviewed ${metadata.valueKind}.`;
   }
 
@@ -722,7 +743,8 @@ function intakeMetadataForKey(key) {
     owner,
     valueKind: valueKindForCategory(category),
     acceptedProof: acceptedProofForCategory(category),
-    privateHandling: privateHandlingForCategory(category)
+    privateHandling: privateHandlingForCategory(category),
+    derivationHint: derivedValueGuidance[key] ?? ""
   };
 }
 

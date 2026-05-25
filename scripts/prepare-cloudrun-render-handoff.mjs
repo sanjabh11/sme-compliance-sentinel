@@ -470,6 +470,7 @@ function checklistRow(item) {
     requiredBeforePublicClaim: item.requiredBeforePublicClaim,
     acceptedProof: item.acceptedProof,
     privateHandling: item.privateHandling,
+    derivationHint: item.derivationHint,
     fix: item.fix
   };
 }
@@ -612,8 +613,14 @@ function renderMarkdown(handoff) {
     ...(handoff.privateValueChecklist.requiredBeforeDryRun.length
       ? [
           markdownTable(
-            ["Key", "Owner", "Status", "Fix"],
-            handoff.privateValueChecklist.requiredBeforeDryRun.map((item) => [item.key, item.owner, item.status, item.fix])
+            ["Key", "Owner", "Status", "Derivation / Override Guidance", "Fix"],
+            handoff.privateValueChecklist.requiredBeforeDryRun.map((item) => [
+              item.key,
+              item.owner,
+              item.status,
+              item.derivationHint || "direct operator value",
+              item.fix
+            ])
           )
         ]
       : ["- none"]),
