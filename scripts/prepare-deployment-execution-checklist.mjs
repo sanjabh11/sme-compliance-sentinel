@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 /* global console, process */
 
-import { createHash } from "node:crypto";
-import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 
 const defaultBundleDir = "artifacts/hosted-proof/RELEASE_ID";
 const defaultChecklistFileName = "deployment-execution-checklist.json";
-const defaultMarkdownFileName = "deployment-execution-checklist.md";
 const defaultResultsPath = "";
 const defaultResultsTemplatePath = "";
 
@@ -153,7 +152,7 @@ export async function writeDeploymentCommandResultsTemplate(options) {
     })
   };
 
-  await mkdir(dirname(outputPath), { recursive: true });
+  await assertWritableRegularFilePath(outputPath, "Deployment command results template output file");
   await writeJson(outputPath, template);
 
   return {
@@ -225,14 +224,12 @@ export async function prepareDeploymentExecutionChecklist(options) {
     disclaimer:
       "This checklist verifies command-result bookkeeping for a deployment release. It does not run cloud commands, deploy Cloud Run, call Gemini, or certify external proof."
   };
-  const outFile = options.outFile || join(bundleDir, defaultChecklistFileName);
-  const markdownFile = outFile.endsWith(".json")
-    ? `${outFile.slice(0, -".json".length)}.md`
-    : join(dirname(outFile), defaultMarkdownFileName);
+  const { outFile, markdownFile } = resolveChecklistOutputFiles(options.outFile || join(bundleDir, defaultChecklistFileName));
 
-  await mkdir(dirname(outFile), { recursive: true });
+  await assertWritableRegularFilePath(outFile, "Deployment execution checklist output file");
+  await assertWritableRegularFilePath(markdownFile, "Deployment execution checklist Markdown output file");
   await writeJson(outFile, checklist);
-  await writeFile(markdownFile, renderMarkdown(checklist), "utf8");
+  await writeTextFile(markdownFile, renderMarkdown(checklist), "Deployment execution checklist Markdown output file");
 
   if (options.strict && checklist.overallStatus !== "passed") {
     const error = new Error(`Deployment execution checklist is ${checklist.overallStatus}; see ${outFile}.`);
@@ -475,14 +472,138 @@ function buildResultsTemplateLineage(input) {
 
 async function readJson(path) {
   try {
-    return JSON.parse(await readFile(path, "utf8"));
+    return JSON.parse(await readRegularTextFileOrThrow(path, "Deployment execution checklist JSON input"));
   } catch (error) {
     throw new Error(`Unable to read JSON from ${path}: ${error instanceof Error ? error.message : "unknown error"}`);
   }
 }
 
 async function writeJson(path, value) {
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await writeTextFile(path, `${JSON.stringify(value, null, 2)}\n`, "Deployment execution checklist JSON output file");
+}
+
+async function writeTextFile(path, content, label) {
+  const absolutePath = resolve(path);
+  await assertWritableRegularFilePath(absolutePath, label);
+  const tempPath = join(dirname(absolutePath), `.${basename(absolutePath)}.${randomUUID()}.tmp`);
+
+  try {
+    await writeFile(tempPath, content, { encoding: "utf8", flag: "wx" });
+    await rename(tempPath, absolutePath);
+  } catch (error) {
+    await rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
+}
+
+async function readRegularTextFileOrThrow(path, label) {
+  const resolvedPath = resolve(path);
+  await assertDirectoryPathSafe(dirname(resolvedPath), `${label} parent directory`);
+  const stats = await lstat(resolvedPath);
+
+  if (stats.isSymbolicLink()) {
+    throw new Error(`${label} ${resolvedPath} is a symbolic link; copy the reviewed JSON into a regular private file before checklist preparation.`);
+  }
+
+  if (!stats.isFile()) {
+    throw new Error(`${label} ${resolvedPath} is not a regular file.`);
+  }
+
+  return readFile(resolvedPath, "utf8");
+}
+
+function resolveChecklistOutputFiles(outputPath) {
+  const outFile = resolve(outputPath);
+
+  if (!outFile.endsWith(".json")) {
+    throw new Error("Deployment execution checklist --out-file must end in .json so the Markdown evidence file cannot overwrite JSON.");
+  }
+
+  const markdownFile = `${outFile.slice(0, -".json".length)}.md`;
+
+  if (resolve(markdownFile) === outFile) {
+    throw new Error("Deployment execution checklist JSON and Markdown output paths must be distinct.");
+  }
+
+  return { outFile, markdownFile };
+}
+
+async function assertWritableRegularFilePath(path, label) {
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+
+  await assertDirectoryPathSafe(parentDirectory, `${label} parent directory`);
+  await mkdir(parentDirectory, { recursive: true });
+  await assertDirectoryExistsSafe(parentDirectory, `${label} parent directory`);
+  await assertRegularFileIfExists(absolutePath, label);
+}
+
+async function assertDirectoryPathSafe(path, label) {
+  const directories = [];
+  let cursor = resolve(path);
+
+  while (true) {
+    directories.push(cursor);
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+
+  for (const directory of directories.reverse()) {
+    let fileStat;
+
+    try {
+      fileStat = await lstat(directory);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+
+    if (fileStat.isSymbolicLink()) {
+      throw new Error(`${label} ${directory} is a symbolic link; use a regular private directory before deployment checklist preparation.`);
+    }
+
+    if (!fileStat.isDirectory()) {
+      throw new Error(`${label} ${directory} is not a directory; use a regular private directory before deployment checklist preparation.`);
+    }
+  }
+}
+
+async function assertDirectoryExistsSafe(path, label) {
+  const fileStat = await lstat(path);
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private directory before deployment checklist preparation.`);
+  }
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${path} is not a directory; use a regular private directory before deployment checklist preparation.`);
+  }
+}
+
+async function assertRegularFileIfExists(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = await lstat(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private file path before deployment checklist preparation.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${path} is not a regular file; use a regular private file path before deployment checklist preparation.`);
+  }
 }
 
 function renderMarkdown(checklist) {

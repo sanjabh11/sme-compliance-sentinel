@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -325,6 +325,123 @@ describe("deployment execution checklist", () => {
       fileType: "not-regular-file"
     });
     expect(entriesById[directoryCommandId].blockers.join(" ")).toContain("local evidence path is not a regular file");
+  });
+
+  it("fails closed when deployment checklist output paths would follow symlinks", async () => {
+    const {
+      deploymentImportRequiredCommandIds,
+      prepareDeploymentExecutionChecklist,
+      writeDeploymentCommandResultsTemplate
+    } = await loadChecklist();
+    const bundleDir = await makeBundle(deploymentImportRequiredCommandIds);
+    const realTemplateDir = join(bundleDir, "reviewed-template-output");
+    const symlinkedTemplateDir = join(bundleDir, "symlinked-template-output");
+    await mkdir(realTemplateDir);
+    await symlink(realTemplateDir, symlinkedTemplateDir);
+
+    await expect(
+      writeDeploymentCommandResultsTemplate({
+        bundleDir,
+        outputPath: join(symlinkedTemplateDir, "deployment-command-results.json")
+      })
+    ).rejects.toThrow(/symbolic link/u);
+    expect(await readdir(realTemplateDir)).toEqual([]);
+
+    const templateTargetPath = join(bundleDir, "reviewed-template-target.json");
+    const templateSymlinkPath = join(bundleDir, "deployment-command-results.symlink.json");
+    await writeFile(templateTargetPath, "unchanged-template\n", "utf8");
+    await symlink(templateTargetPath, templateSymlinkPath);
+    await expect(
+      writeDeploymentCommandResultsTemplate({
+        bundleDir,
+        outputPath: templateSymlinkPath
+      })
+    ).rejects.toThrow(/symbolic link/u);
+    expect(await readFile(templateTargetPath, "utf8")).toBe("unchanged-template\n");
+
+    const resultsPath = await writeFilledResultsTemplate({
+      bundleDir,
+      commandIds: deploymentImportRequiredCommandIds,
+      writeDeploymentCommandResultsTemplate
+    });
+    const markdownOutFile = join(bundleDir, "deployment-execution-checklist.md");
+    await writeFile(markdownOutFile, "unchanged-md-outfile\n", "utf8");
+    await expect(
+      prepareDeploymentExecutionChecklist({
+        bundleDir,
+        resultsPath,
+        outFile: markdownOutFile
+      })
+    ).rejects.toThrow(/must end in \.json/u);
+    expect(await readFile(markdownOutFile, "utf8")).toBe("unchanged-md-outfile\n");
+
+    const checklistTargetPath = join(bundleDir, "reviewed-checklist-target.json");
+    const checklistSymlinkPath = join(bundleDir, "deployment-execution-checklist.symlink.json");
+    await writeFile(checklistTargetPath, "unchanged-checklist\n", "utf8");
+    await symlink(checklistTargetPath, checklistSymlinkPath);
+    await expect(
+      prepareDeploymentExecutionChecklist({
+        bundleDir,
+        resultsPath,
+        outFile: checklistSymlinkPath
+      })
+    ).rejects.toThrow(/symbolic link/u);
+    expect(await readFile(checklistTargetPath, "utf8")).toBe("unchanged-checklist\n");
+
+    const regularChecklistPath = join(bundleDir, "deployment-execution-checklist.regular.json");
+    const markdownSymlinkPath = join(bundleDir, "deployment-execution-checklist.regular.md");
+    const markdownTargetPath = join(bundleDir, "reviewed-checklist-target.md");
+    await writeFile(regularChecklistPath, "unchanged-json\n", "utf8");
+    await writeFile(markdownTargetPath, "unchanged-markdown\n", "utf8");
+    await symlink(markdownTargetPath, markdownSymlinkPath);
+    await expect(
+      prepareDeploymentExecutionChecklist({
+        bundleDir,
+        resultsPath,
+        outFile: regularChecklistPath
+      })
+    ).rejects.toThrow(/symbolic link/u);
+    expect(await readFile(regularChecklistPath, "utf8")).toBe("unchanged-json\n");
+    expect(await readFile(markdownTargetPath, "utf8")).toBe("unchanged-markdown\n");
+  });
+
+  it("fails closed when deployment checklist input JSON paths have symlinked parents", async () => {
+    const {
+      deploymentImportRequiredCommandIds,
+      prepareDeploymentExecutionChecklist,
+      writeDeploymentCommandResultsTemplate
+    } = await loadChecklist();
+    const bundleDir = await makeBundle(deploymentImportRequiredCommandIds);
+    const symlinkedBundleDir = join(bundleDir, "symlinked-bundle");
+    await symlink(bundleDir, symlinkedBundleDir);
+    await expect(
+      writeDeploymentCommandResultsTemplate({
+        bundleDir: symlinkedBundleDir,
+        outputPath: join(bundleDir, "should-not-write-from-symlinked-bundle.json")
+      })
+    ).rejects.toThrow(/symbolic link/u);
+
+    const resultsPath = await writeFilledResultsTemplate({
+      bundleDir,
+      commandIds: deploymentImportRequiredCommandIds,
+      writeDeploymentCommandResultsTemplate
+    });
+    const realResultsDir = join(bundleDir, "reviewed-results-dir");
+    const symlinkedResultsDir = join(bundleDir, "symlinked-results-dir");
+    const symlinkedResultsPath = join(symlinkedResultsDir, "deployment-command-results.json");
+    const blockedOutFile = join(bundleDir, "should-not-write-from-symlinked-results.json");
+    await mkdir(realResultsDir);
+    await writeFile(join(realResultsDir, "deployment-command-results.json"), await readFile(resultsPath, "utf8"), "utf8");
+    await symlink(realResultsDir, symlinkedResultsDir);
+
+    await expect(
+      prepareDeploymentExecutionChecklist({
+        bundleDir,
+        resultsPath: symlinkedResultsPath,
+        outFile: blockedOutFile
+      })
+    ).rejects.toThrow(/symbolic link/u);
+    await expect(readFile(blockedOutFile, "utf8")).rejects.toThrow(/ENOENT/u);
   });
 
   it("blocks strict mode when operator results are missing", async () => {
