@@ -353,17 +353,17 @@ function cloudRunActionDetailsForBlocker({ action, state }) {
 
   if (/direct non-secret Cloud Run render input/iu.test(text)) {
     return cloudRunValueDetailsForKeys({
-      keys: splitCloudRunValueKeysByEntryMode(state.missingStrictKeys, state).direct,
+      keys: cloudRunPendingRenderKeysByEntryMode(state).direct,
       state,
-      fallbackStatus: "missing"
+      fallbackStatus: "pending"
     });
   }
 
   if (/derived Cloud Run render value/iu.test(text)) {
     return cloudRunValueDetailsForKeys({
-      keys: splitCloudRunValueKeysByEntryMode(state.missingStrictKeys, state).derived,
+      keys: cloudRunPendingRenderKeysByEntryMode(state).derived,
       state,
-      fallbackStatus: "missing"
+      fallbackStatus: "pending"
     });
   }
 
@@ -912,23 +912,22 @@ function buildCloudRunRenderValueCheckpoints({ bucket, state }) {
 
 function cloudRunRenderValueBlockers(state) {
   const blockers = [];
+  const pendingKeys = uniqueStrings([...state.missingStrictKeys, ...state.placeholderKeys]);
 
-  if (state.missingStrictKeys.length > 0) {
-    const groupedKeys = splitCloudRunValueKeysByEntryMode(state.missingStrictKeys, state);
+  if (pendingKeys.length > 0) {
+    const groupedKeys = splitCloudRunValueKeysByEntryMode(pendingKeys, state);
 
     if (groupedKeys.direct.length > 0) {
-      blockers.push(`Fill ${groupedKeys.direct.length} direct non-secret Cloud Run render input(s): ${summarizeList(groupedKeys.direct)}.`);
+      blockers.push(
+        `Fill ${groupedKeys.direct.length} direct non-secret Cloud Run render input(s), including required values and placeholder helper bases: ${summarizeList(groupedKeys.direct)}.`
+      );
     }
 
     if (groupedKeys.derived.length > 0) {
       blockers.push(
-        `Derived Cloud Run render value(s) should be generated after base inputs are real; verify or override ${groupedKeys.derived.length}: ${summarizeList(groupedKeys.derived)}.`
+        `Derived Cloud Run render value(s) should be generated after direct/base inputs are real; verify or override ${groupedKeys.derived.length}: ${summarizeList(groupedKeys.derived)}.`
       );
     }
-  }
-
-  if (state.placeholderKeys.length > 0) {
-    blockers.push(`Replace ${state.placeholderKeys.length} placeholder render value(s): ${summarizeList(state.placeholderKeys)}.`);
   }
 
   for (const blocker of state.valueConsistencyBlockers.slice(0, 3)) {
@@ -950,6 +949,14 @@ function splitCloudRunValueKeysByEntryMode(keys, state) {
     direct: details.filter((detail) => !detail.derivationHint).map((detail) => detail.key),
     derived: details.filter((detail) => detail.derivationHint).map((detail) => detail.key)
   };
+}
+
+function cloudRunPendingRenderKeysByEntryMode(state) {
+  return splitCloudRunValueKeysByEntryMode(uniqueStrings([...state.missingStrictKeys, ...state.placeholderKeys]), state);
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.map(String).filter(Boolean))];
 }
 
 function summarizeList(values) {
