@@ -984,7 +984,27 @@ describe("local XPRIZE submission verifier", () => {
       writeFileSync(join(releaseDir, "cloudrun-render-handoff.json"), `${JSON.stringify({ overallStatus: "ready-for-private-values", releaseId }, null, 2)}\n`, "utf8");
       writeFileSync(join(releaseDir, "cloudrun-render-handoff.md"), "# Cloud Run Render Handoff\n", "utf8");
       writeFileSync(join(releaseDir, "cloudrun-render-handoff-verifier.json"), `${JSON.stringify({ overallStatus: "verified", releaseId }, null, 2)}\n`, "utf8");
-      writeFileSync(join(releaseDir, "cloudrun-render-values-audit.json"), `${JSON.stringify({ status: "needs-values", releaseId }, null, 2)}\n`, "utf8");
+      writeFileSync(
+        join(releaseDir, "cloudrun-render-values-audit.json"),
+        `${JSON.stringify(
+          {
+            status: "needs-values",
+            readyForStrictRender: false,
+            releaseId,
+            missingStrictKeys: ["GOOGLE_CLOUD_PROJECT", "NEXT_PUBLIC_PRODUCT_URL"],
+            placeholderKeys: ["GOOGLE_CLOUD_PROJECT"],
+            valueConsistencyBlockers: [
+              {
+                key: "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
+                fix: "Use concrete server IPv4 addresses."
+              }
+            ]
+          },
+          null,
+          2
+        )}\n`,
+        "utf8"
+      );
       writeFileSync(join(releaseDir, "cloudrun-render-values-audit.md"), "# Cloud Run Render Values Audit\n", "utf8");
       writeFileSync(join(releaseDir, "cloudrun-render-evidence-packet.json"), `${JSON.stringify({ overallStatus: "needs-values", releaseId }, null, 2)}\n`, "utf8");
       writeFileSync(join(releaseDir, "cloudrun-render-evidence-packet.md"), "# Cloud Run Render Evidence Packet\n", "utf8");
@@ -1001,7 +1021,11 @@ describe("local XPRIZE submission verifier", () => {
       expect(row?.done.join(" ")).toContain("cloudrun-render-handoff JSON/Markdown");
       expect(row?.done.join(" ")).toContain("cloudrun-render-handoff-verifier JSON");
       expect(row?.done.join(" ")).toContain("render-values audit JSON/Markdown");
-      expect(row?.pending.join(" ")).toContain("dry-run preflight packet and digest verifier");
+      expect(row?.pending.join(" ")).toContain("Fill 2 required non-secret Cloud Run render value(s)");
+      expect(row?.pending.join(" ")).toContain("Replace 1 placeholder render value(s)");
+      expect(row?.pending.join(" ")).toContain("Resolve render-value consistency blocker SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS");
+      expect(row?.pending.join(" ")).toContain("Generate the dry-run preflight packet only after the render-values audit is ready-to-render");
+      expect(row?.evidence).toContain("private-artifact:render-values-audit=blocked");
       expect(row?.evidence).toContain("private-artifact=done");
       expect(report.phasePlan.phases.find((phase) => phase.id === "hosted-proof-capture")?.status).toBe("external-required");
       expect(report.overallStatus).toBe("blocked");

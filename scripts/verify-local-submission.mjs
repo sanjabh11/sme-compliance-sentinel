@@ -630,8 +630,12 @@ function buildPhaseCheckpoints(phase, gatesById) {
   const evidenceCheckpoints = phase.evidenceNeeded.map((item) =>
     buildEvidenceCheckpoint({ phase, item, bucket, cloudRunArtifactState })
   );
+  const cloudRunRenderValueCheckpoints =
+    phase.id === "cloudrun-render-dry-run" && cloudRunArtifactState
+      ? buildCloudRunRenderValueCheckpoints({ bucket, state: cloudRunArtifactState })
+      : [];
 
-  return [...evidenceCheckpoints, ...gateCheckpoints];
+  return [...cloudRunRenderValueCheckpoints, ...evidenceCheckpoints, ...gateCheckpoints];
 }
 
 function buildEvidenceCheckpoint({ phase, item, bucket, cloudRunArtifactState }) {
@@ -721,9 +725,74 @@ function buildCloudRunEvidenceCheckpoint({ item, bucket, state }) {
         blockers: ["Rerun prepare:cloudrun-dry-run and verify:cloudrun-dry-run-packet before any gcloud dry-run."]
       };
     }
+
+    if (state.auditJsonExists && !state.renderValuesReady) {
+      return {
+        ...base,
+        status: "pending",
+        blockers: ["Generate the dry-run preflight packet only after the render-values audit is ready-to-render."]
+      };
+    }
   }
 
   return { ...base, status: "pending", blockers: [item] };
+}
+
+function buildCloudRunRenderValueCheckpoints({ bucket, state }) {
+  if (!state.auditJsonExists) {
+    return [];
+  }
+
+  const blockers = cloudRunRenderValueBlockers(state);
+
+  return [
+    {
+      label: "private render-values ready for strict render",
+      source: "private-artifact:render-values-audit",
+      bucket,
+      evidence: [
+        state.releaseId ? `release=${state.releaseId}` : "release=missing",
+        `audit-status=${state.auditStatus || "missing"}`,
+        `missing-strict-values=${state.missingStrictKeys.length}`,
+        `placeholder-values=${state.placeholderKeys.length}`,
+        `value-consistency-blockers=${state.valueConsistencyBlockers.length}`
+      ].join("; "),
+      status: state.renderValuesReady ? "done" : state.valueConsistencyBlockers.length > 0 ? "blocked" : "pending",
+      blockers: state.renderValuesReady ? [] : blockers
+    }
+  ];
+}
+
+function cloudRunRenderValueBlockers(state) {
+  const blockers = [];
+
+  if (state.missingStrictKeys.length > 0) {
+    blockers.push(
+      `Fill ${state.missingStrictKeys.length} required non-secret Cloud Run render value(s): ${summarizeList(state.missingStrictKeys)}.`
+    );
+  }
+
+  if (state.placeholderKeys.length > 0) {
+    blockers.push(`Replace ${state.placeholderKeys.length} placeholder render value(s): ${summarizeList(state.placeholderKeys)}.`);
+  }
+
+  for (const blocker of state.valueConsistencyBlockers.slice(0, 3)) {
+    const key = blocker?.key ? `${blocker.key}: ` : "";
+    blockers.push(`Resolve render-value consistency blocker ${key}${blocker?.fix || blocker?.id || "review the audit packet"}.`);
+  }
+
+  if (blockers.length === 0) {
+    blockers.push("Rerun audit:cloudrun-values until the private render-values audit is ready-to-render.");
+  }
+
+  return blockers;
+}
+
+function summarizeList(values, limit = 8) {
+  const visible = values.slice(0, limit);
+  const extra = values.length - visible.length;
+
+  return `${visible.join(", ")}${extra > 0 ? `, +${extra} more` : ""}`;
 }
 
 function readCloudRunRenderArtifactState() {
@@ -735,6 +804,7 @@ function readCloudRunRenderArtifactState() {
   const outDir = resolve(process.env.SENTINEL_CLOUD_RUN_RENDER_OUT_DIR || "artifacts/deployment", releaseId || "missing-release");
   const handoff = readPrivateJsonIfRegular(join(outDir, "cloudrun-render-handoff.json"));
   const handoffVerifier = readPrivateJsonIfRegular(join(outDir, "cloudrun-render-handoff-verifier.json"));
+  const audit = readPrivateJsonIfRegular(join(outDir, "cloudrun-render-values-audit.json"));
   const evidenceVerifier = readPrivateJsonIfRegular(join(outDir, "cloudrun-render-evidence-packet-verifier.json"));
   const dryRunVerifier = readPrivateJsonIfRegular(join(outDir, "cloudrun-dry-run-packet-verifier.json"));
 
@@ -752,7 +822,12 @@ function readCloudRunRenderArtifactState() {
     handoffMarkdownExists: isRegularFile(join(outDir, "cloudrun-render-handoff.md")),
     handoffVerifierExists: Boolean(handoffVerifier),
     handoffVerifierVerified: handoffVerifier?.overallStatus === "verified" && handoffVerifier?.releaseId === releaseId,
-    auditJsonExists: isRegularFile(join(outDir, "cloudrun-render-values-audit.json")),
+    auditJsonExists: Boolean(audit),
+    auditStatus: String(audit?.status ?? ""),
+    renderValuesReady: audit?.readyForStrictRender === true || audit?.status === "ready-to-render",
+    missingStrictKeys: Array.isArray(audit?.missingStrictKeys) ? audit.missingStrictKeys.map(String) : [],
+    placeholderKeys: Array.isArray(audit?.placeholderKeys) ? audit.placeholderKeys.map(String) : [],
+    valueConsistencyBlockers: Array.isArray(audit?.valueConsistencyBlockers) ? audit.valueConsistencyBlockers : [],
     auditMarkdownExists: isRegularFile(join(outDir, "cloudrun-render-values-audit.md")),
     evidencePacketExists: isRegularFile(join(outDir, "cloudrun-render-evidence-packet.json")),
     evidencePacketMarkdownExists: isRegularFile(join(outDir, "cloudrun-render-evidence-packet.md")),
