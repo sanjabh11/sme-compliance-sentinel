@@ -380,7 +380,7 @@ export async function verifyCloudRunRenderHandoff(path) {
     stopConditions: [
       "Do not run Cloud Run dry-run from this verifier alone; dry-run still requires filled production values, strict render, preflight packet, and digest verification.",
       "Do not set public XPRIZE proof flags from this verifier; public-claim rows require private proof and owner approval.",
-      "Regenerate the handoff and rerun this verifier after any handoff, audit, evidence packet, or Markdown edit."
+      "Regenerate the handoff and rerun this verifier after any private values, handoff, audit, evidence packet, or Markdown edit."
     ]
   };
 
@@ -453,6 +453,7 @@ function buildPrivateValueChecklist({ audit }) {
       "Open the private render-values file in the private operator environment only.",
       "Fill direct input rows first using non-secret production values or Secret Manager resource/version references; never paste secret values.",
       "Before filling SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS, record API Keys API restriction proof and a hosted Gemini smoke result; do not treat Cloud NAT static IP proof alone as Google API source-identity proof.",
+      "After any private values edit, rerun prepare:cloudrun-render-handoff before trusting the handoff verifier so the checklist, audit, and evidence packet are regenerated from the same values file.",
       "Rerun the audit after direct inputs are real, then verify derived values and override them only if generated values are wrong for the environment.",
       "Resolve value consistency blockers before strict audit, manifest render, or dry-run preflight.",
       "Leave public XPRIZE, revenue, user, Gemini, Workspace, judge-access, demo, and AI-operation evidence flags false until matching private proof exists.",

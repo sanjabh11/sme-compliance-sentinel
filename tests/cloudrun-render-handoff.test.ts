@@ -221,6 +221,8 @@ describe("Cloud Run render handoff", () => {
     expect(handoff.privateValueChecklist.process.join(" ")).toContain("Fill direct input rows first");
     expect(handoff.privateValueChecklist.process.join(" ")).toContain("API Keys API restriction proof");
     expect(handoff.privateValueChecklist.process.join(" ")).toContain("Cloud NAT static IP proof alone");
+    expect(handoff.privateValueChecklist.process.join(" ")).toContain("After any private values edit");
+    expect(handoff.privateValueChecklist.process.join(" ")).toContain("checklist, audit, and evidence packet");
     expect(handoff.privateValueChecklist.process.join(" ")).toContain("verify derived values");
     expect(handoff.privateValueChecklist.process.join(" ")).toContain("before any gcloud dry-run");
     expect(handoff.evidencePacketVerification.overallStatus).toBe("verified");
@@ -271,6 +273,7 @@ describe("Cloud Run render handoff", () => {
     expect(verified.summary.blocked).toBe(0);
     expect(verified.proofBoundary).toContain("does not deploy Cloud Run");
     expect(verified.stopConditions.join(" ")).toContain("Do not run Cloud Run dry-run");
+    expect(verified.stopConditions.join(" ")).toContain("after any private values");
     expect(verifierJson).toMatchObject({ overallStatus: "verified" });
   });
 
