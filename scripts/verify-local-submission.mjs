@@ -270,27 +270,32 @@ function buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReport
   const progressByPhaseId = new Map(phaseProgressChart.rows.map((row) => [row.phaseId, row]));
   const actionRows = phasePlan.phases.flatMap((phase) => {
     const phaseProgress = progressByPhaseId.get(phase.id);
-    const gateRows = phase.relatedGateIds
-      .map((gateId) => gatesById.get(gateId))
-      .filter(Boolean)
-      .flatMap((gate) => manualRowsForGate({ phase, phaseProgress, gate }));
-    const evidenceRows = phase.evidenceNeeded
-      .filter(() => phase.status !== "passed")
-      .map((evidence, index) =>
-        manualInterventionRow({
-          id: `${phase.id}-evidence-${index + 1}`,
-          phase,
-          phaseProgress,
-          source: "required-evidence",
-          status: manualStatusForPhaseEvidence(phase, evidence),
-          action: evidence,
-          evidenceNeeded: evidence,
-          commands: phase.commands,
-          stopCondition: phase.stopConditions[0] ?? "Stop until the required evidence exists.",
-          privateArtifactPaths: privateArtifactPathsForPhase(phase.id)
-        })
-      );
-    const phaseProgressRows = manualRowsForPhaseProgress({ phase, phaseProgress });
+    const includePhaseRows = !isLocallyCompleteCodeControllablePhase(phase);
+    const gateRows = includePhaseRows
+      ? phase.relatedGateIds
+          .map((gateId) => gatesById.get(gateId))
+          .filter(Boolean)
+          .flatMap((gate) => manualRowsForGate({ phase, phaseProgress, gate }))
+      : [];
+    const evidenceRows = includePhaseRows
+      ? phase.evidenceNeeded
+          .filter(() => phase.status !== "passed")
+          .map((evidence, index) =>
+            manualInterventionRow({
+              id: `${phase.id}-evidence-${index + 1}`,
+              phase,
+              phaseProgress,
+              source: "required-evidence",
+              status: manualStatusForPhaseEvidence(phase, evidence),
+              action: evidence,
+              evidenceNeeded: evidence,
+              commands: phase.commands,
+              stopCondition: phase.stopConditions[0] ?? "Stop until the required evidence exists.",
+              privateArtifactPaths: privateArtifactPathsForPhase(phase.id)
+            })
+          )
+      : [];
+    const phaseProgressRows = includePhaseRows ? manualRowsForPhaseProgress({ phase, phaseProgress }) : [];
 
     return [...phaseProgressRows, ...gateRows, ...evidenceRows];
   });
@@ -1373,10 +1378,20 @@ function buildPhasePlan(gateReports) {
       ]
     }
   ];
-  const phasesWithProgress = phases.map((phase) => ({
-    ...phase,
-    currentPhaseRemainingPercent: remainingPercentFromCounts(countCheckpoints(buildPhaseCheckpoints(phase, gatesById)))
-  }));
+  const phasesWithProgress = phases.map((phase) => {
+    const checkpointCounts = countCheckpoints(buildPhaseCheckpoints(phase, gatesById));
+    const locallyCompleteCodePhase =
+      (phase.bucket ?? bucketForPhase(phase)) === "code-controllable" &&
+      checkpointCounts.pending === 0 &&
+      checkpointCounts.blocked === 0 &&
+      checkpointCounts["external-required"] === 0;
+
+    return {
+      ...phase,
+      status: locallyCompleteCodePhase ? "local-ready-for-external-dry-run" : phase.status,
+      currentPhaseRemainingPercent: remainingPercentFromCounts(checkpointCounts)
+    };
+  });
   const nextPhase = phasesWithProgress.find((phase) => phase.status !== "passed") ?? phasesWithProgress.at(-1);
   const recommendedNextCodeControllableAction = buildRecommendedNextCodeControllableAction(phasesWithProgress);
 
@@ -1394,7 +1409,12 @@ function buildPhasePlan(gateReports) {
 }
 
 function buildRecommendedNextCodeControllableAction(phases) {
-  const phase = phases.find((candidate) => (candidate.bucket ?? bucketForPhase(candidate)) === "code-controllable" && candidate.status !== "passed");
+  const phase = phases.find(
+    (candidate) =>
+      (candidate.bucket ?? bucketForPhase(candidate)) === "code-controllable" &&
+      candidate.status !== "passed" &&
+      !isLocallyCompleteCodeControllablePhase(candidate)
+  );
 
   if (!phase) {
     return {
@@ -1430,6 +1450,10 @@ function buildRecommendedNextCodeControllableAction(phases) {
     stopCondition: phase.stopConditions[0] ?? "Stop until the selected code-controllable gate has command evidence.",
     proofBoundary: proofBoundaryForBucket("code-controllable")
   };
+}
+
+function isLocallyCompleteCodeControllablePhase(phase) {
+  return (phase.bucket ?? bucketForPhase(phase)) === "code-controllable" && phase.status === "local-ready-for-external-dry-run";
 }
 
 function codeControllableActionForPhase(phase) {

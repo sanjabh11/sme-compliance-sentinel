@@ -1345,6 +1345,73 @@ describe("local XPRIZE submission verifier", () => {
     }
   });
 
+  it("does not re-recommend Cloud Run prep after local render and dry-run artifacts are complete", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-cloudrun-complete-"));
+    const valuesPath = join(tempDir, "cloudrun-render-values.json");
+    const outDir = join(tempDir, "deployment");
+    const releaseId = "release-20260525-cloudrun-complete";
+    const releaseDir = join(outDir, releaseId);
+
+    try {
+      mkdirSync(releaseDir, { recursive: true });
+      writeFileSync(
+        valuesPath,
+        `${JSON.stringify(
+          {
+            SENTINEL_RELEASE_ID: releaseId,
+            SENTINEL_SOURCE_COMMIT: "2222222222222222222222222222222222222222",
+            SENTINEL_SOURCE_COMMIT_AT: "2026-05-25T04:00:00.000Z",
+            SENTINEL_SOURCE_BRANCH: "origin/main",
+            XPRIZE_REPOSITORY_URL: "https://github.com/sanjabh11/sme-compliance-sentinel.git"
+          },
+          null,
+          2
+        )}\n`,
+        "utf8"
+      );
+      writeFileSync(join(releaseDir, "cloudrun-render-handoff.json"), `${JSON.stringify({ overallStatus: "ready-to-render", releaseId }, null, 2)}\n`, "utf8");
+      writeFileSync(join(releaseDir, "cloudrun-render-handoff.md"), "# Cloud Run Render Handoff\n", "utf8");
+      writeFileSync(join(releaseDir, "cloudrun-render-handoff-verifier.json"), `${JSON.stringify({ overallStatus: "verified", releaseId }, null, 2)}\n`, "utf8");
+      writeFileSync(
+        join(releaseDir, "cloudrun-render-values-audit.json"),
+        `${JSON.stringify({ status: "ready-to-render", readyForStrictRender: true, releaseId, missingStrictKeys: [], placeholderKeys: [], valueConsistencyBlockers: [] }, null, 2)}\n`,
+        "utf8"
+      );
+      writeFileSync(join(releaseDir, "cloudrun-render-values-audit.md"), "# Cloud Run Render Values Audit\n", "utf8");
+      writeFileSync(join(releaseDir, "cloudrun-render-evidence-packet.json"), `${JSON.stringify({ status: "ready-for-dry-run-claim-review-pending", releaseId }, null, 2)}\n`, "utf8");
+      writeFileSync(join(releaseDir, "cloudrun-render-evidence-packet.md"), "# Cloud Run Render Evidence Packet\n", "utf8");
+      writeFileSync(join(releaseDir, "cloudrun-render-evidence-packet-verifier.json"), `${JSON.stringify({ overallStatus: "verified", releaseId }, null, 2)}\n`, "utf8");
+      writeFileSync(join(releaseDir, "cloudrun-dry-run-preflight-packet.json"), `${JSON.stringify({ status: "ready-to-dry-run", readyForDryRun: true, releaseId }, null, 2)}\n`, "utf8");
+      writeFileSync(join(releaseDir, "cloudrun-dry-run-packet-verifier.json"), `${JSON.stringify({ status: "verified", readyForDryRun: true, releaseId }, null, 2)}\n`, "utf8");
+
+      const report = runVerifier([], {
+        SENTINEL_CLOUD_RUN_VALUES_PATH: valuesPath,
+        SENTINEL_CLOUD_RUN_RENDER_OUT_DIR: outDir,
+        SENTINEL_RELEASE_ID: releaseId
+      });
+      const row = report.phaseProgressChart.rows.find((item) => item.phaseId === "cloudrun-render-dry-run");
+      const phase = report.phasePlan.phases.find((item) => item.id === "cloudrun-render-dry-run");
+      const focusRow = report.manualInterventionPlan.phaseFocusPlan.rows.find(
+        (item) => item.phaseId === "cloudrun-render-dry-run"
+      );
+
+      expect(row?.ratingOutOf5).toBe(5);
+      expect(row?.pending).toEqual([]);
+      expect(phase?.status).toBe("local-ready-for-external-dry-run");
+      expect(report.phasePlan.recommendedNextCodeControllablePhaseId).toBe("");
+      expect(report.phasePlan.recommendedNextCodeControllableAction).toMatchObject({
+        phaseId: "",
+        status: "not-needed",
+        owner: "engineering"
+      });
+      expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("external proof collection");
+      expect(report.manualInterventionPlan.actionRows.some((item) => item.phaseId === "cloudrun-render-dry-run")).toBe(false);
+      expect(focusRow?.currentFocus).toBe("No open action.");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("routes private artifact instructions through SENTINEL_PRIVATE_ROOT when configured", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-private-root-"));
     const privateRoot = join(tempDir, "private-root");
