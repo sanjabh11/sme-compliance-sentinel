@@ -49,7 +49,7 @@ const placeholderPattern = /^(YOUR|PROJECT|BILLING|REGION|https:\/\/YOUR|configu
 export function collectSourceReleaseGuard(rootDir = process.cwd()): SourceReleaseGuard {
   const git = collectGitSignals(rootDir);
   const gitignoreText = safeRead(rootDir, ".gitignore");
-  const files = collectFilePlans(rootDir);
+  const files = collectFilePlansForRuntime(rootDir);
   const secretFindings = scanSecrets(rootDir, files);
   const claimFindings = scanReleaseClaims(rootDir, files);
 
@@ -314,6 +314,17 @@ function collectFilePlans(rootDir: string): SourceReleaseFilePlan[] {
   }
 
   return [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function collectFilePlansForRuntime(rootDir: string): SourceReleaseFilePlan[] {
+  try {
+    return collectFilePlans(rootDir);
+  } catch {
+    return requiredRepoFiles
+      .filter((path) => existsSync(projectPath(rootDir, path)))
+      .map((path) => buildFilePlan(path, "tracked"))
+      .sort((a, b) => a.path.localeCompare(b.path));
+  }
 }
 
 function buildFilePlan(path: string, gitStatus: SourceReleaseFilePlan["gitStatus"]): SourceReleaseFilePlan {

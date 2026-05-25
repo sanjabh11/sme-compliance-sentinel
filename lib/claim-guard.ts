@@ -166,7 +166,7 @@ export async function scanRepositoryClaims(paths = defaultArtifactPaths, rootDir
   const artifacts = await Promise.all(
     paths.map(async (path) => ({
       artifact: path,
-      text: await readFile(join(rootDir, path), "utf8")
+      text: await readFile(join(rootDir, path), "utf8").catch(() => "")
     }))
   );
 
