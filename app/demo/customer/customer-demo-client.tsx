@@ -1,6 +1,8 @@
 "use client";
 
 import { ArrowRight, CheckCircle2, FileCheck2, FileQuestion, LockKeyhole, SearchCheck, ShieldCheck } from "lucide-react";
+import type { Route } from "next";
+import Link from "next/link";
 import { useState } from "react";
 import type { CustomerDemoFeature, CustomerDemoScenario, CustomerDemoStep } from "@/lib/customer-demo";
 
@@ -27,6 +29,18 @@ export function CustomerDemoClient({
 
   return (
     <main className="customer-demo-shell">
+      <nav className="customer-nav" aria-label="Customer demo navigation">
+        <Link className="customer-brand" href="/">
+          SME Workspace Sentinel
+        </Link>
+        <div className="customer-nav-links">
+          <a href="#customer-flow">How it works</a>
+          <a href="#trust-packet">Trust packet</a>
+          <a href="#pilot-next-step">Pilot</a>
+          <Link href={"/admin" as Route}>Admin</Link>
+        </div>
+      </nav>
+
       <section className="customer-hero">
         <div>
           <p className="eyebrow">Customer demo mode</p>
@@ -50,10 +64,32 @@ export function CustomerDemoClient({
           <span>Fixed-scope pilot</span>
           <strong>{demo.scenario.offer}</strong>
           <p>{demo.scenario.sampleDataNotice}</p>
+          <div className="customer-preview-metrics" aria-label="Sample demo preview metrics">
+            <div>
+              <b>1</b>
+              <small>sample exposure</small>
+            </div>
+            <div>
+              <b>1</b>
+              <small>justified AI review</small>
+            </div>
+            <div>
+              <b>0</b>
+              <small>auto mutations</small>
+            </div>
+          </div>
+          <div className="customer-mini-packet">
+            <span>{demo.scenario.trustPacketPreview.title}</span>
+            <ul>
+              {demo.scenario.trustPacketPreview.contents.slice(0, 3).map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
         </aside>
       </section>
 
-      <section className="customer-stage-tabs" aria-label="Customer demo sequence">
+      <section id="customer-flow" className="customer-stage-tabs" aria-label="Customer demo sequence">
         {demo.steps.map((step) => (
           <button
             key={step.id}
@@ -97,7 +133,7 @@ export function CustomerDemoClient({
         </article>
       </section>
 
-      <section className="customer-outcome-grid" aria-label="Demo outputs">
+      <section id="trust-packet" className="customer-outcome-grid" aria-label="Demo outputs">
         <article>
           <div className="customer-panel-heading">
             <h2>Risk explanation</h2>

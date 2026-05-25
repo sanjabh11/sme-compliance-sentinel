@@ -1,6 +1,6 @@
-import { DashboardClient } from "@/app/dashboard-client";
-import { getDashboardSnapshot } from "@/lib/store";
+import { CustomerDemoClient } from "@/app/demo/customer/customer-demo-client";
+import { buildCustomerDemoCopyBundle } from "@/lib/customer-demo";
 
 export default function Home() {
-  return <DashboardClient initialSnapshot={getDashboardSnapshot()} />;
+  return <CustomerDemoClient demo={buildCustomerDemoCopyBundle()} />;
 }

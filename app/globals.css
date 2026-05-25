@@ -1651,6 +1651,45 @@ dd {
   max-width: 1280px;
 }
 
+.customer-nav {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 14px 16px;
+  position: sticky;
+  top: 12px;
+  z-index: 10;
+}
+
+.customer-brand,
+.customer-nav a {
+  color: var(--accent-dark);
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.customer-brand {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.customer-nav-links {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: flex-end;
+}
+
+.customer-nav-links a {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
 .customer-hero {
   align-items: stretch;
   display: grid;
@@ -1728,6 +1767,49 @@ dd {
 .customer-pilot-panel p {
   color: var(--muted);
   line-height: 1.55;
+}
+
+.customer-preview-metrics {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 6px;
+}
+
+.customer-preview-metrics div {
+  background: #f8fafb;
+  border: 1px solid #e5ecef;
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  min-height: 76px;
+  padding: 10px;
+}
+
+.customer-preview-metrics b {
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.customer-preview-metrics small,
+.customer-mini-packet li {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.customer-mini-packet {
+  border-top: 1px solid #e5ecef;
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 12px;
+}
+
+.customer-mini-packet ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
 }
 
 .customer-stage-tabs {
@@ -1941,6 +2023,42 @@ dd {
   margin-top: 5px;
 }
 
+.admin-shell {
+  scroll-behavior: smooth;
+}
+
+.admin-tabbar {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -4px 0 18px;
+  padding: 8px;
+  position: sticky;
+  top: 12px;
+  z-index: 20;
+}
+
+.admin-tabbar a {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--accent-dark);
+  font-size: 0.9rem;
+  font-weight: 900;
+  min-height: 36px;
+  padding: 8px 12px;
+  text-decoration: none;
+}
+
+.admin-tabbar a:hover,
+.admin-tabbar a:focus-visible {
+  background: #eef4f1;
+  border-color: #c4d9d1;
+  outline: none;
+}
+
 @media (max-width: 1080px) {
   .metrics-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1981,6 +2099,28 @@ dd {
     width: 100%;
   }
 
+  .customer-nav {
+    align-items: flex-start;
+    position: static;
+  }
+
+  .customer-nav,
+  .customer-nav-links {
+    flex-direction: column;
+  }
+
+  .customer-nav-links {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .customer-nav-links a {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 9px 10px;
+  }
+
+  .customer-preview-metrics,
   .metrics-grid,
   .finding-detail,
   .confidence-grid,
@@ -2007,5 +2147,14 @@ dd {
   button {
     justify-content: center;
     width: 100%;
+  }
+
+  .admin-tabbar {
+    position: static;
+  }
+
+  .admin-tabbar a {
+    flex: 1 1 150px;
+    text-align: center;
   }
 }

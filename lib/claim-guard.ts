@@ -64,6 +64,8 @@ const defaultArtifactPaths = [
   "app/api/risk/score-history/route.ts",
   "app/api/trust-center/analytics/route.ts",
   "app/layout.tsx",
+  "app/page.tsx",
+  "app/admin/page.tsx",
   "app/demo/customer/page.tsx",
   "app/demo/customer/customer-demo-client.tsx",
   "lib/readiness.ts",

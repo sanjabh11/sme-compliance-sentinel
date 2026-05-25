@@ -86,6 +86,14 @@ const playbookActionOptions: RecommendationAction[] = [
   "label_restricted",
   "no_action"
 ];
+const adminTabs = [
+  { href: "#admin-overview", label: "Overview" },
+  { href: "#admin-workspace-scan", label: "Workspace Scan" },
+  { href: "#admin-evidence", label: "Evidence" },
+  { href: "#admin-trust", label: "Trust" },
+  { href: "#admin-readiness", label: "Readiness" },
+  { href: "#admin-submission", label: "Submission" }
+];
 
 export function DashboardClient({ initialSnapshot }: { initialSnapshot: DashboardSnapshot }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
@@ -1566,7 +1574,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
   const primaryFinding = snapshot.findings[0];
 
   return (
-    <main>
+    <main className="admin-shell">
       <section className="topbar">
         <div>
           <p className="eyebrow">Build with Gemini XPRIZE · Small Business Services</p>
@@ -1582,7 +1590,15 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
         </div>
       </section>
 
-      <section className="metrics-grid" aria-label="Evidence Room metrics">
+      <nav className="admin-tabbar" aria-label="Admin console sections">
+        {adminTabs.map((tab) => (
+          <a key={tab.href} href={tab.href}>
+            {tab.label}
+          </a>
+        ))}
+      </nav>
+
+      <section id="admin-overview" className="metrics-grid" aria-label="Evidence Room metrics">
         <Metric label="MRR" value={`$${formatNumber(snapshot.tenant.evidence.mrrUsd)}`} hint="Real revenue evidence field" />
         <Metric label="Pilots" value={snapshot.tenant.evidence.pilotCount.toString()} hint="Arms-length customer proof target" />
         <Metric label="Risks detected" value={metrics.risksDetected.toString()} hint="No overclaiming as violations prevented" />
@@ -1671,7 +1687,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
         </aside>
       </section>
 
-      <section className="workspace-band">
+      <section id="admin-workspace-scan" className="workspace-band">
         <div className="panel command-panel">
           <div className="panel-heading">
             <div>
@@ -1805,7 +1821,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
         </aside>
       </section>
 
-      <section className="panel evidence-copilot-panel">
+      <section id="admin-evidence" className="panel evidence-copilot-panel">
         <div className="panel-heading">
           <div>
             <h2>Evidence Copilot</h2>
@@ -1932,7 +1948,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
         </div>
       </section>
 
-      <section className="content-grid">
+      <section id="admin-trust" className="content-grid">
         <div className="panel">
           <div className="panel-heading">
             <div>
@@ -2226,7 +2242,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
       </section>
 
       {readiness ? (
-        <section className="strategy-grid">
+        <section id="admin-readiness" className="strategy-grid">
         <div className="panel">
           <div className="panel-heading">
             <div>
@@ -3849,7 +3865,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
         </section>
       ) : null}
 
-      <section className="strategy-grid">
+      <section id="admin-submission" className="strategy-grid">
         <div className="panel strategy-panel">
           <div className="panel-heading">
             <div>
