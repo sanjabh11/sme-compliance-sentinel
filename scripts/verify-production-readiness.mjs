@@ -468,13 +468,14 @@ async function runCheck(baseUrl, check, timeoutMs, adminToken) {
     const text = await response.text();
     const payload = parseJson(text);
     const summary = check.summarize(payload);
+    const proofBlocked = isBlockedStatus(summary.status);
 
     return {
       id: check.id,
       method: check.method,
       path: check.path,
       httpStatus: response.status,
-      ok: response.ok,
+      ok: response.ok || (proofBlocked && response.status >= 400 && response.status < 500),
       status: summary.status,
       detail: summary.detail,
       lineage: extractLineage(check.id, payload)

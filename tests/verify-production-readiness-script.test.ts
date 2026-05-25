@@ -26,6 +26,18 @@ interface VerifyProductionModule {
   }) => Promise<{
     overallStatus?: string;
     baseUrl?: string;
+    summary?: {
+      total: number;
+      passedTransport: number;
+      failedTransport: number;
+      blockedOrNeedsReview: number;
+    };
+    results?: Array<{
+      id: string;
+      httpStatus: number;
+      ok: boolean;
+      status: string;
+    }>;
     releaseLineage?: {
       status: string;
       blockers: string[];
@@ -87,6 +99,51 @@ describe("verify-production readiness script auth", () => {
     expect(postCalls.every(([, init]) => headerValue(init, "x-sentinel-admin-token") === "private-admin-token")).toBe(true);
     expect(getCalls.every(([, init]) => !headerValue(init, "x-sentinel-admin-token"))).toBe(true);
     expect(JSON.stringify(report)).not.toContain("private-admin-token");
+  });
+
+  it("treats 409 proof-block write-through responses as review blockers, not transport failures", async () => {
+    const { parseArgs, runProductionReadinessVerification } = await loadVerifier();
+    vi.stubEnv("SENTINEL_ADMIN_ACTION_TOKEN", "private-admin-token");
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      const urlText = String(url);
+
+      if (
+        method === "POST" &&
+        (urlText.includes("/api/production/persistence") || urlText.includes("/api/production/cost-controls"))
+      ) {
+        return new Response(
+          JSON.stringify({
+            status: "blocked",
+            detail: "Private external proof is still pending.",
+            checks: [{ target: "quota", status: "blocked", detail: "Quota proof pending." }]
+          }),
+          { status: 409 }
+        );
+      }
+
+      return new Response(JSON.stringify(payloadForRequest(urlText, method)), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+
+    const args = parseArgs([
+      "--url",
+      "https://sentinel.example.com",
+      "--release-id",
+      "release-20260523-001",
+      "--include-write-checks"
+    ]);
+    const report = await runProductionReadinessVerification(args);
+
+    expect(report.overallStatus).toBe("needs-review");
+    expect(report.summary).toBeDefined();
+    expect(report.results).toBeDefined();
+    expect(report.summary?.failedTransport).toBe(0);
+    expect(report.results?.find((result) => result.id === "cost-controls-write-through")).toMatchObject({
+      httpStatus: 409,
+      ok: true,
+      status: "blocked"
+    });
   });
 
   it("checks hosted release lineage against deployment packet and pushed provenance", async () => {
