@@ -268,8 +268,9 @@ function buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReport
           privateArtifactPaths: privateArtifactPathsForPhase(phase.id)
         })
       );
+    const phaseProgressRows = manualRowsForPhaseProgress({ phase, phaseProgress });
 
-    return [...gateRows, ...evidenceRows];
+    return [...phaseProgressRows, ...gateRows, ...evidenceRows];
   });
   const dedupedActionRows = dedupeManualRows(actionRows);
   const ownerPackets = buildOwnerPackets(dedupedActionRows);
@@ -300,6 +301,35 @@ function buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReport
       "Keep owner signoff notes and source evidence private until a human reviewer approves a redacted judge packet."
     ]
   };
+}
+
+function manualRowsForPhaseProgress({ phase, phaseProgress }) {
+  if (phase.status === "passed" || !phaseProgress || phase.id !== "cloudrun-render-dry-run") {
+    return [];
+  }
+
+  return phaseProgress.pending
+    .filter((action) => isActionableCloudRunProgressBlocker(action))
+    .map((action, index) =>
+      manualInterventionRow({
+        id: `${phase.id}-0-progress-${index + 1}`,
+        phase,
+        phaseProgress,
+        source: "phase-progress",
+        status: "private-values-required",
+        action,
+        evidenceNeeded: phaseProgress.evidence,
+        commands: phase.commands,
+        stopCondition: phase.stopConditions[0] ?? "Stop until the private render-values audit is ready-to-render.",
+        privateArtifactPaths: privateArtifactPathsForPhase(phase.id)
+      })
+    );
+}
+
+function isActionableCloudRunProgressBlocker(action) {
+  return /required non-secret Cloud Run render value|placeholder render value|render-value consistency blocker|render-values audit is ready-to-render/iu.test(
+    String(action)
+  );
 }
 
 function manualRowsForGate({ phase, phaseProgress, gate }) {
@@ -402,6 +432,10 @@ function checklistForManualRow(phase, action) {
 }
 
 function ownerForManualRow(phase, action) {
+  if (phase.id === "cloudrun-render-dry-run") {
+    return "engineering";
+  }
+
   const text = action.toLowerCase();
 
   if (text.includes("invoice") || text.includes("revenue") || text.includes("payment") || text.includes("paid pilot") || text.includes("customer") || text.includes("testimonial") || text.includes("cac")) {

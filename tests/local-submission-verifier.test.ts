@@ -1016,6 +1016,10 @@ describe("local XPRIZE submission verifier", () => {
         SENTINEL_RELEASE_ID: releaseId
       });
       const row = report.phaseProgressChart.rows.find((item) => item.phaseId === "cloudrun-render-dry-run");
+      const progressRows = report.manualInterventionPlan.actionRows.filter(
+        (item) => item.phaseId === "cloudrun-render-dry-run" && item.source === "phase-progress"
+      );
+      const engineeringPacket = report.manualInterventionPlan.ownerPackets.find((packet) => packet.owner === "engineering");
 
       expect(row?.done.join(" ")).toContain("release-prefilled private render-values file");
       expect(row?.done.join(" ")).toContain("cloudrun-render-handoff JSON/Markdown");
@@ -1027,6 +1031,16 @@ describe("local XPRIZE submission verifier", () => {
       expect(row?.pending.join(" ")).toContain("Generate the dry-run preflight packet only after the render-values audit is ready-to-render");
       expect(row?.evidence).toContain("private-artifact:render-values-audit=blocked");
       expect(row?.evidence).toContain("private-artifact=done");
+      expect(progressRows.map((item) => item.action).join(" ")).toContain("Fill 2 required non-secret Cloud Run render value(s)");
+      expect(progressRows.map((item) => item.action).join(" ")).toContain("Replace 1 placeholder render value(s)");
+      expect(progressRows.map((item) => item.action).join(" ")).toContain("Resolve render-value consistency blocker");
+      expect(progressRows.every((item) => item.status === "private-values-required")).toBe(true);
+      expect(progressRows.every((item) => item.owner === "engineering")).toBe(true);
+      expect(progressRows.some((item) => item.commands.join(" ").includes("audit:cloudrun-values"))).toBe(true);
+      expect(
+        progressRows.some((item) => item.checklist?.some((entry) => entry.includes("Fill only non-secret production values")))
+      ).toBe(true);
+      expect(engineeringPacket?.nextAction).toContain("Fill 2 required non-secret Cloud Run render value(s)");
       expect(report.phasePlan.phases.find((phase) => phase.id === "hosted-proof-capture")?.status).toBe("external-required");
       expect(report.overallStatus).toBe("blocked");
     } finally {
