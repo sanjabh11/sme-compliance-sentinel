@@ -1,6 +1,6 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 interface CloudRunRenderValuesAuditModule {
@@ -488,6 +488,41 @@ describe("Cloud Run render-values audit", () => {
       })
     ).rejects.toThrow(/symbolic link/u);
     expect(await readFile(symlinkTargetPath, "utf8")).toBe(symlinkTargetContent);
+  });
+
+  it("fails closed before partial writes when audit outputs or verifier input parents are symlinked", async () => {
+    const { verifyCloudRunRenderEvidencePacket, writeCloudRunRenderValuesAudit } = await loadAudit();
+    const tempDir = await makeTempDir();
+    const packet = await writeCloudRunRenderValuesAudit({
+      valuesPath: "docs/deployment/cloudrun-render-values.template.json",
+      outDir: tempDir
+    });
+    const originalAuditJson = await readFile(packet.auditPath, "utf8");
+    const markdownTargetPath = join(tempDir, "reviewed-render-values-audit.md");
+    await writeFile(markdownTargetPath, "unchanged-markdown\n", "utf8");
+    await rm(packet.markdownPath, { force: true });
+    await symlink(markdownTargetPath, packet.markdownPath);
+
+    await expect(
+      writeCloudRunRenderValuesAudit({
+        valuesPath: "docs/deployment/cloudrun-render-values.template.json",
+        outDir: tempDir
+      })
+    ).rejects.toThrow(/symbolic link/u);
+    expect(await readFile(packet.auditPath, "utf8")).toBe(originalAuditJson);
+    expect(await readFile(markdownTargetPath, "utf8")).toBe("unchanged-markdown\n");
+    expect((await readdir(packet.outputDirectory)).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+
+    const realPacketDir = dirname(packet.evidencePacketPath);
+    const symlinkedPacketDir = join(tempDir, "symlinked-render-evidence-parent");
+    const verifierPath = join(realPacketDir, "cloudrun-render-evidence-packet-verifier.json");
+    await rm(verifierPath, { force: true });
+    await symlink(realPacketDir, symlinkedPacketDir);
+
+    await expect(verifyCloudRunRenderEvidencePacket(join(symlinkedPacketDir, "cloudrun-render-evidence-packet.json"))).rejects.toThrow(
+      /symbolic link/u
+    );
+    await expect(readFile(verifierPath, "utf8")).rejects.toThrow(/ENOENT/u);
   });
 
   it("blocks mismatched CLI and values-file release ids before rendering", async () => {
