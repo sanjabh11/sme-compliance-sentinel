@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -402,7 +402,33 @@ describe("local XPRIZE submission verifier", () => {
 
       expect(readFileSync(outPath, "utf8")).toContain('"overallStatus": "blocked"');
       expect(report.gates.map((gate) => gate.id)).toContain("license-ip-review");
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
       expect(() => runVerifier(["--strict"])).toThrow();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("replaces existing private JSON and Markdown outputs without stale bytes or temp leftovers", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-existing-output-"));
+    const outPath = join(tempDir, "local-submission-readiness.json");
+    const markdownPath = join(tempDir, "local-submission-summary.md");
+
+    try {
+      writeFileSync(outPath, `{"overallStatus":"stale","padding":"${"x".repeat(1000)}"}\n`, "utf8");
+      writeFileSync(markdownPath, `# Stale\n\n${"y".repeat(1000)}\n`, "utf8");
+
+      const report = runVerifier(["--out", outPath, "--markdown-out", markdownPath]);
+      const outJson = readFileSync(outPath, "utf8");
+      const markdown = readFileSync(markdownPath, "utf8");
+
+      expect(report.overallStatus).toBe("blocked");
+      expect(JSON.parse(outJson)).toHaveProperty("phaseProgressChart");
+      expect(markdown).toContain("# Local Submission Readiness Summary");
+      expect(`${outJson}${markdown}`).not.toContain("stale");
+      expect(`${outJson}${markdown}`).not.toContain("padding");
+      expect(`${outJson}${markdown}`).not.toContain("# Stale");
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -455,6 +481,7 @@ describe("local XPRIZE submission verifier", () => {
       expect(founderSalesMarkdown).toContain("/secure/local/business-evidence.json");
       expect([indexMarkdown, engineeringMarkdown, founderLegalMarkdown, founderSalesMarkdown].join("\n")).not.toContain("Bearer ");
       expect([indexMarkdown, engineeringMarkdown, founderLegalMarkdown, founderSalesMarkdown].join("\n")).not.toContain("password:");
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -490,6 +517,44 @@ describe("local XPRIZE submission verifier", () => {
       expect(markdown).toContain("verify:manual-intervention");
       expect(markdown).not.toContain("Bearer ");
       expect(markdown).not.toContain("password:");
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when a private local-submission output parent is a user-created symlink", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-symlink-parent-"));
+    const realOutputDir = join(tempDir, "real-output");
+    const linkedOutputDir = join(tempDir, "linked-output");
+    const outPath = join(linkedOutputDir, "local-submission-readiness.json");
+    const realTargetPath = join(realOutputDir, "local-submission-readiness.json");
+
+    try {
+      mkdirSync(realOutputDir);
+      symlinkSync(realOutputDir, linkedOutputDir, "dir");
+
+      expect(() => runVerifier(["--out", outPath])).toThrow(/symbolic link/u);
+      expect(existsSync(realTargetPath)).toBe(false);
+      expect(readdirSync(realOutputDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when manual-intervention packet output directory is a user-created symlink", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-manual-packets-symlink-parent-"));
+    const realOutputDir = join(tempDir, "real-output");
+    const linkedOutputDir = join(tempDir, "linked-output");
+
+    try {
+      mkdirSync(realOutputDir);
+      symlinkSync(realOutputDir, linkedOutputDir, "dir");
+
+      expect(() => runVerifier(["--manual-packets-dir", linkedOutputDir])).toThrow(/symbolic link/u);
+      expect(existsSync(join(realOutputDir, "manual-intervention-index.md"))).toBe(false);
+      expect(existsSync(join(realOutputDir, "manual-intervention-manifest.json"))).toBe(false);
+      expect(readdirSync(realOutputDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -588,6 +653,8 @@ describe("local XPRIZE submission verifier", () => {
       expect(bundleManifest.stopConditions.join(" ")).toContain("Do not set XPRIZE");
       expect(combined).not.toContain("Bearer ");
       expect(combined).not.toContain("password:");
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+      expect(readdirSync(join(tempDir, "manual-intervention-packets")).filter((path) => path.endsWith(".tmp"))).toEqual([]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

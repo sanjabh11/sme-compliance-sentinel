@@ -3,9 +3,9 @@
 
 import { execFileSync } from "node:child_process";
 import { Buffer } from "node:buffer";
-import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
 const prohibitedCliPatterns = [
@@ -1096,27 +1096,35 @@ function toText(value) {
   return Buffer.isBuffer(value) ? value.toString("utf8") : String(value);
 }
 
-function writeJson(path, value) {
+function writeJson(path, value, label = "Local submission JSON output file") {
   const absolutePath = resolve(path);
-  mkdirSync(dirname(absolutePath), { recursive: true });
-  writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  const parentDirectory = dirname(absolutePath);
+  assertDirectoryPathSafe(parentDirectory, `${label} parent directory`);
+  mkdirSync(parentDirectory, { recursive: true });
+  assertDirectoryExistsSafe(parentDirectory, `${label} parent directory`);
+  writeTextFile(absolutePath, `${JSON.stringify(value, null, 2)}\n`, label);
 }
 
-function writeMarkdown(path, value) {
+function writeMarkdown(path, value, label = "Local submission Markdown output file") {
   const absolutePath = resolve(path);
-  mkdirSync(dirname(absolutePath), { recursive: true });
-  writeFileSync(absolutePath, value, "utf8");
+  const parentDirectory = dirname(absolutePath);
+  assertDirectoryPathSafe(parentDirectory, `${label} parent directory`);
+  mkdirSync(parentDirectory, { recursive: true });
+  assertDirectoryExistsSafe(parentDirectory, `${label} parent directory`);
+  writeTextFile(absolutePath, value, label);
   return absolutePath;
 }
 
 function writeManualInterventionPackets(path, report) {
   const absoluteDir = resolve(path);
+  assertDirectoryPathSafe(absoluteDir, "Manual intervention packet output directory");
   mkdirSync(absoluteDir, { recursive: true });
+  assertDirectoryExistsSafe(absoluteDir, "Manual intervention packet output directory");
   const packetFiles = report.manualInterventionPlan.ownerPackets.map((packet) => {
     const fileName = `${slugForOwner(packet.owner)}.md`;
     const filePath = join(absoluteDir, fileName);
     const markdown = renderOwnerPacketMarkdown(packet, report);
-    writeFileSync(filePath, markdown, "utf8");
+    writeTextFile(filePath, markdown, "Manual intervention owner packet");
 
     return {
       owner: packet.owner,
@@ -1129,7 +1137,7 @@ function writeManualInterventionPackets(path, report) {
   });
   const indexPath = join(absoluteDir, "manual-intervention-index.md");
   const indexMarkdown = renderManualInterventionIndexMarkdown(report, packetFiles);
-  writeFileSync(indexPath, indexMarkdown, "utf8");
+  writeTextFile(indexPath, indexMarkdown, "Manual intervention index packet");
   const indexFile = {
     owner: "index",
     path: indexPath,
@@ -1140,7 +1148,7 @@ function writeManualInterventionPackets(path, report) {
   };
   const manifest = buildManualInterventionManifest({ report, indexFile, packetFiles });
   const manifestPath = join(absoluteDir, "manual-intervention-manifest.json");
-  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  writeTextFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "Manual intervention manifest");
 
   return {
     indexPath,
@@ -1155,7 +1163,9 @@ function writeManualInterventionPackets(path, report) {
 
 function writeLocalSubmissionBundle(path, report) {
   const absoluteDir = resolve(path);
+  assertDirectoryPathSafe(absoluteDir, "Local submission bundle output directory");
   mkdirSync(absoluteDir, { recursive: true });
+  assertDirectoryExistsSafe(absoluteDir, "Local submission bundle output directory");
   const reportPath = join(absoluteDir, "local-submission-readiness.json");
   const markdownSummaryPath = join(absoluteDir, "local-submission-summary.md");
   const manualPacketsDir = join(absoluteDir, "manual-intervention-packets");
@@ -1164,11 +1174,11 @@ function writeLocalSubmissionBundle(path, report) {
   const packetFiles = writeManualInterventionPackets(manualPacketsDir, report);
 
   report.manualInterventionPlan.packetFiles = packetFiles;
-  writeJson(reportPath, report);
-  writeMarkdown(markdownSummaryPath, renderLocalSubmissionMarkdown(report));
+  writeJson(reportPath, report, "Local submission bundle readiness report");
+  writeMarkdown(markdownSummaryPath, renderLocalSubmissionMarkdown(report), "Local submission bundle Markdown summary");
 
   const manifestVerification = verifyManualInterventionManifest(packetFiles.manifestPath);
-  writeJson(manifestVerificationPath, manifestVerification);
+  writeJson(manifestVerificationPath, manifestVerification, "Local submission bundle manual manifest verification");
 
   const files = [
     bundleFileRecord("local-submission-readiness", reportPath, absoluteDir),
@@ -1210,7 +1220,7 @@ function writeLocalSubmissionBundle(path, report) {
     ],
     privateHandling: report.manualInterventionPlan.privateHandling
   };
-  writeJson(bundleManifestPath, bundleManifest);
+  writeJson(bundleManifestPath, bundleManifest, "Local submission bundle manifest");
 
   return {
     directory: absoluteDir,
@@ -1225,6 +1235,155 @@ function writeLocalSubmissionBundle(path, report) {
     fileCount: files.length,
     proofBoundary: bundleManifest.proofBoundary
   };
+}
+
+function writeTextFile(path, content, label) {
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+  const tempPath = join(parentDirectory, `.${basename(absolutePath)}.${randomUUID()}.tmp`);
+  const parentIdentity = assertWritableTextFilePath(absolutePath, label);
+
+  try {
+    writeFileSync(tempPath, content, { encoding: "utf8", flag: "wx" });
+    assertSameDirectoryIdentity(parentDirectory, parentIdentity, `${label} parent directory`);
+    renameSync(tempPath, absolutePath);
+    assertSameDirectoryIdentity(parentDirectory, parentIdentity, `${label} parent directory`);
+  } catch (error) {
+    rmSync(tempPath, { force: true });
+    throw error;
+  }
+}
+
+function assertDirectoryPathSafe(path, label) {
+  const directories = [];
+  let cursor = resolve(path);
+
+  while (true) {
+    directories.push(cursor);
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+
+  for (const directory of directories.reverse()) {
+    let fileStat;
+
+    try {
+      fileStat = lstatSync(directory);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+
+    if (fileStat.isSymbolicLink()) {
+      if (isAllowedSystemDirectorySymlink(directory)) {
+        continue;
+      }
+
+      throw new Error(`${label} ${directory} is a symbolic link; use a regular private directory before local submission packet generation.`);
+    }
+
+    if (!fileStat.isDirectory()) {
+      throw new Error(`${label} ${directory} is not a directory; use a regular private directory before local submission packet generation.`);
+    }
+  }
+}
+
+function assertDirectoryExistsSafe(path, label) {
+  const absolutePath = resolve(path);
+  const fileStat = readDirectoryStat(absolutePath, label);
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${absolutePath} is not a directory; use a regular private directory before local submission packet generation.`);
+  }
+}
+
+function assertWritableTextFilePath(path, label) {
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+
+  assertDirectoryPathSafe(parentDirectory, `${label} parent directory`);
+  assertRegularFileIfExists(absolutePath, label);
+
+  return readDirectoryIdentity(parentDirectory, `${label} parent directory`);
+}
+
+function assertSameDirectoryIdentity(path, expected, label) {
+  const actual = readDirectoryIdentity(path, label);
+
+  if (actual.dev !== expected.dev || actual.ino !== expected.ino) {
+    throw new Error(`${label} ${resolve(path)} changed while writing; regenerate the private local submission packet in a stable private directory.`);
+  }
+}
+
+function readDirectoryIdentity(path, label) {
+  const fileStat = readDirectoryStat(resolve(path), label);
+
+  return {
+    dev: fileStat.dev,
+    ino: fileStat.ino
+  };
+}
+
+function readDirectoryStat(path, label) {
+  const absolutePath = resolve(path);
+  const fileStat = lstatSync(absolutePath);
+
+  if (fileStat.isSymbolicLink()) {
+    if (isAllowedSystemDirectorySymlink(absolutePath)) {
+      return statSync(absolutePath);
+    }
+
+    throw new Error(`${label} ${absolutePath} is a symbolic link; use a regular private directory before local submission packet generation.`);
+  }
+
+  return fileStat;
+}
+
+function assertRegularFileIfExists(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = lstatSync(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; regenerate the packet into regular private files before review.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${path} is not a regular file; regenerate the packet into regular private files before review.`);
+  }
+}
+
+function isAllowedSystemDirectorySymlink(path) {
+  if (process.platform !== "darwin") {
+    return false;
+  }
+
+  const absolutePath = resolve(path);
+  const allowedAliases = {
+    "/etc": "/private/etc",
+    "/tmp": "/private/tmp",
+    "/var": "/private/var"
+  };
+  const expectedTarget = allowedAliases[absolutePath];
+
+  if (!expectedTarget) {
+    return false;
+  }
+
+  const target = readlinkSync(absolutePath);
+  return resolve(dirname(absolutePath), target) === expectedTarget;
 }
 
 function bundleFileRecord(id, path, baseDir) {
