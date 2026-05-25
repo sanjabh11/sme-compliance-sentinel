@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -339,6 +339,7 @@ describe("Cloud Run render handoff", () => {
     ).rejects.toThrow(/symbolic link/u);
     expect(await readFile(handoff.handoffPath, "utf8")).toBe(originalHandoffJson);
     expect(await readFile(markdownTargetPath, "utf8")).toBe("unchanged-markdown\n");
+    expect((await readdir(outDir)).filter((path) => path.endsWith(".tmp"))).toEqual([]);
 
     const realHandoffDir = dirname(handoff.handoffPath);
     const symlinkedHandoffDir = join(tempDir, "symlinked-handoff-parent");

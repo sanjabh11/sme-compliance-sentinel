@@ -850,13 +850,16 @@ async function writeJson(path, value) {
 
 async function writeTextFile(path, content, label) {
   const absolutePath = resolve(path);
-  const tempPath = join(dirname(absolutePath), `.${basename(absolutePath)}.${randomUUID()}.tmp`);
+  const parentDirectory = dirname(absolutePath);
+  const tempPath = join(parentDirectory, `.${basename(absolutePath)}.${randomUUID()}.tmp`);
 
-  await assertWritableTextFilePath(absolutePath, label);
+  const parentIdentity = await assertWritableTextFilePath(absolutePath, label);
 
   try {
     await writeFile(tempPath, content, { encoding: "utf8", flag: "wx" });
+    await assertSameDirectoryIdentity(parentDirectory, parentIdentity, `${label} parent directory`);
     await rename(tempPath, absolutePath);
+    await assertSameDirectoryIdentity(parentDirectory, parentIdentity, `${label} parent directory`);
   } catch (error) {
     await rm(tempPath, { force: true }).catch(() => {});
     throw error;
@@ -870,6 +873,33 @@ async function assertWritableTextFilePath(path, label) {
   await assertDirectoryPathSafe(parentDirectory, `${label} parent directory`);
   await assertDirectoryExistsSafe(parentDirectory, `${label} parent directory`);
   await assertRegularFileIfExists(absolutePath, label);
+
+  return readDirectoryIdentity(parentDirectory, `${label} parent directory`);
+}
+
+async function assertSameDirectoryIdentity(path, expected, label) {
+  const actual = await readDirectoryIdentity(path, label);
+
+  if (actual.dev !== expected.dev || actual.ino !== expected.ino) {
+    throw new Error(`${label} ${path} changed while writing; regenerate the handoff into a stable private directory.`);
+  }
+}
+
+async function readDirectoryIdentity(path, label) {
+  const fileStat = await lstat(path);
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private directory before Cloud Run render handoff.`);
+  }
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${path} is not a directory; use a regular private directory before Cloud Run render handoff.`);
+  }
+
+  return {
+    dev: fileStat.dev,
+    ino: fileStat.ino
+  };
 }
 
 async function assertDirectoryPathSafe(path, label) {
