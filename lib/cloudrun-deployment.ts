@@ -300,6 +300,18 @@ function checkNonSecretEnv(name: string, entry?: ParsedEnvEntry): CloudRunDeploy
     );
   }
 
+  if (!value && name === "XPRIZE_DEMO_VIDEO_URL") {
+    return envCheck(
+      name,
+      categoryForEnv(name),
+      "manual-review",
+      false,
+      "missing",
+      "Demo video URL is not configured; this blocks public/judge demo claims but should not block Cloud Run dry-run.",
+      "Keep demo-video attestation flags false until a public YouTube, Vimeo, or Youku URL is reviewed."
+    );
+  }
+
   if (!value) {
     return envCheck(name, categoryForEnv(name), "needs-value", false, "empty", "Value is empty.", "Fill this value before Cloud Run dry-run.");
   }

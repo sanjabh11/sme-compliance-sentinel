@@ -243,6 +243,15 @@ function checkNonSecret(name, entry) {
   if (!entry.value && name === "XPRIZE_ENTRANT_TYPE") {
     return check(name, "manual-review", "empty", "Entrant type awaits human review.", "Set individual, team, or organization after review.");
   }
+  if (!entry.value && name === "XPRIZE_DEMO_VIDEO_URL") {
+    return check(
+      name,
+      "manual-review",
+      "missing",
+      "Demo video URL is not configured; this blocks public/judge demo claims but should not block Cloud Run dry-run.",
+      "Keep demo-video attestation flags false until a public YouTube, Vimeo, or Youku URL is reviewed."
+    );
+  }
   if (!entry.value) {
     return check(name, "needs-value", "empty", "Value is empty.", "Fill this value before dry-run.");
   }

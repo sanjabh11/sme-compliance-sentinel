@@ -475,10 +475,9 @@ function buildPrivateValueChecklist({ audit }) {
 
 function buildPlaceholderHelperRows({ audit, requiredRows }) {
   const requiredKeys = new Set(requiredRows.map((row) => row.key));
-  const placeholderKeys = new Set((audit.placeholderKeys ?? []).map(String));
 
   return (audit.renderValueIntake ?? [])
-    .filter((item) => item?.key && placeholderKeys.has(String(item.key)))
+    .filter((item) => item?.key && String(item.status) === "placeholder")
     .filter((item) => !requiredKeys.has(String(item.key)))
     .filter((item) => !["ready", "attested"].includes(String(item.status)))
     .map(checklistRow);
@@ -550,10 +549,9 @@ function verifyPrivateValueChecklist({ handoff, evidencePacket }) {
     ];
   }
 
-  const placeholderKeys = new Set((handoff.renderValuesAudit?.placeholderKeys ?? []).map(String));
   const requiredKeys = new Set(requiredBeforeDryRun.map((row) => row.key));
   const placeholderHelperRows = checklist.placeholderHelperRows.map(checklistRow);
-  const placeholderHelpersValid = placeholderHelperRows.every((row) => placeholderKeys.has(row.key) && !requiredKeys.has(row.key));
+  const placeholderHelpersValid = placeholderHelperRows.every((row) => row.status === "placeholder" && !requiredKeys.has(row.key));
   const groupedPendingRows = groupChecklistRowsByEntryMode(uniqueChecklistRows([...requiredBeforeDryRun, ...placeholderHelperRows]));
   const expectedStatus = handoff.renderValuesAudit?.readyForStrictRender
     ? publicClaimEvidenceQueue.length

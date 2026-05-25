@@ -56,6 +56,7 @@ const secretVersionEnvNames = Object.fromEntries(
 );
 
 const manualReviewValueKeys = deploymentContract.manualReviewEnv ?? [];
+const publicClaimValueKeys = new Set(["XPRIZE_DEMO_VIDEO_URL"]);
 
 const prohibitedRawSecretKeys = [
   ...(deploymentContract.requiredSecretEnv ?? []).map((entry) => entry.envName),
@@ -86,7 +87,6 @@ const strictRequiredValueKeys = [
   "XPRIZE_REPOSITORY_ACCESS_MODE",
   "XPRIZE_REPOSITORY_JUDGE_ACCESS_EMAILS",
   "XPRIZE_CATEGORY",
-  "XPRIZE_DEMO_VIDEO_URL",
   "XPRIZE_JUDGING_PERIOD_END_AT",
   "GOOGLE_CLOUD_BILLING_ACCOUNT_ID",
   "SENTINEL_GCP_BUDGET_ID",
@@ -527,7 +527,7 @@ export async function auditCloudRunRenderValues(options = {}) {
   const renderValues = buildRenderValues(fileValues);
   const missingStrictKeys = strictRequiredValueKeys.filter((key) => isMissingStrictValue(renderValues[key]));
   const placeholderKeys = Object.entries(renderValues)
-    .filter(([, value]) => hasTemplatePlaceholder(String(value)))
+    .filter(([key, value]) => strictRequiredValueKeys.includes(key) && hasTemplatePlaceholder(String(value)))
     .map(([key]) => key)
     .sort();
   const releaseIdConsistency = buildReleaseIdConsistency(options.releaseId, renderValues.SENTINEL_RELEASE_ID);
@@ -648,7 +648,7 @@ function buildRenderValueIntake({
       valuePreview,
       safeToStoreInValuesFile: !prohibitedRawSecretKeys.includes(key),
       requiredBeforeDryRun: strictRequiredValueKeys.includes(key),
-      requiredBeforePublicClaim: Boolean(manualFlag),
+      requiredBeforePublicClaim: Boolean(manualFlag) || publicClaimValueKeys.has(key),
       acceptedProof: metadata.acceptedProof,
       privateHandling: metadata.privateHandling,
       derivationHint: metadata.derivationHint,
@@ -667,6 +667,10 @@ function renderValueIntakeStatus({ key, value, blocker, manualFlag, secretVersio
   }
 
   if (missingStrictKeys.includes(key) || secretVersion?.status === "needs-value") {
+    return "missing";
+  }
+
+  if (publicClaimValueKeys.has(key) && isMissingPublicClaimValue(value)) {
     return "missing";
   }
 
@@ -717,6 +721,9 @@ function summarizeRenderValueIntake(items) {
     return summary;
   }, {});
   const pendingItems = items.filter((item) => item.status !== "ready" && item.status !== "attested");
+  const dryRunPendingItems = items.filter(
+    (item) => item.requiredBeforeDryRun && !["ready", "attested", "manual-review"].includes(item.status)
+  );
 
   return {
     total: items.length,
@@ -728,7 +735,7 @@ function summarizeRenderValueIntake(items) {
     blocked: byStatus.blocked,
     pending: pendingItems.length,
     byCategory,
-    readyForStrictRender: byStatus.missing === 0 && byStatus.placeholder === 0 && byStatus.blocked === 0,
+    readyForStrictRender: dryRunPendingItems.length === 0,
     claimFlagsPending: items.filter((item) => item.requiredBeforePublicClaim && item.status === "manual-review").length
   };
 }
@@ -986,6 +993,10 @@ function buildRenderValues(fileValues) {
     values.SENTINEL_GEMINI_API_KEY_ID = `projects/${projectNumber}/locations/global/keys/${values.SENTINEL_GEMINI_API_KEY_SHORT_ID}`;
   }
 
+  if (!values.XPRIZE_DEMO_VIDEO_URL || hasTemplatePlaceholder(String(values.XPRIZE_DEMO_VIDEO_URL))) {
+    values.XPRIZE_DEMO_VIDEO_URL = "";
+  }
+
   return values;
 }
 
@@ -1044,8 +1055,8 @@ function buildValueConsistencyChecks(values, releaseIdConsistency) {
     valueCheck(
       "demo-video-host",
       "XPRIZE_DEMO_VIDEO_URL",
-      isAcceptedDemoVideoUrl(values.XPRIZE_DEMO_VIDEO_URL),
-      "Use a public YouTube, Vimeo, or Youku demo URL before strict render."
+      !values.XPRIZE_DEMO_VIDEO_URL || isAcceptedDemoVideoUrl(values.XPRIZE_DEMO_VIDEO_URL),
+      "Use a public YouTube, Vimeo, or Youku demo URL before setting demo-video public/judge claim flags."
     ),
     valueCheck(
       "repository-access-mode",
@@ -1313,6 +1324,10 @@ function assertSafeValue(key, value) {
 }
 
 function isMissingStrictValue(value) {
+  return value === undefined || value === "" || hasTemplatePlaceholder(String(value));
+}
+
+function isMissingPublicClaimValue(value) {
   return value === undefined || value === "" || hasTemplatePlaceholder(String(value));
 }
 

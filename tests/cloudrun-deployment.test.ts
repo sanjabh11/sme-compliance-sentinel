@@ -151,6 +151,24 @@ describe("Cloud Run deployment evidence verifier", () => {
     );
   });
 
+  it("allows a rendered Cloud Run manifest to omit the demo video URL while keeping the demo claim in manual review", () => {
+    const manifestWithoutDemoUrl = renderProductionCandidateManifest().replace(
+      'name: XPRIZE_DEMO_VIDEO_URL\n              value: "https://youtu.be/sentinel-demo"',
+      'name: XPRIZE_DEMO_VIDEO_URL\n              value: ""'
+    );
+    const evidence = buildCloudRunDeploymentEvidence(manifestWithoutDemoUrl);
+    const checksByName = Object.fromEntries(evidence.envChecks.map((check) => [check.name, check]));
+
+    expect(evidence.overallStatus).toBe("ready-to-dry-run");
+    expect(evidence.replacementFindings).toEqual([]);
+    expect(evidence.blockers).toEqual([]);
+    expect(checksByName.XPRIZE_DEMO_VIDEO_URL).toMatchObject({
+      status: "manual-review",
+      currentValue: "missing"
+    });
+    expect(evidence.manualReviewFlags).toEqual(expect.arrayContaining(["XPRIZE_DEMO_VIDEO_URL"]));
+  });
+
   it("keeps true XPRIZE attestation flags in manual review instead of treating claims as proof", () => {
     const attestedManifest = renderProductionCandidateManifest()
       .replace('name: XPRIZE_REPOSITORY_ACCESS_CONFIGURED\n              value: "false"', 'name: XPRIZE_REPOSITORY_ACCESS_CONFIGURED\n              value: "true"')

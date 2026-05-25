@@ -416,6 +416,43 @@ describe("Cloud Run render-values audit", () => {
     expect(JSON.stringify(packet)).not.toContain("private-admin-token");
   });
 
+  it("keeps a missing demo video URL out of Cloud Run dry-run blockers", async () => {
+    const { writeCloudRunRenderValuesAudit } = await loadAudit();
+    const tempDir = await makeTempDir();
+    const valuesPath = await writeValues(tempDir, {
+      ...safeRenderValues(),
+      XPRIZE_DEMO_VIDEO_URL: "https://youtu.be/YOUR_VIDEO"
+    });
+
+    const packet = await writeCloudRunRenderValuesAudit({
+      valuesPath,
+      outDir: tempDir,
+      releaseId: "release-20260523-001",
+      strict: true
+    });
+
+    expect(packet.status).toBe("ready-to-render");
+    expect(packet.readyForStrictRender).toBe(true);
+    expect(packet.missingStrictKeys).not.toContain("XPRIZE_DEMO_VIDEO_URL");
+    expect(packet.placeholderKeys).not.toContain("XPRIZE_DEMO_VIDEO_URL");
+    expect(packet.valueConsistencyBlockers).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: "XPRIZE_DEMO_VIDEO_URL" })])
+    );
+    expect(packet.evidencePacket.requiredBeforeDryRun).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: "XPRIZE_DEMO_VIDEO_URL" })])
+    );
+    expect(packet.evidencePacket.publicClaimEvidenceQueue).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "XPRIZE_DEMO_VIDEO_URL",
+          status: "missing"
+        })
+      ])
+    );
+    expect(packet.evidencePacket.status).toBe("ready-for-dry-run-claim-review-pending");
+    expect(packet.renderValueIntakeSummary.readyForStrictRender).toBe(true);
+  });
+
   it("verifies Cloud Run render evidence packet integrity and blocks tampered packet files", async () => {
     const { verifyCloudRunRenderEvidencePacket, writeCloudRunRenderValuesAudit } = await loadAudit();
     const tempDir = await makeTempDir();
