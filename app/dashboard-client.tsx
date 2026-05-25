@@ -1449,7 +1449,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
       </section>
 
       <section className="metrics-grid" aria-label="Evidence Room metrics">
-        <Metric label="MRR" value={`$${snapshot.tenant.evidence.mrrUsd.toLocaleString()}`} hint="Real revenue evidence field" />
+        <Metric label="MRR" value={`$${formatNumber(snapshot.tenant.evidence.mrrUsd)}`} hint="Real revenue evidence field" />
         <Metric label="Pilots" value={snapshot.tenant.evidence.pilotCount.toString()} hint="Arms-length customer proof target" />
         <Metric label="Risks detected" value={metrics.risksDetected.toString()} hint="No overclaiming as violations prevented" />
         <Metric label="Public exposures closed" value={metrics.remediated.toString()} hint="Approved remediations only" />
@@ -1552,19 +1552,19 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
           <dl className="evidence-list">
             <div>
               <dt>Files inspected</dt>
-              <dd>{snapshot.aggregateCounters.filesInspected.toLocaleString()}</dd>
+              <dd>{formatNumber(snapshot.aggregateCounters.filesInspected)}</dd>
             </div>
             <div>
               <dt>Bytes extracted</dt>
-              <dd>{snapshot.aggregateCounters.bytesExtracted.toLocaleString()}</dd>
+              <dd>{formatNumber(snapshot.aggregateCounters.bytesExtracted)}</dd>
             </div>
             <div>
               <dt>Bytes scanned by DLP</dt>
-              <dd>{snapshot.aggregateCounters.bytesScannedByDlp.toLocaleString()}</dd>
+              <dd>{formatNumber(snapshot.aggregateCounters.bytesScannedByDlp)}</dd>
             </div>
             <div>
               <dt>Bytes routed to Gemini</dt>
-              <dd>{snapshot.aggregateCounters.bytesRoutedToGemini.toLocaleString()}</dd>
+              <dd>{formatNumber(snapshot.aggregateCounters.bytesRoutedToGemini)}</dd>
             </div>
           </dl>
           <button type="button" className="wide" onClick={exportEvidence} disabled={actionState === "running"}>
@@ -1694,7 +1694,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               <article>
                 <strong>Prospect access</strong>
                 <p>
-                  {trustPacket.accessUrl} · expires {new Date(trustPacket.expiresAt).toLocaleDateString()}
+                  {trustPacket.accessUrl} · expires {formatUtcDate(trustPacket.expiresAt)}
                 </p>
               </article>
               <article>
@@ -1799,7 +1799,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               <p>
                 {readiness.answerLibrary.reviewDue} due · next{" "}
                 {readiness.answerLibrary.nextReviewAt
-                  ? new Date(readiness.answerLibrary.nextReviewAt).toLocaleDateString()
+                  ? formatUtcDate(readiness.answerLibrary.nextReviewAt)
                   : "none"}
               </p>
             </article>
@@ -1914,7 +1914,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
             <ol className="trend-history">
               {readiness.riskTrend.history.slice(0, 5).map((item) => (
                 <li key={item.id}>
-                  <time>{new Date(item.capturedAt).toLocaleTimeString()}</time>
+                  <time>{formatUtcTime(item.capturedAt)}</time>
                   <span>{item.reason.replaceAll("_", " ")}</span>
                   <strong>
                     R{item.workspaceRiskScore} · D{item.dealImpactScore} · E{item.evidenceMaturity}
@@ -1990,7 +1990,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
                 `${readiness.approvalQueue.overdue} overdue`,
                 `Next due: ${
                   readiness.approvalQueue.earliestDueAt
-                    ? new Date(readiness.approvalQueue.earliestDueAt).toLocaleString()
+                    ? formatUtcDateTime(readiness.approvalQueue.earliestDueAt)
                     : "none"
                 }`,
                 `Escalation: ${readiness.approvalQueue.escalationTargets[0] ?? "none"}`
@@ -2014,7 +2014,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
                 `${readiness.answerLibrary.reviewDue} review due`,
                 `Next review: ${
                   readiness.answerLibrary.nextReviewAt
-                    ? new Date(readiness.answerLibrary.nextReviewAt).toLocaleDateString()
+                    ? formatUtcDate(readiness.answerLibrary.nextReviewAt)
                     : "none"
                 }`
               ]}
@@ -2061,7 +2061,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
                 {readiness.approvalOps.notifications.slice(0, 3).map((notification) => (
                   <span key={notification.id} data-status={notification.status}>
                     {notification.channel.replaceAll("_", " ")} · {notification.recipientEmail} · due{" "}
-                    {new Date(notification.dueAt).toLocaleTimeString()}
+                    {formatUtcTime(notification.dueAt)}
                   </span>
                 ))}
               </div>
@@ -2175,8 +2175,8 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               <article>
                 <strong>Quota runbook</strong>
                 <p>
-                  {costControls.quotaPlan.dailyRequestLimit.toLocaleString()} requests/day ·{" "}
-                  {costControls.quotaPlan.dailyTokenLimit.toLocaleString()} tokens/day · {costControls.quotaPlan.enforcement}
+                  {formatNumber(costControls.quotaPlan.dailyRequestLimit)} requests/day ·{" "}
+                  {formatNumber(costControls.quotaPlan.dailyTokenLimit)} tokens/day · {costControls.quotaPlan.enforcement}
                 </p>
               </article>
             </div>
@@ -2857,8 +2857,8 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               {pilotProspectPipeline.summary.proposedPilots} proposed
             </strong>
             <small>
-              ${pilotProspectPipeline.summary.estimatedPipelineMrrUsd.toLocaleString()}/mo pipeline · $
-              {Math.round(pilotProspectPipeline.summary.expectedPipelineMrrUsd).toLocaleString()} weighted
+              ${formatNumber(pilotProspectPipeline.summary.estimatedPipelineMrrUsd)}/mo pipeline · $
+              {formatNumber(Math.round(pilotProspectPipeline.summary.expectedPipelineMrrUsd))} weighted
             </small>
             <div className="prospect-grid">
               {pilotProspectPipeline.prospects.slice(0, 3).map((prospect) => (
@@ -2952,7 +2952,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               {financialEvidence.summary.missing} missing · {financialEvidence.summary["mock-only"]} mock
             </strong>
             <small>
-              ${financialEvidence.totalMrrUsd.toLocaleString()}/mo MRR · ${financialEvidence.totalCostsUsd.toLocaleString()} costs ·{" "}
+              ${formatNumber(financialEvidence.totalMrrUsd)}/mo MRR · ${formatNumber(financialEvidence.totalCostsUsd)} costs ·{" "}
               {financialEvidence.activeUsers} active users · {financialEvidence.evidenceMode} mode
             </small>
             <div className="financial-month-grid">
@@ -3056,7 +3056,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
           </div>
           <div className="roi-card">
             <span>Evidence-calibrated ROI</span>
-            <strong>${readiness.roiCalculator.estimatedMonthlyValueUsd.toLocaleString()}</strong>
+            <strong>${formatNumber(readiness.roiCalculator.estimatedMonthlyValueUsd)}</strong>
             <small>
               {readiness.roiCalculator.paybackMultiple}x payback at ${readiness.roiCalculator.pricePerMonthUsd}/mo ·{" "}
               {readiness.roiCalculator.calibrationSource.replaceAll("-", " ")}
@@ -3655,7 +3655,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
         <ol className="timeline">
           {snapshot.auditEvents.slice(0, 10).map((event) => (
             <li key={event.id}>
-              <time>{new Date(event.createdAt).toLocaleTimeString()}</time>
+              <time>{formatUtcTime(event.createdAt)}</time>
               <span>{event.message}</span>
             </li>
           ))}
@@ -3706,13 +3706,52 @@ function formatDelta(value: number) {
   return String(value);
 }
 
+const numberFormatter = new Intl.NumberFormat("en-US");
+const utcDateFormatter = new Intl.DateTimeFormat("en-US", {
+  day: "2-digit",
+  month: "short",
+  timeZone: "UTC",
+  year: "numeric"
+});
+const utcTimeFormatter = new Intl.DateTimeFormat("en-US", {
+  hour: "2-digit",
+  hour12: false,
+  minute: "2-digit",
+  timeZone: "UTC"
+});
+const utcDateTimeFormatter = new Intl.DateTimeFormat("en-US", {
+  day: "2-digit",
+  hour: "2-digit",
+  hour12: false,
+  minute: "2-digit",
+  month: "short",
+  timeZone: "UTC",
+  year: "numeric"
+});
+
+function formatNumber(value: number) {
+  return numberFormatter.format(value);
+}
+
+function formatUtcDate(value: string) {
+  return utcDateFormatter.format(new Date(value));
+}
+
+function formatUtcTime(value: string) {
+  return utcTimeFormatter.format(new Date(value));
+}
+
+function formatUtcDateTime(value: string) {
+  return utcDateTimeFormatter.format(new Date(value));
+}
+
 function formatCurrencyDelta(value: number) {
   if (value > 0) {
-    return `+$${value.toLocaleString()}`;
+    return `+$${formatNumber(value)}`;
   }
 
   if (value < 0) {
-    return `-$${Math.abs(value).toLocaleString()}`;
+    return `-$${formatNumber(Math.abs(value))}`;
   }
 
   return "$0";
@@ -3780,7 +3819,7 @@ function FindingCard({
         <div>
           <dt>SLA</dt>
           <dd>
-            {finding.approval.status.replaceAll("_", " ")} · due {new Date(finding.approval.dueAt).toLocaleString()}
+            {finding.approval.status.replaceAll("_", " ")} · due {formatUtcDateTime(finding.approval.dueAt)}
           </dd>
         </div>
         <div>
