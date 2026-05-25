@@ -248,7 +248,7 @@ export async function verifyCloudCostControls(fetchImpl: typeof fetch = fetch): 
 
     return {
       generatedAt: new Date().toISOString(),
-      status: checks.every((check) => check.status === "passed") ? "passed" : "failed",
+      status: summarizeCostControlStatus(checks),
       attemptedLiveApi: true,
       checks
     };
@@ -266,6 +266,18 @@ export async function verifyCloudCostControls(fetchImpl: typeof fetch = fetch): 
       checks
     };
   }
+}
+
+function summarizeCostControlStatus(checks: CloudCostControlVerificationResult["checks"]) {
+  if (checks.some((check) => check.status === "failed")) {
+    return "failed";
+  }
+
+  if (checks.some((check) => check.status === "blocked")) {
+    return "blocked";
+  }
+
+  return "passed";
 }
 
 function buildEvidenceChecklist(

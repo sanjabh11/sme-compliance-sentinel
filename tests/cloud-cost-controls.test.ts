@@ -176,6 +176,43 @@ describe("cloud cost controls", () => {
     );
     expect(result.checks.find((check) => check.target === "quota")?.status).toBe("blocked");
   });
+
+  it("blocks live verification when budget and API key checks pass but quota proof is not confirmed", async () => {
+    const controls = await loadCostControlsWithEnv({
+      ...productionCostControlEnv,
+      SENTINEL_GEMINI_QUOTA_EVIDENCE_CONFIRMED: "false"
+    });
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.includes("billingbudgets.googleapis.com")) {
+        return jsonResponse({
+          name: "billingAccounts/000000-111111-222222/budgets/budget-123"
+        });
+      }
+
+      if (url.includes("apikeys.googleapis.com")) {
+        return jsonResponse({
+          name: "projects/123456789012/locations/global/keys/gemini-key-123",
+          restrictions: {
+            apiTargets: [{ service: "generativelanguage.googleapis.com" }],
+            serverKeyRestrictions: {
+              allowedIps: ["34.10.10.10"]
+            }
+          }
+        });
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+
+    const result = await controls.verifyCloudCostControls(fetchImpl as unknown as typeof fetch);
+
+    expect(result.status).toBe("blocked");
+    expect(result.checks.find((check) => check.target === "budget")?.status).toBe("passed");
+    expect(result.checks.find((check) => check.target === "api-key")?.status).toBe("passed");
+    expect(result.checks.find((check) => check.target === "quota")?.status).toBe("blocked");
+  });
 });
 
 async function loadCostControlsWithEnv(env: Record<string, string>) {
