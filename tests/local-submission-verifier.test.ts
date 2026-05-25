@@ -39,6 +39,14 @@ type LocalSubmissionReport = {
       priority: number;
       status: string;
       action: string;
+      actionDetails?: Array<{
+        key: string;
+        owner: string;
+        status: string;
+        source: string;
+        fix: string;
+        acceptedProof: string;
+      }>;
       commands: string[];
       privateArtifactPaths: string[];
       stopCondition: string;
@@ -615,6 +623,7 @@ describe("local XPRIZE submission verifier", () => {
           recommendedNextCodeControllableAction?: {
             phaseId: string;
             action: string;
+            actionDetails?: Array<{ key: string; status: string; source: string; owner: string; fix: string; acceptedProof: string }>;
             commands: string[];
             privateArtifactPaths: string[];
           };
@@ -1062,11 +1071,13 @@ describe("local XPRIZE submission verifier", () => {
       writeFileSync(join(releaseDir, "cloudrun-render-evidence-packet.md"), "# Cloud Run Render Evidence Packet\n", "utf8");
       writeFileSync(join(releaseDir, "cloudrun-render-evidence-packet-verifier.json"), `${JSON.stringify({ overallStatus: "verified", releaseId }, null, 2)}\n`, "utf8");
 
-      const report = runVerifier([], {
+      const summaryPath = join(tempDir, "local-submission-summary.md");
+      const report = runVerifier(["--markdown-out", summaryPath], {
         SENTINEL_CLOUD_RUN_VALUES_PATH: valuesPath,
         SENTINEL_CLOUD_RUN_RENDER_OUT_DIR: outDir,
         SENTINEL_RELEASE_ID: releaseId
       });
+      const summaryMarkdown = readFileSync(summaryPath, "utf8");
       const row = report.phaseProgressChart.rows.find((item) => item.phaseId === "cloudrun-render-dry-run");
       const progressRows = report.manualInterventionPlan.actionRows.filter(
         (item) => item.phaseId === "cloudrun-render-dry-run" && item.source === "phase-progress"
@@ -1086,6 +1097,23 @@ describe("local XPRIZE submission verifier", () => {
       );
       expect(report.phasePlan.recommendedNextCodeControllableAction.action).toContain("SENTINEL_GEMINI_API_KEY_ID");
       expect(report.phasePlan.recommendedNextCodeControllableAction.action).not.toContain("Prepare and verify");
+      expect(report.phasePlan.recommendedNextCodeControllableAction.actionDetails).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            key: "GOOGLE_CLOUD_PROJECT",
+            status: "placeholder",
+            fix: "Fill GOOGLE_CLOUD_PROJECT with the reviewed Google Cloud project id."
+          }),
+          expect.objectContaining({
+            key: "NEXT_PUBLIC_PRODUCT_URL",
+            status: "missing",
+            acceptedProof: "Signed-out hosted product smoke proof."
+          })
+        ])
+      );
+      expect(summaryMarkdown).toContain("Action details:");
+      expect(summaryMarkdown).toContain("GOOGLE_CLOUD_PROJECT");
+      expect(summaryMarkdown).toContain("Signed-out hosted product smoke proof.");
       expect(row?.pending.join(" ")).toContain("Resolve render-value consistency blocker SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS");
       expect(row?.pending.join(" ")).toContain("Generate the dry-run preflight packet only after the render-values audit is ready-to-render");
       expect(row?.evidence).toContain("private-artifact:render-values-audit=blocked");

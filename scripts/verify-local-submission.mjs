@@ -1213,12 +1213,15 @@ function buildRecommendedNextCodeControllableAction(phases) {
       status: "not-needed",
       action:
         "No local engineering readiness slice is open in this report. Continue with external proof collection, human review, or private evidence capture.",
+      actionDetails: [],
       commands: [],
       privateArtifactPaths: [],
       stopCondition: "Do not invent code work when the remaining proof gap is external or human-owned.",
       proofBoundary: proofBoundaryForBucket("code-controllable")
     };
   }
+
+  const action = codeControllableActionForPhase(phase);
 
   return {
     phaseId: phase.id,
@@ -1227,7 +1230,8 @@ function buildRecommendedNextCodeControllableAction(phases) {
     owner: phase.owner,
     priority: phase.priority,
     status: phase.status,
-    action: codeControllableActionForPhase(phase),
+    action,
+    actionDetails: codeControllableActionDetailsForPhase(phase, action),
     commands: phase.commands,
     privateArtifactPaths: privateArtifactPathsForPhase(phase.id),
     stopCondition: phase.stopConditions[0] ?? "Stop until the selected code-controllable gate has command evidence.",
@@ -1250,6 +1254,14 @@ function codeControllableActionForPhase(phase) {
   }
 
   return `Advance ${phase.label} with local code or generated private handoff artifacts only; stop before claiming hosted, revenue, user, legal, or human-attestation proof.`;
+}
+
+function codeControllableActionDetailsForPhase(phase, action) {
+  if (phase.id !== "cloudrun-render-dry-run") {
+    return [];
+  }
+
+  return cloudRunActionDetailsForBlocker({ action, state: readCloudRunRenderArtifactState() });
 }
 
 function runGate(definition) {
@@ -2537,6 +2549,24 @@ function renderLocalSubmissionMarkdown(report) {
     "",
     nextCodeAction.action,
     "",
+    ...(nextCodeAction.actionDetails?.length
+      ? [
+          "Action details:",
+          "",
+          markdownTable(
+            ["Key", "Status", "Source", "Owner", "Fix", "Private proof to keep"],
+            nextCodeAction.actionDetails.map((detail) => [
+              detail.key,
+              detail.status,
+              detail.source,
+              detail.owner,
+              detail.fix,
+              detail.acceptedProof
+            ])
+          ),
+          ""
+        ]
+      : []),
     "Commands:",
     "",
     markdownList((nextCodeAction.commands ?? []).map((command) => `\`${command}\``)),
