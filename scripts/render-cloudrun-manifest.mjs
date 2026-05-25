@@ -89,6 +89,12 @@ const strictRequiredValueKeys = [
   "XPRIZE_ENTRANT_TYPE",
   ...secretVersionKeys
 ];
+const releaseMetadataValueKeys = [
+  "SENTINEL_RELEASE_ID",
+  "SENTINEL_SOURCE_COMMIT",
+  "SENTINEL_SOURCE_COMMIT_AT",
+  "SENTINEL_SOURCE_BRANCH"
+];
 
 const renderValuesTemplate = {
   GOOGLE_CLOUD_PROJECT: "PROJECT_ID",
@@ -431,11 +437,18 @@ export async function writeReleaseCandidateValues(outputPath, options = {}) {
   }
 
   const absolutePath = resolve(outputPath);
-  const values = buildReleaseCandidateValues(options);
   await assertDirectoryPathSafe(dirname(absolutePath), "Cloud Run release values parent directory");
   await mkdir(dirname(absolutePath), { recursive: true });
   await assertDirectoryExistsSafe(dirname(absolutePath), "Cloud Run release values parent directory");
+  const existingValues = await loadValuesFileIfExists(absolutePath);
+  const releaseValues = buildReleaseCandidateValues(options);
+  const values = mergeReleaseCandidateValues(existingValues, releaseValues);
   await writeJson(absolutePath, values);
+
+  const preservedKeys = Object.keys(existingValues).filter(
+    (key) => values[key] === existingValues[key] && !releaseMetadataValueKeys.includes(key)
+  );
+  const refreshedReleaseMetadataKeys = releaseMetadataValueKeys.filter((key) => releaseValues[key] !== undefined);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -446,14 +459,47 @@ export async function writeReleaseCandidateValues(outputPath, options = {}) {
     sourceCommitAt: values.SENTINEL_SOURCE_COMMIT_AT,
     sourceBranch: values.SENTINEL_SOURCE_BRANCH,
     repositoryUrl: values.XPRIZE_REPOSITORY_URL,
+    preservedExistingValueCount: preservedKeys.length,
+    preservedExistingValueKeys: preservedKeys,
+    refreshedReleaseMetadataKeys,
     privateHandling:
-      "This release-candidate values file is a non-secret private starter. It fills source/release metadata from Git, but project ids, hosted URL, OAuth ids, billing ids, Gemini key resource ids, static egress IPs, Secret Manager versions, and evidence flags still require operator review.",
+      "This release-candidate values file is a non-secret private starter. It refreshes source/release metadata from Git while preserving existing non-secret values. Project ids, hosted URL, repository access URL, OAuth ids, billing ids, Gemini key resource ids, static egress IPs, Secret Manager versions, and evidence flags still require operator review.",
     nextActions: [
       "Fill the remaining non-secret production values in this private file.",
+      "Review preserved release-bound values such as SENTINEL_CLOUD_RUN_IMAGE before strict render.",
       "Keep every XPRIZE evidence attestation false until the private proof exists.",
       `Run npm run audit:cloudrun-values -- --values ${absolutePath} --out-dir artifacts/deployment --release-id ${values.SENTINEL_RELEASE_ID} --strict before rendering.`
     ]
   };
+}
+
+export function mergeReleaseCandidateValues(existingValues = {}, releaseValues = {}) {
+  const merged = {
+    ...releaseValues,
+    ...existingValues
+  };
+
+  for (const key of releaseMetadataValueKeys) {
+    if (releaseValues[key] !== undefined) {
+      merged[key] = releaseValues[key];
+    }
+  }
+
+  return merged;
+}
+
+async function loadValuesFileIfExists(valuesPath) {
+  try {
+    await lstat(valuesPath);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return {};
+    }
+
+    throw error;
+  }
+
+  return loadValuesFile(valuesPath);
 }
 
 export async function auditCloudRunRenderValues(options = {}) {

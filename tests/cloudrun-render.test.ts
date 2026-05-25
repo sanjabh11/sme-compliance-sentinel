@@ -34,6 +34,9 @@ interface CloudRunRenderModule {
     sourceCommitAt: string;
     sourceBranch: string;
     repositoryUrl: string;
+    preservedExistingValueCount: number;
+    preservedExistingValueKeys: string[];
+    refreshedReleaseMetadataKeys: string[];
     privateHandling: string;
     nextActions: string[];
   }>;
@@ -158,7 +161,14 @@ describe("Cloud Run manifest renderer", () => {
       path: valuesPath,
       releaseId: "release-20260524-0123456",
       sourceCommit: "0123456789abcdef0123456789abcdef01234567",
-      repositoryUrl: "https://github.com/sanjabh11/sme-compliance-sentinel"
+      repositoryUrl: "https://github.com/sanjabh11/sme-compliance-sentinel",
+      preservedExistingValueCount: 0,
+      refreshedReleaseMetadataKeys: expect.arrayContaining([
+        "SENTINEL_RELEASE_ID",
+        "SENTINEL_SOURCE_COMMIT",
+        "SENTINEL_SOURCE_COMMIT_AT",
+        "SENTINEL_SOURCE_BRANCH"
+      ])
     });
     expect(summary.privateHandling).toContain("non-secret private starter");
     expect(summary.nextActions.join(" ")).toContain("audit:cloudrun-values");
@@ -167,6 +177,68 @@ describe("Cloud Run manifest renderer", () => {
     expect(JSON.stringify(summary)).not.toContain("private-admin-token");
 
     await expect(writeReleaseCandidateValues("", { gitRunner })).rejects.toThrow(/requires a private output path/u);
+  });
+
+  it("preserves reviewed private values while refreshing release metadata", async () => {
+    const { writeReleaseCandidateValues } = await loadRenderer();
+    const tempDir = await makeTempDir();
+    const valuesPath = join(tempDir, "cloudrun-release-values.json");
+    const existingValues = {
+      ...safeRenderValues(),
+      SENTINEL_RELEASE_ID: "release-20260523-old",
+      SENTINEL_SOURCE_COMMIT: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      SENTINEL_SOURCE_COMMIT_AT: "2026-05-23T00:00:00.000Z",
+      SENTINEL_SOURCE_BRANCH: "old/main",
+      XPRIZE_REPOSITORY_URL: "https://github.com/sanjabh11/sentinel-judge-mirror",
+      GOOGLE_CLOUD_PROJECT: "reviewed-prod",
+      NEXT_PUBLIC_PRODUCT_URL: "https://reviewed.example.com",
+      GOOGLE_OAUTH_CLIENT_ID: "123456789012-reviewed.apps.googleusercontent.com",
+      GEMINI_API_KEY_VERSION: "7",
+      WORKSPACE_DRIVE_CHANNEL_TOKEN_VERSION: "8"
+    };
+
+    await writeFile(valuesPath, `${JSON.stringify(existingValues, null, 2)}\n`, "utf8");
+
+    const summary = await writeReleaseCandidateValues(valuesPath, { gitRunner: makeFakeGitRunner() });
+    const writtenValues = JSON.parse(await readFile(valuesPath, "utf8")) as Record<string, string>;
+
+    expect(writtenValues).toMatchObject({
+      GOOGLE_CLOUD_PROJECT: "reviewed-prod",
+      NEXT_PUBLIC_PRODUCT_URL: "https://reviewed.example.com",
+      GOOGLE_OAUTH_CLIENT_ID: "123456789012-reviewed.apps.googleusercontent.com",
+      GEMINI_API_KEY_VERSION: "7",
+      WORKSPACE_DRIVE_CHANNEL_TOKEN_VERSION: "8",
+      SENTINEL_RELEASE_ID: "release-20260524-0123456",
+      SENTINEL_SOURCE_COMMIT: "0123456789abcdef0123456789abcdef01234567",
+      SENTINEL_SOURCE_COMMIT_AT: "2026-05-24T05:18:19.000Z",
+      SENTINEL_SOURCE_BRANCH: "origin/main",
+      XPRIZE_REPOSITORY_URL: "https://github.com/sanjabh11/sentinel-judge-mirror"
+    });
+    expect(summary.preservedExistingValueCount).toBeGreaterThan(0);
+    expect(summary.preservedExistingValueKeys).toEqual(
+      expect.arrayContaining([
+        "GOOGLE_CLOUD_PROJECT",
+        "NEXT_PUBLIC_PRODUCT_URL",
+        "XPRIZE_REPOSITORY_URL",
+        "GOOGLE_OAUTH_CLIENT_ID",
+        "GEMINI_API_KEY_VERSION",
+        "WORKSPACE_DRIVE_CHANNEL_TOKEN_VERSION"
+      ])
+    );
+    expect(summary.refreshedReleaseMetadataKeys).toEqual(
+      expect.arrayContaining([
+        "SENTINEL_RELEASE_ID",
+        "SENTINEL_SOURCE_COMMIT",
+        "SENTINEL_SOURCE_COMMIT_AT",
+        "SENTINEL_SOURCE_BRANCH"
+      ])
+    );
+    expect(summary.repositoryUrl).toBe("https://github.com/sanjabh11/sentinel-judge-mirror");
+    expect(summary.privateHandling).toContain("preserving existing non-secret values");
+    expect(summary.nextActions.join(" ")).toContain("SENTINEL_CLOUD_RUN_IMAGE");
+    expect(JSON.stringify(writtenValues)).not.toContain("AIza");
+    expect(JSON.stringify(writtenValues)).not.toContain("GOCSPX");
+    expect(JSON.stringify(summary)).not.toContain("private-admin-token");
   });
 
   it("fails closed when Cloud Run render outputs would overwrite symlinks", async () => {
