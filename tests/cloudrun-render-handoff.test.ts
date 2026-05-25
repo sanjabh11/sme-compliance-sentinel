@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 interface CloudRunRenderHandoffModule {
@@ -249,6 +249,34 @@ describe("Cloud Run render handoff", () => {
     expect(countDriftVerification.overallStatus).toBe("blocked");
     expect(countDriftVerification.blockers.join(" ")).toContain("handoff-private-value-checklist-counts");
 
+    const pathDrift = await prepareCloudRunRenderHandoff({
+      valuesPath: join(tempDir, "path-drift-values.json"),
+      outDir: join(tempDir, "path-drift-deployment"),
+      gitRunner: makeFakeGitRunner()
+    });
+    const outsideEvidencePacketPath = join(tempDir, "outside-cloudrun-render-evidence-packet.json");
+    const outsideEvidenceVerifierPath = join(tempDir, "cloudrun-render-evidence-packet-verifier.json");
+    const outsideMarkdownPath = join(tempDir, "outside-cloudrun-render-handoff.md");
+    const pathDriftJson = JSON.parse(await readFile(pathDrift.handoffPath, "utf8")) as {
+      handoffMarkdownPath?: string;
+      renderValuesAudit?: {
+        evidencePacketPath?: string;
+      };
+    };
+    await writeFile(outsideEvidencePacketPath, await readFile(pathDrift.renderValuesAudit.evidencePacketPath, "utf8"), "utf8");
+    await writeFile(outsideMarkdownPath, await readFile(pathDrift.handoffMarkdownPath, "utf8"), "utf8");
+    pathDriftJson.handoffMarkdownPath = outsideMarkdownPath;
+    if (pathDriftJson.renderValuesAudit) {
+      pathDriftJson.renderValuesAudit.evidencePacketPath = outsideEvidencePacketPath;
+    }
+    await writeFile(pathDrift.handoffPath, `${JSON.stringify(pathDriftJson, null, 2)}\n`, "utf8");
+    const pathDriftVerification = await verifyCloudRunRenderHandoff(pathDrift.handoffPath);
+
+    expect(pathDriftVerification.overallStatus).toBe("blocked");
+    expect(pathDriftVerification.blockers.join(" ")).toContain("handoff-markdown-path-match");
+    expect(pathDriftVerification.blockers.join(" ")).toContain("render-evidence-packet-path-match");
+    await expect(readFile(outsideEvidenceVerifierPath, "utf8")).rejects.toThrow(/ENOENT/u);
+
     const symlinkedHandoff = await prepareCloudRunRenderHandoff({
       valuesPath: join(tempDir, "symlink-values.json"),
       outDir: join(tempDir, "symlink-deployment"),
@@ -284,6 +312,44 @@ describe("Cloud Run render handoff", () => {
       })
     ).rejects.toThrow(/symbolic link/u);
     expect(await readFile(symlinkTargetPath, "utf8")).toBe(symlinkTargetContent);
+  });
+
+  it("fails closed before partial writes when handoff outputs or input parents are symlinked", async () => {
+    const { prepareCloudRunRenderHandoff, verifyCloudRunRenderHandoff } = await loadHandoff();
+    const tempDir = await makeTempDir();
+    const valuesPath = join(tempDir, "partial-write-values.json");
+    const outDir = join(tempDir, "partial-write-deployment");
+    const handoff = await prepareCloudRunRenderHandoff({
+      valuesPath,
+      outDir,
+      gitRunner: makeFakeGitRunner()
+    });
+    const originalHandoffJson = await readFile(handoff.handoffPath, "utf8");
+    const markdownTargetPath = join(tempDir, "reviewed-cloudrun-render-handoff.md");
+    await writeFile(markdownTargetPath, "unchanged-markdown\n", "utf8");
+    await rm(handoff.handoffMarkdownPath, { force: true });
+    await symlink(markdownTargetPath, handoff.handoffMarkdownPath);
+
+    await expect(
+      prepareCloudRunRenderHandoff({
+        valuesPath,
+        outDir,
+        gitRunner: makeFakeGitRunner()
+      })
+    ).rejects.toThrow(/symbolic link/u);
+    expect(await readFile(handoff.handoffPath, "utf8")).toBe(originalHandoffJson);
+    expect(await readFile(markdownTargetPath, "utf8")).toBe("unchanged-markdown\n");
+
+    const realHandoffDir = dirname(handoff.handoffPath);
+    const symlinkedHandoffDir = join(tempDir, "symlinked-handoff-parent");
+    const verifierTargetPath = join(realHandoffDir, "cloudrun-render-handoff-verifier.json");
+    await rm(verifierTargetPath, { force: true });
+    await symlink(realHandoffDir, symlinkedHandoffDir);
+
+    await expect(verifyCloudRunRenderHandoff(join(symlinkedHandoffDir, "cloudrun-render-handoff.json"))).rejects.toThrow(
+      /symbolic link/u
+    );
+    await expect(readFile(verifierTargetPath, "utf8")).rejects.toThrow(/ENOENT/u);
   });
 
   it("blocks mismatched release ids before private handoff proceeds", async () => {

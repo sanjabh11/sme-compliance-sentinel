@@ -2,9 +2,9 @@
 /* global console, process */
 
 import { Buffer } from "node:buffer";
-import { createHash } from "node:crypto";
-import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import { verifyCloudRunRenderEvidencePacket, writeCloudRunRenderValuesAudit } from "./audit-cloudrun-render-values.mjs";
 import { writeReleaseCandidateValues } from "./render-cloudrun-manifest.mjs";
 
@@ -174,6 +174,8 @@ export async function prepareCloudRunRenderHandoff(options = {}) {
   await assertDirectoryPathSafe(outputDirectory, "Cloud Run render handoff output directory");
   await mkdir(outputDirectory, { recursive: true });
   await assertDirectoryExistsSafe(outputDirectory, "Cloud Run render handoff output directory");
+  await assertWritableTextFilePath(handoffPath, "Cloud Run render handoff JSON");
+  await assertWritableTextFilePath(handoffMarkdownPath, "Cloud Run render handoff Markdown");
   await writeJson(handoffPath, handoff);
   await writeTextFile(handoffMarkdownPath, renderMarkdown(handoff), "Cloud Run render handoff Markdown");
 
@@ -204,11 +206,27 @@ export async function verifyCloudRunRenderHandoff(path) {
   );
 
   if (handoff) {
+    const expectedHandoffMarkdownPath = join(outputDirectory, handoffMarkdownFileName);
+    const expectedEvidencePacketPath = join(outputDirectory, "cloudrun-render-evidence-packet.json");
     checks.push(
       verificationCheck(
         "handoff-path-match",
         resolve(handoff.handoffPath ?? "") === handoffPath ? "passed" : "blocked",
         `handoffPath=${handoffPath}; recorded=${String(handoff.handoffPath ?? "missing")}.`
+      )
+    );
+    checks.push(
+      verificationCheck(
+        "handoff-output-directory-match",
+        resolve(handoff.outputDirectory ?? "") === outputDirectory ? "passed" : "blocked",
+        `expected=${outputDirectory}; recorded=${String(handoff.outputDirectory ?? "missing")}.`
+      )
+    );
+    checks.push(
+      verificationCheck(
+        "handoff-markdown-path-match",
+        resolve(handoff.handoffMarkdownPath ?? "") === expectedHandoffMarkdownPath ? "passed" : "blocked",
+        `expected=${expectedHandoffMarkdownPath}; recorded=${String(handoff.handoffMarkdownPath ?? "missing")}.`
       )
     );
     checks.push(
@@ -244,7 +262,18 @@ export async function verifyCloudRunRenderHandoff(path) {
     const evidencePacketPath = handoff.renderValuesAudit?.evidencePacketPath;
     let evidencePacket;
     if (typeof evidencePacketPath === "string" && evidencePacketPath) {
-      const evidencePacketResult = await readJsonForVerification(evidencePacketPath, "render evidence packet");
+      const evidencePacketPathMatches = resolve(evidencePacketPath) === expectedEvidencePacketPath;
+      checks.push(
+        verificationCheck(
+          "render-evidence-packet-path-match",
+          evidencePacketPathMatches ? "passed" : "blocked",
+          `expected=${expectedEvidencePacketPath}; recorded=${evidencePacketPath}.`
+        )
+      );
+
+      const evidencePacketResult = evidencePacketPathMatches
+        ? await readJsonForVerification(expectedEvidencePacketPath, "render evidence packet")
+        : { ok: false, error: "render evidence packet path does not match the canonical handoff output directory." };
       evidencePacket = evidencePacketResult.value;
       checks.push(
         verificationCheck(
@@ -253,21 +282,32 @@ export async function verifyCloudRunRenderHandoff(path) {
           evidencePacketResult.ok ? `Render evidence packet parsed from ${evidencePacketPath}.` : evidencePacketResult.error
         )
       );
-      evidenceVerification = await verifyCloudRunRenderEvidencePacket(evidencePacketPath);
-      checks.push(
-        verificationCheck(
-          "render-evidence-verifier",
-          evidenceVerification.overallStatus === "verified" ? "passed" : "blocked",
-          `renderEvidenceVerifier=${evidenceVerification.overallStatus}; path=${evidenceVerification.verificationPath}.`
-        )
-      );
-      checks.push(
-        verificationCheck(
-          "render-evidence-verifier-path-match",
-          evidenceVerification.verificationPath === handoff.evidencePacketVerification?.verificationPath ? "passed" : "blocked",
-          `recorded=${String(handoff.evidencePacketVerification?.verificationPath ?? "missing")}; actual=${String(evidenceVerification.verificationPath ?? "missing")}.`
-        )
-      );
+
+      if (evidencePacketPathMatches) {
+        evidenceVerification = await verifyCloudRunRenderEvidencePacket(expectedEvidencePacketPath);
+        checks.push(
+          verificationCheck(
+            "render-evidence-verifier",
+            evidenceVerification.overallStatus === "verified" ? "passed" : "blocked",
+            `renderEvidenceVerifier=${evidenceVerification.overallStatus}; path=${evidenceVerification.verificationPath}.`
+          )
+        );
+        checks.push(
+          verificationCheck(
+            "render-evidence-verifier-path-match",
+            evidenceVerification.verificationPath === handoff.evidencePacketVerification?.verificationPath ? "passed" : "blocked",
+            `recorded=${String(handoff.evidencePacketVerification?.verificationPath ?? "missing")}; actual=${String(evidenceVerification.verificationPath ?? "missing")}.`
+          )
+        );
+      } else {
+        checks.push(
+          verificationCheck(
+            "render-evidence-verifier",
+            "blocked",
+            "Skipped render evidence verifier because the recorded evidence packet path is outside the canonical handoff output directory."
+          )
+        );
+      }
     } else {
       checks.push(verificationCheck("render-evidence-verifier", "blocked", "renderValuesAudit.evidencePacketPath is missing."));
     }
@@ -280,7 +320,7 @@ export async function verifyCloudRunRenderHandoff(path) {
       privateChecklistReady
         ? await verifyRenderedTextMatch({
             id: "handoff-markdown-regenerated",
-            path: handoff.handoffMarkdownPath,
+            path: expectedHandoffMarkdownPath,
             expectedContent: renderMarkdown(handoff)
           })
         : verificationCheck(
@@ -299,7 +339,7 @@ export async function verifyCloudRunRenderHandoff(path) {
     checks.push(
       ...(await verifyPacketFile({
         id: "handoff-markdown",
-        path: handoff.handoffMarkdownPath,
+        path: expectedHandoffMarkdownPath,
         requiredText: ["# Cloud Run Render Handoff", "## Private Value Fill Checklist", "## Stop Conditions", "## Proof Boundary"]
       }))
     );
@@ -750,6 +790,7 @@ async function readRegularTextFileForVerification(path, label) {
   }
 
   try {
+    await assertDirectoryPathSafe(dirname(resolvedPath), `${label} parent directory`);
     const fileStat = await lstat(resolvedPath);
 
     if (fileStat.isSymbolicLink()) {
@@ -804,15 +845,31 @@ function sortJson(value) {
 }
 
 async function writeJson(path, value) {
-  await assertDirectoryPathSafe(dirname(path), "Cloud Run render handoff output parent directory");
-  await assertRegularFileIfExists(path, "Cloud Run render handoff output file");
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await writeTextFile(path, `${JSON.stringify(value, null, 2)}\n`, "Cloud Run render handoff JSON");
 }
 
 async function writeTextFile(path, content, label) {
-  await assertDirectoryPathSafe(dirname(path), `${label} parent directory`);
-  await assertRegularFileIfExists(path, label);
-  await writeFile(path, content, "utf8");
+  const absolutePath = resolve(path);
+  const tempPath = join(dirname(absolutePath), `.${basename(absolutePath)}.${randomUUID()}.tmp`);
+
+  await assertWritableTextFilePath(absolutePath, label);
+
+  try {
+    await writeFile(tempPath, content, { encoding: "utf8", flag: "wx" });
+    await rename(tempPath, absolutePath);
+  } catch (error) {
+    await rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
+}
+
+async function assertWritableTextFilePath(path, label) {
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+
+  await assertDirectoryPathSafe(parentDirectory, `${label} parent directory`);
+  await assertDirectoryExistsSafe(parentDirectory, `${label} parent directory`);
+  await assertRegularFileIfExists(absolutePath, label);
 }
 
 async function assertDirectoryPathSafe(path, label) {
