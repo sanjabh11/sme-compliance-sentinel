@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -79,6 +79,50 @@ describe("business evidence CLI verifier", () => {
       expect(readFileSync(outPath, "utf8")).toContain('"overallStatus": "blocked"');
       expect(report.overallStatus).toBe("blocked");
       expect(() => runVerifier(baseEnv, ["--strict"])).toThrow();
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("replaces existing private output files without stale bytes or temp leftovers", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-business-existing-output-"));
+    const templatePath = join(tempDir, "business-evidence-template.json");
+    const outPath = join(tempDir, "business-evidence-readiness.json");
+
+    try {
+      writeFileSync(templatePath, `{"schema":"stale","padding":"${"x".repeat(1000)}"}\n`, "utf8");
+      writeFileSync(outPath, `{"overallStatus":"stale","padding":"${"y".repeat(1000)}"}\n`, "utf8");
+
+      const report = runVerifier(baseEnv, ["--write-template", templatePath, "--out", outPath]);
+      const templateJson = readFileSync(templatePath, "utf8");
+      const outJson = readFileSync(outPath, "utf8");
+
+      expect(report.overallStatus).toBe("blocked");
+      expect(JSON.parse(templateJson)).toMatchObject({ schema: "sme-sentinel-business-evidence-v1" });
+      expect(JSON.parse(outJson)).toMatchObject({ overallStatus: "blocked" });
+      expect(`${templateJson}${outJson}`).not.toContain("stale");
+      expect(`${templateJson}${outJson}`).not.toContain("padding");
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when the private output parent is a user-created symlink", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-business-symlink-parent-"));
+    const realOutputDir = join(tempDir, "real-output");
+    const linkedOutputDir = join(tempDir, "linked-output");
+    const outPath = join(linkedOutputDir, "business-evidence-readiness.json");
+    const realOutPath = join(realOutputDir, "business-evidence-readiness.json");
+
+    try {
+      mkdirSync(realOutputDir);
+      symlinkSync(realOutputDir, linkedOutputDir, "dir");
+
+      expect(() => runVerifier(baseEnv, ["--out", outPath])).toThrow(/symbolic link/u);
+      expect(existsSync(realOutPath)).toBe(false);
+      expect(readdirSync(realOutputDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
