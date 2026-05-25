@@ -1,7 +1,8 @@
 /* global AbortController, URL, clearTimeout, console, fetch, process, setTimeout */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { lstat, mkdir, readFile, readlink, rename, rm, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import { deploymentImportRequiredCommandIds } from "./prepare-deployment-execution-checklist.mjs";
 
 const defaultTimeoutMs = 15000;
@@ -129,6 +130,7 @@ export async function importHostedProofBundle(options) {
 
   const sourceFile = options.sourceFile || join(options.bundleDir, defaultVerifyFileName);
   const bundleDir = options.bundleDir || dirname(sourceFile);
+  await assertDirectoryPathSafe(bundleDir, "Hosted proof bundle directory");
   const verifyReport = parseJson(await readFile(sourceFile, "utf8"));
   const bundleMetadata = options.bundleDir ? await readBundleMetadata(bundleDir) : undefined;
   assertVerifyProductionReport(verifyReport);
@@ -144,6 +146,7 @@ export async function importHostedProofBundle(options) {
     });
   }
   await mkdir(bundleDir, { recursive: true });
+  await assertDirectoryExistsSafe(bundleDir, "Hosted proof bundle directory");
   const releaseId = bundleMetadata?.releaseId ?? cleanString(verifyReport.releaseId);
 
   const requestBody = {
@@ -540,7 +543,156 @@ function isSecretKey(key) {
 }
 
 async function writeJson(path, payload) {
-  await writeFile(path, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  await writeTextFile(path, `${JSON.stringify(payload, null, 2)}\n`, "Hosted proof import JSON");
+}
+
+async function writeTextFile(path, content, label) {
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+  const tempPath = join(parentDirectory, `.${basename(absolutePath)}.${randomUUID()}.tmp`);
+  const parentIdentity = await assertWritableTextFilePath(absolutePath, label);
+
+  try {
+    await writeFile(tempPath, content, { encoding: "utf8", flag: "wx" });
+    await assertSameDirectoryIdentity(parentDirectory, parentIdentity, `${label} parent directory`);
+    await rename(tempPath, absolutePath);
+    await assertSameDirectoryIdentity(parentDirectory, parentIdentity, `${label} parent directory`);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
+}
+
+async function assertDirectoryPathSafe(path, label) {
+  const directories = [];
+  let cursor = resolve(path);
+
+  while (true) {
+    directories.push(cursor);
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+
+  for (const directory of directories.reverse()) {
+    let fileStat;
+
+    try {
+      fileStat = await lstat(directory);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+
+    if (fileStat.isSymbolicLink()) {
+      if (await isAllowedSystemDirectorySymlink(directory)) {
+        continue;
+      }
+
+      throw new Error(`${label} ${directory} is a symbolic link; use a regular private directory before hosted proof import.`);
+    }
+
+    if (!fileStat.isDirectory()) {
+      throw new Error(`${label} ${directory} is not a directory; use a regular private directory before hosted proof import.`);
+    }
+  }
+}
+
+async function assertDirectoryExistsSafe(path, label) {
+  const absolutePath = resolve(path);
+  const fileStat = await readDirectoryStat(absolutePath, label);
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${absolutePath} is not a directory; use a regular private directory before hosted proof import.`);
+  }
+}
+
+async function assertWritableTextFilePath(path, label) {
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+
+  await assertDirectoryPathSafe(parentDirectory, `${label} parent directory`);
+  await assertRegularFileIfExists(absolutePath, label);
+
+  return readDirectoryIdentity(parentDirectory, `${label} parent directory`);
+}
+
+async function assertSameDirectoryIdentity(path, expected, label) {
+  const actual = await readDirectoryIdentity(path, label);
+
+  if (actual.dev !== expected.dev || actual.ino !== expected.ino) {
+    throw new Error(`${label} ${resolve(path)} changed while writing; regenerate hosted proof import artifacts in a stable private directory.`);
+  }
+}
+
+async function readDirectoryIdentity(path, label) {
+  const fileStat = await readDirectoryStat(resolve(path), label);
+
+  return {
+    dev: fileStat.dev,
+    ino: fileStat.ino
+  };
+}
+
+async function readDirectoryStat(path, label) {
+  const absolutePath = resolve(path);
+  const fileStat = await lstat(absolutePath);
+
+  if (fileStat.isSymbolicLink()) {
+    if (await isAllowedSystemDirectorySymlink(absolutePath)) {
+      return stat(absolutePath);
+    }
+
+    throw new Error(`${label} ${absolutePath} is a symbolic link; use a regular private directory before hosted proof import.`);
+  }
+
+  return fileStat;
+}
+
+async function assertRegularFileIfExists(path, label) {
+  let fileStat;
+
+  try {
+    fileStat = await lstat(path);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private file path before hosted proof import.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${path} is not a regular file; use a regular private file path before hosted proof import.`);
+  }
+}
+
+async function isAllowedSystemDirectorySymlink(path) {
+  if (process.platform !== "darwin") {
+    return false;
+  }
+
+  const absolutePath = resolve(path);
+  const allowedAliases = {
+    "/etc": "/private/etc",
+    "/tmp": "/private/tmp",
+    "/var": "/private/var"
+  };
+  const expectedTarget = allowedAliases[absolutePath];
+
+  if (!expectedTarget) {
+    return false;
+  }
+
+  const target = await readlink(absolutePath);
+  return resolve(dirname(absolutePath), target) === expectedTarget;
 }
 
 function parseJson(text) {

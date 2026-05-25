@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -133,6 +133,81 @@ describe("hosted proof bundle Evidence Vault importer", () => {
       sourceUrl: "https://sentinel.example.com"
     });
     expect(`${requestJson}${summaryJson}`).not.toContain("private-admin-token");
+  });
+
+  it("replaces existing dry-run import files without stale bytes or temp leftovers", async () => {
+    const { importHostedProofBundle } = await loadImporter();
+    const bundleDir = await makeBundle();
+    const requestPath = join(bundleDir, "evidence-vault-import-request.json");
+    const summaryPath = join(bundleDir, "evidence-vault-import-summary.json");
+
+    await writeFile(requestPath, `{"source":"stale","padding":"${"x".repeat(1000)}"}\n`, "utf8");
+    await writeFile(summaryPath, `{"status":"stale","padding":"${"y".repeat(1000)}"}\n`, "utf8");
+
+    const summary = await importHostedProofBundle({
+      bundleDir,
+      dryRun: true,
+      adminTokenEnv: "SENTINEL_OPERATOR_TOKEN",
+      adminToken: "private-admin-token"
+    });
+    const requestJson = await readFile(requestPath, "utf8");
+    const summaryJson = await readFile(summaryPath, "utf8");
+
+    expect(summary.status).toBe("dry-run");
+    expect(JSON.parse(requestJson)).toMatchObject({
+      source: "verify-production",
+      redacted: true,
+      sourceUrl: "https://sentinel.example.com"
+    });
+    expect(JSON.parse(summaryJson)).toMatchObject({
+      status: "dry-run",
+      releaseId: "release-1"
+    });
+    expect(`${requestJson}${summaryJson}`).not.toContain("stale");
+    expect(`${requestJson}${summaryJson}`).not.toContain("padding");
+    expect((await readdir(bundleDir)).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("fails closed when an import output file is a symlink", async () => {
+    const { importHostedProofBundle } = await loadImporter();
+    const bundleDir = await makeBundle();
+    const requestPath = join(bundleDir, "evidence-vault-import-request.json");
+    const requestTargetPath = join(bundleDir, "reviewed-import-request.json");
+
+    await writeFile(requestTargetPath, "unchanged-request\n", "utf8");
+    await symlink(requestTargetPath, requestPath);
+
+    await expect(
+      importHostedProofBundle({
+        bundleDir,
+        dryRun: true,
+        adminTokenEnv: "SENTINEL_OPERATOR_TOKEN",
+        adminToken: "private-admin-token"
+      })
+    ).rejects.toThrow(/symbolic link/u);
+    await expect(readFile(requestTargetPath, "utf8")).resolves.toBe("unchanged-request\n");
+    expect((await readdir(bundleDir)).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("fails closed when the hosted proof bundle directory is a user-created symlink", async () => {
+    const { importHostedProofBundle } = await loadImporter();
+    const realBundleDir = await makeBundle();
+    const tempDir = await mkdtemp(join(tmpdir(), "sentinel-import-linked-parent-"));
+    const linkedBundleDir = join(tempDir, "linked-bundle");
+    tempDirs.push(tempDir);
+
+    await symlink(realBundleDir, linkedBundleDir, "dir");
+
+    await expect(
+      importHostedProofBundle({
+        bundleDir: linkedBundleDir,
+        dryRun: true,
+        adminTokenEnv: "SENTINEL_OPERATOR_TOKEN",
+        adminToken: "private-admin-token"
+      })
+    ).rejects.toThrow(/symbolic link/u);
+    await expect(readFile(join(realBundleDir, "evidence-vault-import-request.json"), "utf8")).rejects.toThrow();
+    expect((await readdir(realBundleDir)).filter((path) => path.endsWith(".tmp"))).toEqual([]);
   });
 
   it("posts the redacted request with the private admin header and stores a sanitized response", async () => {
