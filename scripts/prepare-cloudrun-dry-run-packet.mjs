@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /* global console, process */
 
-import { createHash } from "node:crypto";
-import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import { renderCloudRunManifest } from "./render-cloudrun-manifest.mjs";
 
 const defaultOutDir = "artifacts/deployment";
@@ -119,12 +119,16 @@ export async function prepareCloudRunDryRunPacket(options) {
   const verifier = JSON.parse(await readRegularTextFileOrThrow(verifierPath, "Cloud Run manifest verifier"));
   const evidenceFileDigests = await buildEvidenceFileDigests(renderSummary);
   const packet = buildDryRunPacket({ renderSummary, verifier, valuesPath: options.valuesPath, evidenceFileDigests });
+  const packetPath = join(outputDirectory, packetFileName);
+  const markdownPath = join(outputDirectory, markdownFileName);
 
   await assertDirectoryPathSafe(outputDirectory, "Cloud Run dry-run packet output directory");
   await mkdir(outputDirectory, { recursive: true });
   await assertDirectoryExistsSafe(outputDirectory, "Cloud Run dry-run packet output directory");
-  await writeJson(join(outputDirectory, packetFileName), packet);
-  await writeTextFile(join(outputDirectory, markdownFileName), renderMarkdown(packet), "Cloud Run dry-run packet Markdown");
+  await assertWritableTextFilePath(packetPath, "Cloud Run dry-run packet JSON");
+  await assertWritableTextFilePath(markdownPath, "Cloud Run dry-run packet Markdown");
+  await writeJson(packetPath, packet);
+  await writeTextFile(markdownPath, renderMarkdown(packet), "Cloud Run dry-run packet Markdown");
 
   if (options.strict && packet.status !== "ready-to-dry-run") {
     const error = new Error(`Cloud Run dry-run preflight is ${packet.status}; see ${join(outputDirectory, packetFileName)}.`);
@@ -863,6 +867,7 @@ async function readRegularBufferFileForVerification(path, label) {
   }
 
   try {
+    await assertDirectoryPathSafe(dirname(resolvedPath), `${label} parent directory`);
     const fileStat = await lstat(resolvedPath);
 
     if (fileStat.isSymbolicLink()) {
@@ -939,15 +944,60 @@ function buildVerificationNextActions({ status, packet }) {
 }
 
 async function writeJson(path, value) {
-  await assertDirectoryPathSafe(dirname(path), "Cloud Run dry-run packet output parent directory");
-  await assertRegularFileIfExists(path, "Cloud Run dry-run packet output file");
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await writeTextFile(path, `${JSON.stringify(value, null, 2)}\n`, "Cloud Run dry-run packet JSON");
 }
 
 async function writeTextFile(path, content, label) {
-  await assertDirectoryPathSafe(dirname(path), `${label} parent directory`);
-  await assertRegularFileIfExists(path, label);
-  await writeFile(path, content, "utf8");
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+  const tempPath = join(parentDirectory, `.${basename(absolutePath)}.${randomUUID()}.tmp`);
+  const parentIdentity = await assertWritableTextFilePath(absolutePath, label);
+
+  try {
+    await writeFile(tempPath, content, { encoding: "utf8", flag: "wx" });
+    await assertSameDirectoryIdentity(parentDirectory, parentIdentity, `${label} parent directory`);
+    await rename(tempPath, absolutePath);
+    await assertSameDirectoryIdentity(parentDirectory, parentIdentity, `${label} parent directory`);
+  } catch (error) {
+    await rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
+}
+
+async function assertWritableTextFilePath(path, label) {
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+
+  await assertDirectoryPathSafe(parentDirectory, `${label} parent directory`);
+  await assertDirectoryExistsSafe(parentDirectory, `${label} parent directory`);
+  await assertRegularFileIfExists(absolutePath, label);
+
+  return readDirectoryIdentity(parentDirectory, `${label} parent directory`);
+}
+
+async function assertSameDirectoryIdentity(path, expected, label) {
+  const actual = await readDirectoryIdentity(path, label);
+
+  if (actual.dev !== expected.dev || actual.ino !== expected.ino) {
+    throw new Error(`${label} ${path} changed while writing; regenerate the dry-run packet into a stable private directory.`);
+  }
+}
+
+async function readDirectoryIdentity(path, label) {
+  const fileStat = await lstat(path);
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${path} is a symbolic link; use a regular private directory before Cloud Run dry-run preflight.`);
+  }
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${path} is not a directory; use a regular private directory before Cloud Run dry-run preflight.`);
+  }
+
+  return {
+    dev: fileStat.dev,
+    ino: fileStat.ino
+  };
 }
 
 async function assertDirectoryPathSafe(path, label) {

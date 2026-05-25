@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -346,6 +346,7 @@ describe("Cloud Run dry-run preflight packet", () => {
       })
     ).rejects.toThrow(/symbolic link/u);
     expect(await readFile(symlinkPacketTargetPath, "utf8")).toBe(symlinkPacketTargetContent);
+    expect((await readdir(symlinkedPacket.outputDirectory)).filter((path) => path.endsWith(".tmp"))).toEqual([]);
 
     const realOutDir = join(tempDir, "reviewed-dry-run-output");
     const symlinkedOutDir = join(tempDir, "symlinked-dry-run-output");
