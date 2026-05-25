@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -92,7 +92,51 @@ describe("XPRIZE human attestation packet CLI", () => {
       expect(packet.outputFiles?.markdownPath).toBe(join(tempDir, "xprize-human-attestation-packet.md"));
       expect(readFileSync(packet.outputFiles?.jsonPath ?? "", "utf8")).toContain('"flagDecisionRegister"');
       expect(readFileSync(packet.outputFiles?.markdownPath ?? "", "utf8")).toContain("# XPRIZE Human Attestation Packet");
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
       expect(() => runPacket(["--strict"])).toThrow();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("replaces existing private review artifacts without stale bytes or temp leftovers", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-xprize-attestation-existing-output-"));
+    const jsonPath = join(tempDir, "xprize-human-attestation-packet.json");
+    const markdownPath = join(tempDir, "xprize-human-attestation-packet.md");
+
+    try {
+      writeFileSync(jsonPath, `{"overallStatus":"stale","padding":"${"x".repeat(1000)}"}\n`, "utf8");
+      writeFileSync(markdownPath, `# Stale\n\n${"y".repeat(1000)}\n`, "utf8");
+
+      const packet = runPacket(["--out-dir", tempDir]);
+      const jsonText = readFileSync(jsonPath, "utf8");
+      const markdownText = readFileSync(markdownPath, "utf8");
+
+      expect(packet.outputFiles).toMatchObject({ jsonPath, markdownPath });
+      expect(JSON.parse(jsonText)).toHaveProperty("flagDecisionRegister");
+      expect(markdownText).toContain("# XPRIZE Human Attestation Packet");
+      expect(`${jsonText}${markdownText}`).not.toContain("stale");
+      expect(`${jsonText}${markdownText}`).not.toContain("padding");
+      expect(`${jsonText}${markdownText}`).not.toContain("# Stale");
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts the standard /tmp system alias on macOS without temp leftovers", () => {
+    if (process.platform !== "darwin") {
+      return;
+    }
+
+    const tempDir = mkdtempSync("/tmp/sentinel-xprize-attestation-tmp-alias-");
+
+    try {
+      const packet = runPacket(["--out-dir", tempDir]);
+
+      expect(packet.outputFiles?.jsonPath).toBe(join(tempDir, "xprize-human-attestation-packet.json"));
+      expect(readFileSync(packet.outputFiles?.jsonPath ?? "", "utf8")).toContain('"flagDecisionRegister"');
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -123,18 +167,25 @@ describe("XPRIZE human attestation packet CLI", () => {
       symlinkSync(realOutDir, symlinkedOutDir);
 
       expect(() => runPacket(["--out-dir", symlinkedOutDir])).toThrow(/symbolic link/u);
+      expect(existsSync(join(realOutDir, "xprize-human-attestation-packet.json"))).toBe(false);
+      expect(existsSync(join(realOutDir, "xprize-human-attestation-packet.md"))).toBe(false);
+      expect(readdirSync(realOutDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
 
       mkdirSync(packetOutDir);
-      writeFileSync(jsonTargetPath, "{}", "utf8");
+      writeFileSync(jsonTargetPath, "{\"kept\":true}\n", "utf8");
       symlinkSync(jsonTargetPath, join(packetOutDir, "xprize-human-attestation-packet.json"));
 
       expect(() => runPacket(["--out-dir", packetOutDir])).toThrow(/symbolic link/u);
+      expect(readFileSync(jsonTargetPath, "utf8")).toBe("{\"kept\":true}\n");
+      expect(readdirSync(packetOutDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
 
       rmSync(join(packetOutDir, "xprize-human-attestation-packet.json"), { force: true });
       writeFileSync(markdownTargetPath, "# Reviewed\n", "utf8");
       symlinkSync(markdownTargetPath, join(packetOutDir, "xprize-human-attestation-packet.md"));
 
       expect(() => runPacket(["--out-dir", packetOutDir])).toThrow(/symbolic link/u);
+      expect(readFileSync(markdownTargetPath, "utf8")).toBe("# Reviewed\n");
+      expect(readdirSync(packetOutDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
