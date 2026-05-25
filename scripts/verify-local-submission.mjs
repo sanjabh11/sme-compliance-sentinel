@@ -8,6 +8,7 @@ import { lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, renameS
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
+const defaultPrivateRoot = "/secure/local";
 const prohibitedCliPatterns = [
   /(^|-)token($|=)/iu,
   /(^|-)password($|=)/iu,
@@ -222,6 +223,7 @@ function buildReport() {
 
   return {
     generatedAt: new Date().toISOString(),
+    privateRoot: privateRoot(),
     overallStatus,
     summary,
     gates: gateReports,
@@ -725,7 +727,7 @@ function buildCloudRunEvidenceCheckpoint({ item, bucket, state }) {
 }
 
 function readCloudRunRenderArtifactState() {
-  const valuesPath = resolve(process.env.SENTINEL_CLOUD_RUN_VALUES_PATH || "/secure/local/cloudrun-render-values.json");
+  const valuesPath = resolve(process.env.SENTINEL_CLOUD_RUN_VALUES_PATH || privateLocalPath("cloudrun-render-values.json"));
   const values = readPrivateJsonIfRegular(valuesPath);
   const releaseId = safePathSegment(
     process.env.SENTINEL_RELEASE_ID || values?.SENTINEL_RELEASE_ID || ""
@@ -787,6 +789,39 @@ function safePathSegment(value) {
     .replace(/[^A-Za-z0-9._-]/gu, "-")
     .replace(/-+/gu, "-")
     .slice(0, 120);
+}
+
+function privateLocalPath(...segments) {
+  return join(privateRoot(), ...segments);
+}
+
+function privateRoot() {
+  const configuredRoot = String(process.env.SENTINEL_PRIVATE_ROOT ?? defaultPrivateRoot).trim();
+  const root = configuredRoot || defaultPrivateRoot;
+
+  return root.replace(/\/+$/u, "") || defaultPrivateRoot;
+}
+
+function applyPrivateRoot(value) {
+  const root = privateRoot();
+
+  if (root === defaultPrivateRoot) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return value.replaceAll(defaultPrivateRoot, root);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(applyPrivateRoot);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, applyPrivateRoot(entry)]));
+  }
+
+  return value;
 }
 
 function countCheckpoints(checkpoints) {
@@ -2380,7 +2415,7 @@ try {
       process.exitCode = 1;
     }
   } else {
-    const report = buildReport();
+    const report = applyPrivateRoot(buildReport());
 
     if (args.manualPacketsDir) {
       report.manualInterventionPlan.packetFiles = writeManualInterventionPackets(args.manualPacketsDir, report);

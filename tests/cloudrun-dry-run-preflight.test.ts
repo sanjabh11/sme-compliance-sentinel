@@ -33,6 +33,7 @@ interface CloudRunDryRunPreflightModule {
       manualReviewCount: number;
     };
     bucket: string;
+    privateRoot: string;
     phaseProgress: {
       phaseId: string;
       ratingOutOf5: number;
@@ -438,6 +439,44 @@ describe("Cloud Run dry-run preflight packet", () => {
       ])
     );
     expect(verified.stopConditions.join(" ")).toContain("handoff or proof-boundary checks failed");
+  });
+
+  it("uses SENTINEL_PRIVATE_ROOT for private operator transcript paths", async () => {
+    const { prepareCloudRunDryRunPacket, verifyCloudRunDryRunPacket } = await loadPreflight();
+    const tempDir = await makeTempDir();
+    const privateRoot = join(tempDir, "operator-private-root");
+    const valuesPath = await writeValues(tempDir, safeRenderValues());
+    const previousPrivateRoot = process.env.SENTINEL_PRIVATE_ROOT;
+
+    try {
+      process.env.SENTINEL_PRIVATE_ROOT = privateRoot;
+
+      const packet = await prepareCloudRunDryRunPacket({
+        valuesPath,
+        outDir: tempDir,
+        releaseId: "release-20260523-001",
+        strict: true
+      });
+      const verified = await verifyCloudRunDryRunPacket(join(packet.outputDirectory, "cloudrun-dry-run-preflight-packet.json"));
+
+      expect(packet.privateRoot).toBe(privateRoot);
+      expect(packet.operatorHandoff.privateArtifactPaths).toEqual(
+        expect.arrayContaining([
+          join(privateRoot, "cloudrun", "release-20260523-001", "cloudrun-dry-run.log"),
+          join(privateRoot, "cloudrun", "release-20260523-001", "cloudrun-deploy.log")
+        ])
+      );
+      expect(packet.operatorHandoff.commandSequence.find((command) => command.id === "collect-cloudrun-deployment")?.command).toContain(
+        join(privateRoot, "cloudrun", "release-20260523-001", "cloudrun-dry-run.log")
+      );
+      expect(verified.status).toBe("verified");
+    } finally {
+      if (previousPrivateRoot === undefined) {
+        delete process.env.SENTINEL_PRIVATE_ROOT;
+      } else {
+        process.env.SENTINEL_PRIVATE_ROOT = previousPrivateRoot;
+      }
+    }
   });
 
   it("blocks command text drift between the packet, hashed command files, and operator handoff", async () => {

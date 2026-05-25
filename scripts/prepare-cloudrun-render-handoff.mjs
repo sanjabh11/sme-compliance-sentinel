@@ -8,7 +8,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { verifyCloudRunRenderEvidencePacket, writeCloudRunRenderValuesAudit } from "./audit-cloudrun-render-values.mjs";
 import { writeReleaseCandidateValues } from "./render-cloudrun-manifest.mjs";
 
-const defaultValuesPath = "/secure/local/cloudrun-render-values.json";
+const defaultPrivateRoot = "/secure/local";
 const defaultOutDir = "artifacts/deployment";
 const handoffFileName = "cloudrun-render-handoff.json";
 const handoffMarkdownFileName = "cloudrun-render-handoff.md";
@@ -26,6 +26,7 @@ const prohibitedPacketContentPatterns = [
 ];
 
 export function parseArgs(argv) {
+  const defaultValuesPath = defaultCloudRunValuesPath();
   const args = {
     valuesPath: process.env.SENTINEL_CLOUD_RUN_VALUES_PATH ?? defaultValuesPath,
     outDir: process.env.SENTINEL_CLOUD_RUN_RENDER_OUT_DIR ?? defaultOutDir,
@@ -106,7 +107,7 @@ export function parseArgs(argv) {
 }
 
 export async function prepareCloudRunRenderHandoff(options = {}) {
-  const valuesPath = resolve(options.valuesPath || defaultValuesPath);
+  const valuesPath = resolve(options.valuesPath || defaultCloudRunValuesPath());
   const releaseValues = await writeReleaseCandidateValues(valuesPath, {
     ...(options.gitRunner ? { gitRunner: options.gitRunner } : {})
   });
@@ -128,6 +129,7 @@ export async function prepareCloudRunRenderHandoff(options = {}) {
     bucket: "code-controllable",
     overallStatus: blockers.length ? "blocked" : audit.readyForStrictRender ? "ready-to-render" : "ready-for-private-values",
     releaseId,
+    privateRoot: privateRoot(),
     valuesPath,
     outputDirectory,
     handoffPath,
@@ -186,6 +188,17 @@ export async function prepareCloudRunRenderHandoff(options = {}) {
   }
 
   return handoff;
+}
+
+function defaultCloudRunValuesPath() {
+  return join(privateRoot(), "cloudrun-render-values.json");
+}
+
+function privateRoot() {
+  const configuredRoot = String(process.env.SENTINEL_PRIVATE_ROOT ?? defaultPrivateRoot).trim();
+  const root = configuredRoot || defaultPrivateRoot;
+
+  return root.replace(/\/+$/u, "") || defaultPrivateRoot;
 }
 
 export async function verifyCloudRunRenderHandoff(path) {

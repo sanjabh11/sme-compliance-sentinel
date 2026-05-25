@@ -8,6 +8,7 @@ import { renderCloudRunManifest } from "./render-cloudrun-manifest.mjs";
 
 const defaultOutDir = "artifacts/deployment";
 const defaultTemplate = "cloudrun.service.yaml";
+const defaultPrivateRoot = "/secure/local";
 const packetFileName = "cloudrun-dry-run-preflight-packet.json";
 const markdownFileName = "cloudrun-dry-run-preflight-packet.md";
 const packetVerifierFileName = "cloudrun-dry-run-packet-verifier.json";
@@ -245,6 +246,7 @@ export function buildDryRunPacket({ renderSummary, verifier, valuesPath, evidenc
     readyForDryRun: status === "ready-to-dry-run",
     bucket: "code-controllable",
     releaseId: renderSummary.releaseId,
+    privateRoot: privateRoot(),
     outputDirectory: renderSummary.outputDirectory,
     valuesPath,
     renderedManifestPath: renderSummary.renderedManifestPath,
@@ -347,7 +349,7 @@ function preflightRemainingPercent({ status, replacementFindings, blockers }) {
 
 function buildOperatorHandoff({ status, renderSummary, replacementFindings, blockers }) {
   const releaseId = renderSummary.releaseId || "$SENTINEL_RELEASE_ID";
-  const privateBasePath = `/secure/local/cloudrun/${releaseId}`;
+  const privateBasePath = privateLocalPath("cloudrun", releaseId);
   const readyForGcloudDryRun = status === "ready-to-dry-run";
 
   return {
@@ -405,6 +407,17 @@ function buildOperatorCommandSequence({ renderSummary, releaseId, privateBasePat
       stopCondition: "Do not run hosted verification until the transcript packet is ready-for-hosted-verification."
     }
   ];
+}
+
+function privateLocalPath(...segments) {
+  return join(privateRoot(), ...segments);
+}
+
+function privateRoot() {
+  const configuredRoot = String(process.env.SENTINEL_PRIVATE_ROOT ?? defaultPrivateRoot).trim();
+  const root = configuredRoot || defaultPrivateRoot;
+
+  return root.replace(/\/+$/u, "") || defaultPrivateRoot;
 }
 
 function buildOperatorStopConditions({ readyForGcloudDryRun, replacementFindings, blockers }) {
@@ -605,13 +618,14 @@ async function verifyDigestEntry(entry) {
 
 async function verifyPacketStructure({ packet, packetPath, digestEntries = [] }) {
   const releaseId = String(packet.releaseId ?? "");
+  const packetPrivateRoot = String(packet.privateRoot ?? "").trim();
   const operatorHandoff = packet.operatorHandoff ?? {};
   const commandSequence = Array.isArray(operatorHandoff.commandSequence) ? operatorHandoff.commandSequence : [];
   const commandById = new Map(commandSequence.map((command) => [String(command?.id ?? ""), command]));
   const markdownPath = packetPath.endsWith(".json")
     ? `${packetPath.slice(0, -".json".length)}.md`
     : join(dirname(packetPath), markdownFileName);
-  const expectedPrivateBasePath = `/secure/local/cloudrun/${releaseId || "$SENTINEL_RELEASE_ID"}`;
+  const expectedPrivateBasePath = join((packetPrivateRoot || privateRoot()).replace(/\/+$/u, ""), "cloudrun", releaseId || "$SENTINEL_RELEASE_ID");
   const expectedCommands = [
     ["cloudrun-dry-run", false],
     ["cloudrun-deploy", true],

@@ -20,6 +20,7 @@ interface CloudRunRenderHandoffModule {
   }) => Promise<{
     overallStatus: string;
     releaseId: string;
+    privateRoot: string;
     valuesPath: string;
     handoffPath: string;
     handoffMarkdownPath: string;
@@ -191,6 +192,41 @@ describe("Cloud Run render handoff", () => {
     expect(verified.proofBoundary).toContain("does not deploy Cloud Run");
     expect(verified.stopConditions.join(" ")).toContain("Do not run Cloud Run dry-run");
     expect(verifierJson).toMatchObject({ overallStatus: "verified" });
+  });
+
+  it("uses SENTINEL_PRIVATE_ROOT for the default values path when no explicit path is supplied", async () => {
+    const { parseArgs, prepareCloudRunRenderHandoff } = await loadHandoff();
+    const tempDir = await makeTempDir();
+    const privateRoot = join(tempDir, "operator-private-root");
+    const previousPrivateRoot = process.env.SENTINEL_PRIVATE_ROOT;
+    const previousValuesPath = process.env.SENTINEL_CLOUD_RUN_VALUES_PATH;
+
+    try {
+      process.env.SENTINEL_PRIVATE_ROOT = privateRoot;
+      delete process.env.SENTINEL_CLOUD_RUN_VALUES_PATH;
+
+      const args = parseArgs([]);
+      const handoff = await prepareCloudRunRenderHandoff({
+        valuesPath: args.valuesPath,
+        outDir: join(tempDir, "deployment"),
+        gitRunner: makeFakeGitRunner()
+      });
+
+      expect(args.valuesPath).toBe(join(privateRoot, "cloudrun-render-values.json"));
+      expect(handoff.privateRoot).toBe(privateRoot);
+      expect(handoff.valuesPath).toBe(join(privateRoot, "cloudrun-render-values.json"));
+    } finally {
+      if (previousPrivateRoot === undefined) {
+        delete process.env.SENTINEL_PRIVATE_ROOT;
+      } else {
+        process.env.SENTINEL_PRIVATE_ROOT = previousPrivateRoot;
+      }
+      if (previousValuesPath === undefined) {
+        delete process.env.SENTINEL_CLOUD_RUN_VALUES_PATH;
+      } else {
+        process.env.SENTINEL_CLOUD_RUN_VALUES_PATH = previousValuesPath;
+      }
+    }
   });
 
   it("verifies handoff integrity and blocks tampered Markdown or claim boundaries", async () => {

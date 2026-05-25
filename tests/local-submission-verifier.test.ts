@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 type LocalSubmissionReport = {
   overallStatus: "passed" | "warning" | "blocked";
+  privateRoot: string;
   summary: {
     passed: number;
     warning: number;
@@ -1004,6 +1005,26 @@ describe("local XPRIZE submission verifier", () => {
       expect(row?.evidence).toContain("private-artifact=done");
       expect(report.phasePlan.phases.find((phase) => phase.id === "hosted-proof-capture")?.status).toBe("external-required");
       expect(report.overallStatus).toBe("blocked");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("routes private artifact instructions through SENTINEL_PRIVATE_ROOT when configured", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-private-root-"));
+    const privateRoot = join(tempDir, "private-root");
+
+    try {
+      const report = runVerifier([], { SENTINEL_PRIVATE_ROOT: privateRoot });
+      const reportText = JSON.stringify(report);
+
+      expect(report.privateRoot).toBe(privateRoot);
+      expect(reportText).toContain(`${privateRoot}/cloudrun-render-values.json`);
+      expect(report.phasePlan.recommendedNextCodeControllableAction.commands.join(" ")).toContain(
+        `${privateRoot}/cloudrun-render-values.json`
+      );
+      expect(report.manualInterventionPlan.privateHandling.join(" ")).toContain(privateRoot);
+      expect(reportText).not.toContain("/secure/local");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
