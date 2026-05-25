@@ -9,6 +9,7 @@ dist/
 netlify.toml
 artifacts/hosted-proof/
 artifacts/deployment/
+artifacts/presentations/
 *.tsbuildinfo
 .env
 .env.local

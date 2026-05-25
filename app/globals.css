@@ -1645,6 +1645,302 @@ dd {
   padding-left: 20px;
 }
 
+.customer-demo-shell {
+  display: grid;
+  gap: 20px;
+  max-width: 1280px;
+}
+
+.customer-hero {
+  align-items: stretch;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+}
+
+.customer-hero-copy {
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.6;
+  margin-top: 18px;
+  max-width: 820px;
+}
+
+.customer-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.customer-secondary-link {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--accent-dark);
+  display: inline-flex;
+  font-weight: 800;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  text-decoration: none;
+}
+
+.customer-offer-panel,
+.customer-story-panel,
+.customer-scenario-panel,
+.customer-outcome-grid article,
+.customer-copilot-band,
+.customer-feature-sequence,
+.customer-pilot-panel {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.customer-offer-panel {
+  align-content: center;
+  display: grid;
+  gap: 12px;
+  padding: 22px;
+}
+
+.customer-offer-panel span,
+.customer-citation-card span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.customer-offer-panel strong {
+  display: block;
+  font-size: 1.6rem;
+  line-height: 1.15;
+}
+
+.customer-offer-panel p,
+.customer-story-panel p,
+.customer-scenario-panel p,
+.customer-outcome-grid p,
+.customer-copilot-band p,
+.customer-pilot-panel p {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.customer-stage-tabs {
+  background: #eaf1ee;
+  border: 1px solid #d2dfda;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  padding: 8px;
+}
+
+.customer-stage-tab {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent-dark);
+  justify-content: center;
+}
+
+.customer-stage-tab[data-active="true"] {
+  background: #ffffff;
+  border-color: #c4d9d1;
+  color: var(--ink);
+}
+
+.customer-demo-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+}
+
+.customer-story-panel,
+.customer-scenario-panel,
+.customer-outcome-grid article,
+.customer-feature-sequence,
+.customer-pilot-panel {
+  padding: 20px;
+}
+
+.customer-story-panel h2,
+.customer-scenario-panel h2,
+.customer-outcome-grid h2,
+.customer-copilot-band h2,
+.customer-feature-sequence h2,
+.customer-pilot-panel h2 {
+  font-size: 1.35rem;
+  line-height: 1.25;
+  margin-bottom: 10px;
+}
+
+.customer-proof-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 12px;
+}
+
+.customer-proof-strip span {
+  background: #eef4f1;
+  border: 1px solid #d7e7e0;
+  border-radius: 999px;
+  color: var(--accent-dark);
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 6px 10px;
+}
+
+.customer-panel-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.customer-panel-heading svg {
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+
+.customer-finding {
+  border-left: 5px solid var(--high);
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-left: 14px;
+}
+
+.customer-finding span {
+  color: var(--high);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.customer-outcome-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.customer-detail-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.customer-detail-list dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.customer-detail-list dd {
+  line-height: 1.45;
+}
+
+.customer-recommendation {
+  align-items: flex-start;
+  background: #eef4f1;
+  border: 1px solid #d7e7e0;
+  border-radius: 8px;
+  color: var(--accent-dark);
+  display: flex;
+  gap: 10px;
+  line-height: 1.45;
+  margin-top: 14px;
+  padding: 12px;
+}
+
+.customer-recommendation svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.customer-compact-list {
+  color: var(--muted);
+  display: grid;
+  gap: 8px;
+  line-height: 1.45;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.customer-outcome-grid small,
+.customer-story-panel small {
+  color: var(--muted);
+  display: block;
+  line-height: 1.45;
+  margin-top: 12px;
+}
+
+.customer-copilot-band,
+.customer-pilot-panel {
+  align-items: center;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.45fr);
+  padding: 22px;
+}
+
+.customer-citation-card {
+  background: #f8fafb;
+  border: 1px solid #e5ecef;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.customer-section-heading {
+  margin-bottom: 16px;
+}
+
+.customer-feature-list {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.customer-feature-list article {
+  border: 1px solid #e5ecef;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  padding: 12px;
+}
+
+.customer-feature-list article > span {
+  align-items: center;
+  background: #eef4f1;
+  border-radius: 999px;
+  color: var(--accent-dark);
+  display: inline-flex;
+  font-weight: 900;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.customer-feature-list p,
+.customer-feature-list small {
+  color: var(--muted);
+  display: block;
+  line-height: 1.45;
+  margin-top: 5px;
+}
+
 @media (max-width: 1080px) {
   .metrics-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1652,7 +1948,11 @@ dd {
 
   .workspace-band,
   .content-grid,
-  .strategy-grid {
+  .strategy-grid,
+  .customer-hero,
+  .customer-demo-grid,
+  .customer-copilot-band,
+  .customer-pilot-panel {
     grid-template-columns: 1fr;
   }
 
@@ -1660,7 +1960,9 @@ dd {
   .approval-ops-panel,
   .readiness-columns,
   .score-grid,
-  .trust-analytics-metrics {
+  .trust-analytics-metrics,
+  .customer-outcome-grid,
+  .customer-feature-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1694,7 +1996,11 @@ dd {
   .form-row,
   .framework-export,
   .feature-row,
-  .gap-list article {
+  .gap-list article,
+  .customer-stage-tabs,
+  .customer-outcome-grid,
+  .customer-feature-list,
+  .customer-feature-list article {
     grid-template-columns: 1fr;
   }
 
