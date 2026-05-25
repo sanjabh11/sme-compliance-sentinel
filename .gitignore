@@ -4,6 +4,9 @@ out/
 coverage/
 dist/
 .tmp/
+.netlify/
+.playwright-mcp/
+netlify.toml
 artifacts/hosted-proof/
 artifacts/deployment/
 *.tsbuildinfo
