@@ -1,7 +1,8 @@
 /* global AbortController, URL, clearTimeout, console, fetch, process, setTimeout */
 
-import { lstat, mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { lstat, mkdir, readlink, rename, rm, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 
 const defaultTimeoutMs = 15000;
 const defaultAdminTokenEnv = "SENTINEL_ADMIN_ACTION_TOKEN";
@@ -758,10 +759,147 @@ function shouldFail(report) {
 
 async function writeJson(path, payload) {
   const absolutePath = resolve(path);
-  await mkdir(dirname(absolutePath), { recursive: true });
-  await assertRegularFileIfExists(absolutePath, "Hosted production verification output file");
-  await writeFile(absolutePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  const parentDirectory = dirname(absolutePath);
+  await assertDirectoryPathSafe(parentDirectory, "Hosted production verification output parent directory");
+  await mkdir(parentDirectory, { recursive: true });
+  await assertDirectoryExistsSafe(parentDirectory, "Hosted production verification output parent directory");
+  await writeTextFile(absolutePath, `${JSON.stringify(payload, null, 2)}\n`, "Hosted production verification output file");
   return absolutePath;
+}
+
+async function writeTextFile(path, content, label) {
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+  const tempPath = join(parentDirectory, `.${basename(absolutePath)}.${randomUUID()}.tmp`);
+  const parentIdentity = await assertWritableTextFilePath(absolutePath, label);
+
+  try {
+    await writeFile(tempPath, content, { encoding: "utf8", flag: "wx" });
+    await assertSameDirectoryIdentity(parentDirectory, parentIdentity, `${label} parent directory`);
+    await rename(tempPath, absolutePath);
+    await assertSameDirectoryIdentity(parentDirectory, parentIdentity, `${label} parent directory`);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
+}
+
+async function assertDirectoryPathSafe(path, label) {
+  const directories = [];
+  let cursor = resolve(path);
+
+  while (true) {
+    directories.push(cursor);
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+
+  for (const directory of directories.reverse()) {
+    let fileStat;
+
+    try {
+      fileStat = await lstat(directory);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+
+    if (fileStat.isSymbolicLink()) {
+      if (await isAllowedSystemDirectorySymlink(directory)) {
+        continue;
+      }
+
+      throw new Error(
+        `${label} ${directory} is a symbolic link; use a regular private directory before hosted proof capture.`
+      );
+    }
+
+    if (!fileStat.isDirectory()) {
+      throw new Error(
+        `${label} ${directory} is not a directory; use a regular private directory before hosted proof capture.`
+      );
+    }
+  }
+}
+
+async function assertDirectoryExistsSafe(path, label) {
+  const absolutePath = resolve(path);
+  const fileStat = await readDirectoryStat(absolutePath, label);
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${absolutePath} is not a directory; use a regular private directory before hosted proof capture.`);
+  }
+}
+
+async function assertWritableTextFilePath(path, label) {
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+
+  await assertDirectoryPathSafe(parentDirectory, `${label} parent directory`);
+  await assertRegularFileIfExists(absolutePath, label);
+
+  return readDirectoryIdentity(parentDirectory, `${label} parent directory`);
+}
+
+async function assertSameDirectoryIdentity(path, expected, label) {
+  const actual = await readDirectoryIdentity(path, label);
+
+  if (actual.dev !== expected.dev || actual.ino !== expected.ino) {
+    throw new Error(`${label} ${resolve(path)} changed while writing; regenerate hosted proof in a stable private directory.`);
+  }
+}
+
+async function readDirectoryIdentity(path, label) {
+  const absolutePath = resolve(path);
+  const fileStat = await readDirectoryStat(absolutePath, label);
+
+  return {
+    dev: fileStat.dev,
+    ino: fileStat.ino
+  };
+}
+
+async function readDirectoryStat(path, label) {
+  const absolutePath = resolve(path);
+  const fileStat = await lstat(absolutePath);
+
+  if (fileStat.isSymbolicLink()) {
+    if (await isAllowedSystemDirectorySymlink(absolutePath)) {
+      return stat(absolutePath);
+    }
+
+    throw new Error(
+      `${label} ${absolutePath} is a symbolic link; use a regular private directory before hosted proof capture.`
+    );
+  }
+
+  return fileStat;
+}
+
+async function isAllowedSystemDirectorySymlink(path) {
+  if (process.platform !== "darwin") {
+    return false;
+  }
+
+  const absolutePath = resolve(path);
+  const allowedAliases = {
+    "/etc": "/private/etc",
+    "/tmp": "/private/tmp",
+    "/var": "/private/var"
+  };
+  const expectedTarget = allowedAliases[absolutePath];
+
+  if (!expectedTarget) {
+    return false;
+  }
+
+  const target = await readlink(absolutePath);
+  return resolve(dirname(absolutePath), target) === expectedTarget;
 }
 
 async function assertRegularFileIfExists(path, label) {

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -219,6 +219,70 @@ describe("verify-production readiness script auth", () => {
           phaseId: "hosted-proof-capture"
         }
       });
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("replaces an existing regular output file without stale bytes or temp leftovers", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-production-verifier-existing-output-"));
+    const outPath = join(tempDir, "verify-production-missing-url.json");
+
+    try {
+      writeFileSync(outPath, `{"overallStatus":"stale","padding":"${"x".repeat(1000)}"}\n`, "utf8");
+
+      expect(() =>
+        execFileSync(process.execPath, ["scripts/verify-production-readiness.mjs", "--out", outPath], {
+          cwd: process.cwd(),
+          env: { ...process.env, NEXT_PUBLIC_PRODUCT_URL: "" },
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"]
+        })
+      ).toThrow();
+
+      const rawReport = readFileSync(outPath, "utf8");
+      const report = JSON.parse(rawReport) as {
+        overallStatus: string;
+        outputPath: string;
+      };
+
+      expect(report).toMatchObject({
+        overallStatus: "blocked",
+        outputPath: outPath
+      });
+      expect(rawReport).not.toContain("stale");
+      expect(rawReport).not.toContain("padding");
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts the standard temporary directory alias while rejecting user-created symlink parents", () => {
+    const tempDir = mkdtempSync(join("/tmp", "sentinel-production-verifier-system-alias-"));
+    const outPath = join(tempDir, "verify-production-missing-url.json");
+
+    try {
+      expect(() =>
+        execFileSync(process.execPath, ["scripts/verify-production-readiness.mjs", "--out", outPath], {
+          cwd: process.cwd(),
+          env: { ...process.env, NEXT_PUBLIC_PRODUCT_URL: "" },
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"]
+        })
+      ).toThrow();
+
+      const report = JSON.parse(readFileSync(outPath, "utf8")) as {
+        overallStatus: string;
+        outputPath: string;
+      };
+
+      expect(report).toMatchObject({
+        overallStatus: "blocked",
+        outputPath: outPath
+      });
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -241,6 +305,33 @@ describe("verify-production readiness script auth", () => {
           stdio: ["ignore", "pipe", "pipe"]
         })
       ).toThrow(/symbolic link/u);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when the hosted verification output parent is a symlink", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-production-verifier-symlink-parent-"));
+    const realTargetDir = join(tempDir, "real-output");
+    const linkedParent = join(tempDir, "linked-output");
+    const outPath = join(linkedParent, "verify-production-missing-url.json");
+    const realTargetPath = join(realTargetDir, "verify-production-missing-url.json");
+
+    try {
+      mkdirSync(realTargetDir);
+      symlinkSync(realTargetDir, linkedParent, "dir");
+
+      expect(() =>
+        execFileSync(process.execPath, ["scripts/verify-production-readiness.mjs", "--out", outPath], {
+          cwd: process.cwd(),
+          env: { ...process.env, NEXT_PUBLIC_PRODUCT_URL: "" },
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"]
+        })
+      ).toThrow(/symbolic link/u);
+
+      expect(existsSync(realTargetPath)).toBe(false);
+      expect(readdirSync(realTargetDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
