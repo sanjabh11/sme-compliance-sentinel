@@ -308,6 +308,8 @@ function manualRowsForPhaseProgress({ phase, phaseProgress }) {
     return [];
   }
 
+  const cloudRunArtifactState = readCloudRunRenderArtifactState();
+
   return phaseProgress.pending
     .filter((action) => isActionableCloudRunProgressBlocker(action))
     .map((action, index) =>
@@ -318,12 +320,85 @@ function manualRowsForPhaseProgress({ phase, phaseProgress }) {
         source: "phase-progress",
         status: "private-values-required",
         action,
+        actionDetails: cloudRunActionDetailsForBlocker({ action, state: cloudRunArtifactState }),
         evidenceNeeded: phaseProgress.evidence,
         commands: phase.commands,
         stopCondition: phase.stopConditions[0] ?? "Stop until the private render-values audit is ready-to-render.",
         privateArtifactPaths: privateArtifactPathsForPhase(phase.id)
       })
-    );
+  );
+}
+
+function cloudRunActionDetailsForBlocker({ action, state }) {
+  if (!state) {
+    return [];
+  }
+
+  const text = String(action);
+
+  if (/required non-secret Cloud Run render value/iu.test(text)) {
+    return cloudRunValueDetailsForKeys({
+      keys: state.missingStrictKeys,
+      state,
+      fallbackStatus: "missing"
+    });
+  }
+
+  if (/placeholder render value/iu.test(text)) {
+    return cloudRunValueDetailsForKeys({
+      keys: state.placeholderKeys,
+      state,
+      fallbackStatus: "placeholder"
+    });
+  }
+
+  if (/render-value consistency blocker/iu.test(text)) {
+    return state.valueConsistencyBlockers.map((blocker) => {
+      const key = String(blocker?.key || "");
+      const intake = cloudRunIntakeByKey(state).get(key);
+
+      return cloudRunValueDetail({
+        key,
+        intake,
+        status: "blocked",
+        fix: String(blocker?.fix || blocker?.id || intake?.fix || "Review the render-values audit packet.")
+      });
+    });
+  }
+
+  return [];
+}
+
+function cloudRunValueDetailsForKeys({ keys, state, fallbackStatus }) {
+  const intakeByKey = cloudRunIntakeByKey(state);
+
+  return keys.map((key) =>
+    cloudRunValueDetail({
+      key,
+      intake: intakeByKey.get(key),
+      status: fallbackStatus,
+      fix: intakeByKey.get(key)?.fix
+    })
+  );
+}
+
+function cloudRunIntakeByKey(state) {
+  return new Map(
+    (state.renderValueIntake ?? [])
+      .filter((item) => item?.key)
+      .map((item) => [String(item.key), item])
+  );
+}
+
+function cloudRunValueDetail({ key, intake, status, fix }) {
+  return {
+    key,
+    owner: String(intake?.owner || "engineering"),
+    status: String(intake?.status || status || "pending"),
+    source: String(intake?.source || "render-values-audit"),
+    fix: String(fix || `Fill ${key} in the private render-values file with a reviewed non-secret production value.`),
+    acceptedProof: String(intake?.acceptedProof || "Reviewed non-secret deployment value and private operator evidence.")
+  };
 }
 
 function isActionableCloudRunProgressBlocker(action) {
@@ -387,6 +462,7 @@ function manualInterventionRow(input) {
     source: input.source,
     status: input.status,
     action: input.action,
+    actionDetails: input.actionDetails ?? [],
     evidenceNeeded: input.evidenceNeeded,
     commands: input.commands,
     privateArtifactPaths: input.privateArtifactPaths,
@@ -862,6 +938,7 @@ function readCloudRunRenderArtifactState() {
     missingStrictKeys: Array.isArray(audit?.missingStrictKeys) ? audit.missingStrictKeys.map(String) : [],
     placeholderKeys: Array.isArray(audit?.placeholderKeys) ? audit.placeholderKeys.map(String) : [],
     valueConsistencyBlockers: Array.isArray(audit?.valueConsistencyBlockers) ? audit.valueConsistencyBlockers : [],
+    renderValueIntake: Array.isArray(audit?.renderValueIntake) ? audit.renderValueIntake : [],
     auditMarkdownExists: isRegularFile(join(outDir, "cloudrun-render-values-audit.md")),
     evidencePacketExists: isRegularFile(join(outDir, "cloudrun-render-evidence-packet.json")),
     evidencePacketMarkdownExists: isRegularFile(join(outDir, "cloudrun-render-evidence-packet.md")),
@@ -2344,6 +2421,24 @@ function renderOwnerPacketMarkdown(packet, report) {
             "Checklist:",
             "",
             markdownList(row.checklist)
+          ]
+        : []),
+      ...(row.actionDetails?.length
+        ? [
+            "",
+            "Action details:",
+            "",
+            markdownTable(
+              ["Key", "Status", "Source", "Owner", "Fix", "Private proof to keep"],
+              row.actionDetails.map((detail) => [
+                detail.key,
+                detail.status,
+                detail.source,
+                detail.owner,
+                detail.fix,
+                detail.acceptedProof
+              ])
+            )
           ]
         : []),
       "",

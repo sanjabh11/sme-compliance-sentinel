@@ -115,6 +115,14 @@ type LocalSubmissionReport = {
         owner: string;
         action: string;
         privateArtifactPaths: string[];
+        actionDetails?: Array<{
+          key: string;
+          owner: string;
+          status: string;
+          source: string;
+          fix: string;
+          acceptedProof: string;
+        }>;
         checklist?: string[];
         proofBoundary: string;
       }>;
@@ -132,6 +140,14 @@ type LocalSubmissionReport = {
       source: string;
       status: string;
       action: string;
+      actionDetails?: Array<{
+        key: string;
+        owner: string;
+        status: string;
+        source: string;
+        fix: string;
+        acceptedProof: string;
+      }>;
       evidenceNeeded: string;
       commands: string[];
       privateArtifactPaths: string[];
@@ -998,6 +1014,32 @@ describe("local XPRIZE submission verifier", () => {
                 key: "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
                 fix: "Use concrete server IPv4 addresses."
               }
+            ],
+            renderValueIntake: [
+              {
+                key: "GOOGLE_CLOUD_PROJECT",
+                owner: "engineering",
+                status: "placeholder",
+                source: "values-file",
+                fix: "Fill GOOGLE_CLOUD_PROJECT with the reviewed Google Cloud project id.",
+                acceptedProof: "Reviewed Google Cloud project metadata."
+              },
+              {
+                key: "NEXT_PUBLIC_PRODUCT_URL",
+                owner: "engineering",
+                status: "missing",
+                source: "missing",
+                fix: "Fill NEXT_PUBLIC_PRODUCT_URL with the HTTPS Cloud Run URL after deployment.",
+                acceptedProof: "Signed-out hosted product smoke proof."
+              },
+              {
+                key: "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
+                owner: "engineering",
+                status: "blocked",
+                source: "values-file",
+                fix: "Use concrete server IPv4 addresses.",
+                acceptedProof: "Gemini API key server restriction proof."
+              }
             ]
           },
           null,
@@ -1040,6 +1082,33 @@ describe("local XPRIZE submission verifier", () => {
       expect(
         progressRows.some((item) => item.checklist?.some((entry) => entry.includes("Fill only non-secret production values")))
       ).toBe(true);
+      expect(progressRows.find((item) => item.action.includes("required non-secret"))?.actionDetails).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            key: "GOOGLE_CLOUD_PROJECT",
+            status: "placeholder",
+            fix: "Fill GOOGLE_CLOUD_PROJECT with the reviewed Google Cloud project id."
+          }),
+          expect.objectContaining({
+            key: "NEXT_PUBLIC_PRODUCT_URL",
+            status: "missing",
+            acceptedProof: "Signed-out hosted product smoke proof."
+          })
+        ])
+      );
+      expect(progressRows.find((item) => item.action.includes("placeholder"))?.actionDetails).toEqual([
+        expect.objectContaining({
+          key: "GOOGLE_CLOUD_PROJECT",
+          source: "values-file"
+        })
+      ]);
+      expect(progressRows.find((item) => item.action.includes("consistency blocker"))?.actionDetails).toEqual([
+        expect.objectContaining({
+          key: "SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS",
+          status: "blocked",
+          acceptedProof: "Gemini API key server restriction proof."
+        })
+      ]);
       expect(engineeringPacket?.nextAction).toContain("Fill 2 required non-secret Cloud Run render value(s)");
       expect(report.phasePlan.phases.find((phase) => phase.id === "hosted-proof-capture")?.status).toBe("external-required");
       expect(report.overallStatus).toBe("blocked");
