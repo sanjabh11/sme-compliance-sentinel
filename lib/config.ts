@@ -14,6 +14,8 @@ export const sentinelConfig = {
   ),
   geminiInputPer1kUsd: Number(process.env.GEMINI_INPUT_PER_1K_USD ?? "0.000075"),
   geminiOutputPer1kUsd: Number(process.env.GEMINI_OUTPUT_PER_1K_USD ?? "0.0003"),
+  googleGenAiUseVertexAi: process.env.GOOGLE_GENAI_USE_VERTEXAI?.toLowerCase() === "true",
+  googleCloudLocation: process.env.GOOGLE_CLOUD_LOCATION ?? "global",
   sensitiveDataProtectionEnabled: process.env.SENSITIVE_DATA_PROTECTION_ENABLED === "true",
   googleCloudProject: process.env.GOOGLE_CLOUD_PROJECT ?? "",
   googleCloudProjectNumber: process.env.GOOGLE_CLOUD_PROJECT_NUMBER ?? "",

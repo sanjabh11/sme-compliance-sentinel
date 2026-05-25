@@ -139,6 +139,8 @@ The **Low-risk skip** button verifies that metadata-only events do not call Gemi
 
 - `GEMINI_API_KEY`: required in production for the deployed LLM workflow.
 - `GEMINI_MODEL`: defaults to `gemini-3.5-flash`; `npm run verify:gemini-model` checks the local default, allowlist, Cloud Run manifest, and SDK package against the reviewed Gemini model/library docs snapshot.
+- `GOOGLE_GENAI_USE_VERTEXAI`: set to `true` on Cloud Run when using service-account Vertex AI routing instead of direct API-key Gemini calls.
+- `GOOGLE_CLOUD_LOCATION`: Vertex AI location used by the Google Gen AI SDK when `GOOGLE_GENAI_USE_VERTEXAI=true`.
 - `SENTINEL_GEMINI_MODEL_ALLOWLIST`: comma-separated model allowlist enforced before any Gemini call.
 - `SENTINEL_GEMINI_MONTHLY_BUDGET_USD`: tenant budget guardrail; scans fall back to deterministic findings instead of calling Gemini if projected spend exceeds this amount.
 - `SENTINEL_GEMINI_MAX_CONTENT_BYTES_PER_EVENT`: maximum content bytes sampled into one Gemini risk prompt.

@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, type GoogleGenAIOptions } from "@google/genai";
 import { sentinelConfig } from "@/lib/config";
 import type { DetectorFinding, GeminiRiskClassification, RecommendationAction, ResourceEvent, Severity } from "@/lib/types";
 
@@ -10,15 +10,16 @@ export async function classifyRiskWithGemini(
   const prompt = buildRiskPrompt(event, detectorFindings);
   const inputTokensEstimated = estimateTokens(prompt);
 
-  if (!process.env.GEMINI_API_KEY) {
-    return mockGeminiClassification(event, detectorFindings, model, inputTokensEstimated, "api-key-missing");
+  const clientBuild = buildGeminiClientConfig();
+  if (!clientBuild.config) {
+    return mockGeminiClassification(event, detectorFindings, model, inputTokensEstimated, clientBuild.fallbackReason);
   }
 
   let text: string;
   let parsed: Record<string, unknown>;
 
   try {
-    const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const genAI = new GoogleGenAI(clientBuild.config);
     const result = await genAI.models.generateContent({
       model,
       contents: prompt,
@@ -53,6 +54,38 @@ export async function classifyRiskWithGemini(
     outputTokensEstimated,
     estimatedCostUsd: estimateCost(inputTokensEstimated, outputTokensEstimated)
   };
+}
+
+type GeminiClientBuild =
+  | {
+      config: GoogleGenAIOptions;
+      fallbackReason?: never;
+    }
+  | {
+      config: null;
+      fallbackReason: string;
+    };
+
+function buildGeminiClientConfig(): GeminiClientBuild {
+  if (sentinelConfig.googleGenAiUseVertexAi) {
+    if (!sentinelConfig.googleCloudProject || !sentinelConfig.googleCloudLocation) {
+      return { config: null, fallbackReason: "vertex-config-missing" };
+    }
+
+    return {
+      config: {
+        vertexai: true,
+        project: sentinelConfig.googleCloudProject,
+        location: sentinelConfig.googleCloudLocation
+      }
+    };
+  }
+
+  if (!process.env.GEMINI_API_KEY) {
+    return { config: null, fallbackReason: "api-key-missing" };
+  }
+
+  return { config: { apiKey: process.env.GEMINI_API_KEY } };
 }
 
 function buildRiskPrompt(event: ResourceEvent, detectorFindings: DetectorFinding[]) {
