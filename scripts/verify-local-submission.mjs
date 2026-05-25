@@ -898,11 +898,8 @@ function cloudRunRenderValueBlockers(state) {
   return blockers;
 }
 
-function summarizeList(values, limit = 8) {
-  const visible = values.slice(0, limit);
-  const extra = values.length - visible.length;
-
-  return `${visible.join(", ")}${extra > 0 ? `, +${extra} more` : ""}`;
+function summarizeList(values) {
+  return values.join(", ");
 }
 
 function readCloudRunRenderArtifactState() {
