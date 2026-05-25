@@ -96,6 +96,43 @@ describe("Cloud Run manifest renderer", () => {
     expect(() => parseArgs(["--token=secret"])).toThrow(/Raw secret CLI args/u);
   });
 
+  it("defaults render-values writer CLI output to SENTINEL_PRIVATE_ROOT instead of the tracked template", async () => {
+    const { parseArgs, writeRenderValuesTemplate } = await loadRenderer();
+    const tempDir = await makeTempDir();
+    const privateRoot = join(tempDir, "operator-private-root");
+    const previousPrivateRoot = process.env.SENTINEL_PRIVATE_ROOT;
+
+    try {
+      process.env.SENTINEL_PRIVATE_ROOT = privateRoot;
+
+      expect(parseArgs(["--write-values-template"])).toMatchObject({
+        writeValuesTemplatePath: join(privateRoot, "cloudrun-render-values.json")
+      });
+      expect(parseArgs(["--write-values-template="])).toMatchObject({
+        writeValuesTemplatePath: join(privateRoot, "cloudrun-render-values.json")
+      });
+      expect(parseArgs(["--write-release-values"])).toMatchObject({
+        writeReleaseValuesPath: join(privateRoot, "cloudrun-render-values.json")
+      });
+      expect(parseArgs(["--write-release-values="])).toMatchObject({
+        writeReleaseValuesPath: join(privateRoot, "cloudrun-render-values.json")
+      });
+
+      const summary = await writeRenderValuesTemplate();
+      const writtenValues = JSON.parse(await readFile(summary.path, "utf8")) as Record<string, string>;
+
+      expect(summary.path).toBe(join(privateRoot, "cloudrun-render-values.json"));
+      expect(writtenValues.SENTINEL_RELEASE_ID).toBe("RELEASE_ID");
+      expect(summary.privateHandling).toContain("keep filled values out of Git");
+    } finally {
+      if (previousPrivateRoot === undefined) {
+        delete process.env.SENTINEL_PRIVATE_ROOT;
+      } else {
+        process.env.SENTINEL_PRIVATE_ROOT = previousPrivateRoot;
+      }
+    }
+  });
+
   it("writes a private release-candidate values starter from Git metadata only", async () => {
     const { buildReleaseCandidateValues, writeReleaseCandidateValues } = await loadRenderer();
     const tempDir = await makeTempDir();

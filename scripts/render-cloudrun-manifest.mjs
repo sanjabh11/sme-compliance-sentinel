@@ -13,6 +13,7 @@ const deploymentContract = JSON.parse(
 const execFileAsync = promisify(execFile);
 const defaultTemplate = "cloudrun.service.yaml";
 const defaultOutDir = "artifacts/deployment";
+const defaultPrivateRoot = "/secure/local";
 const renderedFileName = "cloudrun.service.rendered.yaml";
 const verifierFileName = "cloudrun-manifest-verifier.json";
 const summaryFileName = "cloudrun-render-summary.json";
@@ -225,24 +226,30 @@ export function parseArgs(argv) {
     }
 
     if (arg === "--write-values-template") {
-      args.writeValuesTemplatePath = argv[index + 1] ?? defaultValuesTemplatePath;
-      index += 1;
+      const outputPath = nextOptionalValue(argv, index);
+      args.writeValuesTemplatePath = outputPath || defaultCloudRunValuesPath();
+      if (outputPath) {
+        index += 1;
+      }
       continue;
     }
 
     if (arg.startsWith("--write-values-template=")) {
-      args.writeValuesTemplatePath = arg.slice("--write-values-template=".length) || defaultValuesTemplatePath;
+      args.writeValuesTemplatePath = arg.slice("--write-values-template=".length) || defaultCloudRunValuesPath();
       continue;
     }
 
     if (arg === "--write-release-values") {
-      args.writeReleaseValuesPath = argv[index + 1] ?? "";
-      index += 1;
+      const outputPath = nextOptionalValue(argv, index);
+      args.writeReleaseValuesPath = outputPath || defaultCloudRunValuesPath();
+      if (outputPath) {
+        index += 1;
+      }
       continue;
     }
 
     if (arg.startsWith("--write-release-values=")) {
-      args.writeReleaseValuesPath = arg.slice("--write-release-values=".length);
+      args.writeReleaseValuesPath = arg.slice("--write-release-values=".length) || defaultCloudRunValuesPath();
       continue;
     }
 
@@ -252,6 +259,23 @@ export function parseArgs(argv) {
   }
 
   return args;
+}
+
+function nextOptionalValue(argv, index) {
+  const next = argv[index + 1] ?? "";
+
+  return next && !next.startsWith("-") ? next : "";
+}
+
+function defaultCloudRunValuesPath() {
+  return join(privateRoot(), "cloudrun-render-values.json");
+}
+
+function privateRoot() {
+  const configuredRoot = String(process.env.SENTINEL_PRIVATE_ROOT ?? defaultPrivateRoot).trim();
+  const root = configuredRoot || defaultPrivateRoot;
+
+  return root.replace(/\/+$/u, "") || defaultPrivateRoot;
 }
 
 export async function renderCloudRunManifest(options) {
@@ -360,8 +384,8 @@ export function getCloudRunRenderContractSummary() {
   };
 }
 
-export async function writeRenderValuesTemplate(outputPath = defaultValuesTemplatePath) {
-  const absolutePath = resolve(outputPath || defaultValuesTemplatePath);
+export async function writeRenderValuesTemplate(outputPath = defaultCloudRunValuesPath()) {
+  const absolutePath = resolve(outputPath || defaultCloudRunValuesPath());
   await assertDirectoryPathSafe(dirname(absolutePath), "Cloud Run render values parent directory");
   await mkdir(dirname(absolutePath), { recursive: true });
   await assertDirectoryExistsSafe(dirname(absolutePath), "Cloud Run render values parent directory");
