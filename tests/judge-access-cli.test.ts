@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -81,7 +81,66 @@ describe("judge access CLI verifier", () => {
 
       expect(readFileSync(outPath, "utf8")).toContain('"overallStatus": "blocked"');
       expect(report.blockers.length).toBeGreaterThan(0);
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
       expect(() => runVerifier(baseEnv, ["--strict"])).toThrow();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("replaces existing private output without stale bytes or temp leftovers", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-judge-access-existing-output-"));
+    const outPath = join(tempDir, "judge-access-readiness.json");
+
+    try {
+      writeFileSync(outPath, `{"overallStatus":"stale","padding":"${"x".repeat(1000)}"}\n`, "utf8");
+
+      const report = runVerifier(baseEnv, ["--out", outPath]);
+      const outJson = readFileSync(outPath, "utf8");
+
+      expect(report.overallStatus).toBe("blocked");
+      expect(JSON.parse(outJson)).toMatchObject({ overallStatus: "blocked" });
+      expect(outJson).not.toContain("stale");
+      expect(outJson).not.toContain("padding");
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts the standard /tmp system alias on macOS without temp leftovers", () => {
+    if (process.platform !== "darwin") {
+      return;
+    }
+
+    const tempDir = mkdtempSync("/tmp/sentinel-judge-access-tmp-alias-");
+    const outPath = join(tempDir, "judge-access-readiness.json");
+
+    try {
+      const report = runVerifier(baseEnv, ["--out", outPath]);
+
+      expect(report.overallStatus).toBe("blocked");
+      expect(JSON.parse(readFileSync(outPath, "utf8"))).toMatchObject({ overallStatus: "blocked" });
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when the private output parent is a user-created symlink", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-judge-access-symlink-parent-"));
+    const realOutputDir = join(tempDir, "real-output");
+    const linkedOutputDir = join(tempDir, "linked-output");
+    const outPath = join(linkedOutputDir, "judge-access-readiness.json");
+    const realTargetPath = join(realOutputDir, "judge-access-readiness.json");
+
+    try {
+      mkdirSync(realOutputDir);
+      symlinkSync(realOutputDir, linkedOutputDir, "dir");
+
+      expect(() => runVerifier(baseEnv, ["--out", outPath])).toThrow(/symbolic link/u);
+      expect(existsSync(realTargetPath)).toBe(false);
+      expect(readdirSync(realOutputDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -134,10 +193,12 @@ describe("judge access CLI verifier", () => {
     const targetPath = join(tempDir, "reviewed-judge-access-readiness.json");
 
     try {
-      writeFileSync(targetPath, "{}", "utf8");
+      writeFileSync(targetPath, "{\"kept\":true}\n", "utf8");
       symlinkSync(targetPath, outPath);
 
       expect(() => runVerifier(baseEnv, ["--out", outPath])).toThrow(/symbolic link/u);
+      expect(readFileSync(targetPath, "utf8")).toBe("{\"kept\":true}\n");
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

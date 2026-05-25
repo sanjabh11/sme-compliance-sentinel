@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /* global console, process */
 
-import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { URL } from "node:url";
 
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
@@ -338,9 +339,118 @@ function smokeCommand(input) {
 
 function writeJson(path, value) {
   const absolutePath = resolve(path);
-  mkdirSync(dirname(absolutePath), { recursive: true });
-  assertRegularFileIfExists(absolutePath, "Judge access readiness output file");
-  writeFileSync(absolutePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  const parentDirectory = dirname(absolutePath);
+  assertDirectoryPathSafe(parentDirectory, "Judge access readiness output parent directory");
+  mkdirSync(parentDirectory, { recursive: true });
+  assertDirectoryExistsSafe(parentDirectory, "Judge access readiness output parent directory");
+  writeTextFile(absolutePath, `${JSON.stringify(value, null, 2)}\n`, "Judge access readiness output file");
+}
+
+function writeTextFile(path, content, label) {
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+  const tempPath = join(parentDirectory, `.${basename(absolutePath)}.${randomUUID()}.tmp`);
+  const parentIdentity = assertWritableTextFilePath(absolutePath, label);
+
+  try {
+    writeFileSync(tempPath, content, { encoding: "utf8", flag: "wx" });
+    assertSameDirectoryIdentity(parentDirectory, parentIdentity, `${label} parent directory`);
+    renameSync(tempPath, absolutePath);
+    assertSameDirectoryIdentity(parentDirectory, parentIdentity, `${label} parent directory`);
+  } catch (error) {
+    rmSync(tempPath, { force: true });
+    throw error;
+  }
+}
+
+function assertDirectoryPathSafe(path, label) {
+  const directories = [];
+  let cursor = resolve(path);
+
+  while (true) {
+    directories.push(cursor);
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+
+  for (const directory of directories.reverse()) {
+    let fileStat;
+
+    try {
+      fileStat = lstatSync(directory);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+
+    if (fileStat.isSymbolicLink()) {
+      if (isAllowedSystemDirectorySymlink(directory)) {
+        continue;
+      }
+
+      throw new Error(`${label} ${directory} is a symbolic link; use a regular private directory before verification.`);
+    }
+
+    if (!fileStat.isDirectory()) {
+      throw new Error(`${label} ${directory} is not a directory; use a regular private directory before verification.`);
+    }
+  }
+}
+
+function assertDirectoryExistsSafe(path, label) {
+  const absolutePath = resolve(path);
+  const fileStat = readDirectoryStat(absolutePath, label);
+
+  if (!fileStat.isDirectory()) {
+    throw new Error(`${label} ${absolutePath} is not a directory; use a regular private directory before verification.`);
+  }
+}
+
+function assertWritableTextFilePath(path, label) {
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+
+  assertDirectoryPathSafe(parentDirectory, `${label} parent directory`);
+  assertRegularFileIfExists(absolutePath, label);
+
+  return readDirectoryIdentity(parentDirectory, `${label} parent directory`);
+}
+
+function assertSameDirectoryIdentity(path, expected, label) {
+  const actual = readDirectoryIdentity(path, label);
+
+  if (actual.dev !== expected.dev || actual.ino !== expected.ino) {
+    throw new Error(`${label} ${resolve(path)} changed while writing; regenerate the private judge access packet in a stable private directory.`);
+  }
+}
+
+function readDirectoryIdentity(path, label) {
+  const fileStat = readDirectoryStat(resolve(path), label);
+
+  return {
+    dev: fileStat.dev,
+    ino: fileStat.ino
+  };
+}
+
+function readDirectoryStat(path, label) {
+  const absolutePath = resolve(path);
+  const fileStat = lstatSync(absolutePath);
+
+  if (fileStat.isSymbolicLink()) {
+    if (isAllowedSystemDirectorySymlink(absolutePath)) {
+      return statSync(absolutePath);
+    }
+
+    throw new Error(`${label} ${absolutePath} is a symbolic link; use a regular private directory before verification.`);
+  }
+
+  return fileStat;
 }
 
 function assertRegularFileIfExists(path, label) {
@@ -362,6 +472,27 @@ function assertRegularFileIfExists(path, label) {
   if (!fileStat.isFile()) {
     throw new Error(`${label} ${path} is not a regular file; use a regular private file path before verification.`);
   }
+}
+
+function isAllowedSystemDirectorySymlink(path) {
+  if (process.platform !== "darwin") {
+    return false;
+  }
+
+  const absolutePath = resolve(path);
+  const allowedAliases = {
+    "/etc": "/private/etc",
+    "/tmp": "/private/tmp",
+    "/var": "/private/var"
+  };
+  const expectedTarget = allowedAliases[absolutePath];
+
+  if (!expectedTarget) {
+    return false;
+  }
+
+  const target = readlinkSync(absolutePath);
+  return resolve(dirname(absolutePath), target) === expectedTarget;
 }
 
 try {
