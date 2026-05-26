@@ -2288,6 +2288,40 @@ dd {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.customer-highlight-list {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.customer-highlight-list article {
+  background: #f8fafb;
+  border: 1px solid #e5ecef;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.customer-highlight-list span {
+  align-items: center;
+  background: #eef4f1;
+  border-radius: 999px;
+  color: var(--accent-dark);
+  display: inline-flex;
+  font-size: 0.8rem;
+  font-weight: 900;
+  height: 26px;
+  justify-content: center;
+  width: 26px;
+}
+
+.customer-highlight-list p {
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
 .customer-feature-list article {
   border: 1px solid #e5ecef;
   border-radius: 8px;
@@ -2375,7 +2409,8 @@ dd {
   .score-grid,
   .trust-analytics-metrics,
   .customer-outcome-grid,
-  .customer-feature-list {
+  .customer-feature-list,
+  .customer-highlight-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -2452,8 +2487,10 @@ dd {
   .customer-stage-tabs,
   .customer-outcome-grid,
   .customer-feature-list,
+  .customer-highlight-list,
   .customer-lead-form,
-  .customer-feature-list article {
+  .customer-feature-list article,
+  .customer-highlight-list article {
     grid-template-columns: 1fr;
   }
 

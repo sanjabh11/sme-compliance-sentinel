@@ -64,6 +64,9 @@ describe("customer entry route", () => {
     expect(text).toContain("/api/customer/consent-packet");
     expect(text).toContain("Draft my sample answer");
     expect(text).toContain("Common buyer questions");
+    expect(text).toContain("Five moments customers should see");
+    expect(text).toContain("customer-highlight-list");
     expect(text).toContain("sentinel:");
+    expect(text).not.toContain("Top 20 points to show in order");
   });
 });

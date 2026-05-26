@@ -66,6 +66,7 @@ export interface CustomerDemoScenario {
     followUpPlan: string[];
     optimizationNote: string;
   };
+  showcaseHighlights: string[];
 }
 
 export const customerDemoFeatures: CustomerDemoFeature[] = [
@@ -245,7 +246,7 @@ export const customerDemoSteps: CustomerDemoStep[] = [
 ];
 
 export const customerDemoScenario: CustomerDemoScenario = {
-  customerSegment: "seed-stage B2B SaaS and founder-led services teams facing an enterprise security review",
+  customerSegment: "seed-stage B2B SaaS teams facing enterprise security review",
   offer: "$199 one-day Google Workspace risk scan plus SOC2 readiness evidence packet.",
   sampleDataNotice: "Sample data only. Live scans require signed consent before Workspace access.",
   valueStack: ["Consent first", "AI only when justified", "Redacted Trust Packet"],
@@ -344,12 +345,26 @@ export const customerDemoScenario: CustomerDemoScenario = {
     ],
     followUpPlan: ["1 hour: send scope confirmation", "24 hours: send consent checklist reminder"],
     optimizationNote: "First experiment: CTA clicks to pilot-interest call."
-  }
+  },
+  showcaseHighlights: [
+    "Spot exposed Workspace risk before the buyer review.",
+    "Explain risk with AI only when semantic review is justified.",
+    "Keep important remediation human-approved.",
+    "Export a redacted Trust Packet for the prospect.",
+    "Turn the same evidence into questionnaire-ready answers."
+  ]
 };
 
 export function buildCustomerDemoCopyBundle() {
   return {
     features: customerDemoFeatures,
+    steps: customerDemoSteps,
+    scenario: customerDemoScenario
+  };
+}
+
+export function buildCustomerDemoPageBundle() {
+  return {
     steps: customerDemoSteps,
     scenario: customerDemoScenario
   };

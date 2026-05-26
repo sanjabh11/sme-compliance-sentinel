@@ -17,7 +17,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useMemo, useState, type FormEvent } from "react";
 import type { CustomerConsentPacket } from "@/lib/customer-consent";
-import type { CustomerDemoFeature, CustomerDemoScenario, CustomerDemoStep } from "@/lib/customer-demo";
+import type { CustomerDemoScenario, CustomerDemoStep } from "@/lib/customer-demo";
 import type { CustomerLeadReceipt } from "@/lib/customer-leads";
 
 type DemoStage = "ready" | "running";
@@ -71,7 +71,6 @@ export function CustomerDemoClient({
   demo
 }: {
   demo: {
-    features: CustomerDemoFeature[];
     steps: CustomerDemoStep[];
     scenario: CustomerDemoScenario;
   };
@@ -87,6 +86,7 @@ export function CustomerDemoClient({
   const [questionnaireDraftVisible, setQuestionnaireDraftVisible] = useState(false);
   const active = demo.steps.find((step) => step.id === activeStep) ?? demo.steps[0];
   const started = stage === "running";
+  const buyerHighlights = demo.scenario.showcaseHighlights;
   const trustPacketDownload = useMemo(() => buildTrustPacketDownload(demo.scenario), [demo.scenario]);
   const trustPacketHref = `data:text/markdown;charset=utf-8,${encodeURIComponent(trustPacketDownload)}`;
 
@@ -428,14 +428,6 @@ export function CustomerDemoClient({
           <p>{demo.scenario.leadCapture.description}</p>
           <form className="customer-lead-form" onSubmit={submitLead}>
             <label className="customer-field">
-              <span>Name</span>
-              <input
-                value={leadForm.name}
-                onChange={(event) => setLeadForm({ ...leadForm, name: event.target.value })}
-                placeholder="Your name"
-              />
-            </label>
-            <label className="customer-field">
               <span>Work email</span>
               <input
                 required
@@ -443,14 +435,6 @@ export function CustomerDemoClient({
                 value={leadForm.workEmail}
                 onChange={(event) => setLeadForm({ ...leadForm, workEmail: event.target.value })}
                 placeholder="name@company.com"
-              />
-            </label>
-            <label className="customer-field">
-              <span>Company</span>
-              <input
-                value={leadForm.company}
-                onChange={(event) => setLeadForm({ ...leadForm, company: event.target.value })}
-                placeholder="Company"
               />
             </label>
             <label className="customer-field">
@@ -464,14 +448,6 @@ export function CustomerDemoClient({
                 <option>This quarter</option>
                 <option>No deadline yet</option>
               </select>
-            </label>
-            <label className="customer-field customer-field-wide">
-              <span>Pilot goal</span>
-              <textarea
-                value={leadForm.pilotGoal}
-                onChange={(event) => setLeadForm({ ...leadForm, pilotGoal: event.target.value })}
-                rows={3}
-              />
             </label>
             <button type="submit">
               <CalendarCheck2 size={18} aria-hidden="true" />
@@ -522,20 +498,16 @@ export function CustomerDemoClient({
         </div>
       </section>
 
-      <section className="customer-feature-sequence" aria-label="Top 20 customer showcase features">
+      <section className="customer-feature-sequence" aria-label="Customer showcase highlights">
         <div className="customer-section-heading">
-          <p className="eyebrow">Talk track sequence</p>
-          <h2>Top 20 points to show in order</h2>
+          <p className="eyebrow">Demo highlights</p>
+          <h2>Five moments customers should see</h2>
         </div>
-        <div className="customer-feature-list">
-          {demo.features.map((feature) => (
-            <article key={feature.rank}>
-              <span>{feature.rank}</span>
-              <div>
-                <h3>{feature.feature}</h3>
-                <p>{feature.talkTrack}</p>
-                <small>{feature.whyShowcase}</small>
-              </div>
+        <div className="customer-highlight-list">
+          {buyerHighlights.map((highlight, index) => (
+            <article key={highlight}>
+              <span>{index + 1}</span>
+              <p>{highlight}</p>
             </article>
           ))}
         </div>

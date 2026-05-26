@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { CustomerDemoClient } from "@/app/demo/customer/customer-demo-client";
-import { buildCustomerDemoCopyBundle } from "@/lib/customer-demo";
+import { buildCustomerDemoPageBundle } from "@/lib/customer-demo";
 
 export const metadata: Metadata = {
   title: "Customer Demo | SME Workspace Sentinel",
@@ -8,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function CustomerDemoPage() {
-  return <CustomerDemoClient demo={buildCustomerDemoCopyBundle()} />;
+  return <CustomerDemoClient demo={buildCustomerDemoPageBundle()} />;
 }
