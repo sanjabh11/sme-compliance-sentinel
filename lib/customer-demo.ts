@@ -20,6 +20,11 @@ export interface CustomerDemoScenario {
   offer: string;
   sampleDataNotice: string;
   valueStack: string[];
+  leadCapture: {
+    headline: string;
+    description: string;
+    privacyNote: string;
+  };
   scenarioTitle: string;
   scenarioSummary: string;
   sampleFinding: {
@@ -44,6 +49,17 @@ export interface CustomerDemoScenario {
   };
   copilotPrompt: string;
   copilotAnswer: string;
+  riskMovement: {
+    before: number;
+    after: number;
+    label: string;
+    note: string;
+  };
+  consentWizard: {
+    title: string;
+    steps: { label: string; detail: string }[];
+  };
+  faq: { question: string; answer: string }[];
   pilotCta: {
     headline: string;
     checklist: string[];
@@ -233,6 +249,11 @@ export const customerDemoScenario: CustomerDemoScenario = {
   offer: "$199 one-day Google Workspace risk scan plus SOC2 readiness evidence packet.",
   sampleDataNotice: "Sample data only. Live scans require signed consent before Workspace access.",
   valueStack: ["Consent first", "AI only when justified", "Redacted Trust Packet"],
+  leadCapture: {
+    headline: "Request my pilot scope",
+    description: "Share the minimum details needed to prepare a one-day scan scope and consent checklist.",
+    privacyNote: "Five fields maximum. The demo stores only a redacted local receipt until a real lead destination is configured."
+  },
   scenarioTitle: "Sample high-risk Workspace exposure",
   scenarioSummary:
     "A proposal draft is externally shared and includes sensitive operational details. Sentinel detects it, explains the risk, and stages the evidence.",
@@ -267,6 +288,51 @@ export const customerDemoScenario: CustomerDemoScenario = {
   copilotPrompt: "What proof supports our Workspace risk scan?",
   copilotAnswer:
     "The cited proof is the scan scope, the redacted finding, the human-approved recommendation record, and the Trust Packet preview. Missing proof remains live customer consent and paid pilot artifacts.",
+  riskMovement: {
+    before: 72,
+    after: 38,
+    label: "Sample risk movement after approval",
+    note: "Illustrative demo score only. Live score history requires consented Workspace evidence."
+  },
+  consentWizard: {
+    title: "Consent-first scan setup",
+    steps: [
+      {
+        label: "Scope",
+        detail: "Confirm Drive and Gmail metadata surfaces before any OAuth connection."
+      },
+      {
+        label: "Exclusions",
+        detail: "Exclude private invoices, unrelated folders, raw customer files, and content not approved for review."
+      },
+      {
+        label: "AI boundary",
+        detail: "Run deterministic checks first; route to Gemini only when semantic explanation is justified."
+      },
+      {
+        label: "Approval",
+        detail: "Keep remediation staged until the named approval owner confirms the action."
+      }
+    ]
+  },
+  faq: [
+    {
+      question: "Will AI read every file?",
+      answer: "No. Low-risk changes are skipped, deterministic checks run first, and semantic AI review is reserved for justified cases."
+    },
+    {
+      question: "Can the AI change permissions by itself?",
+      answer: "No. Important remediation is staged for human approval before permissions change."
+    },
+    {
+      question: "Is this SOC2 certification?",
+      answer: "No. The output is SOC2 readiness evidence for buyer review, not certification or audit assurance."
+    },
+    {
+      question: "What happens after the scan?",
+      answer: "You receive a redacted Trust Packet, a questionnaire-ready answer, and a checklist of remaining proof gaps."
+    }
+  ],
   pilotCta: {
     headline: "Book my one-day Workspace risk scan",
     checklist: [

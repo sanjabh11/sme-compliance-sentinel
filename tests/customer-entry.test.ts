@@ -44,7 +44,23 @@ describe("customer entry route", () => {
 
     expect(text).toContain("Get my sample risk scan");
     expect(text).toContain("Book my one-day scan");
+    expect(text).toContain("Request my pilot scope");
+    expect(text).toContain("Download sample packet");
     expect(text).not.toContain("Start sample demo");
     expect(text).not.toContain("View pilot next step");
+  });
+
+  it("surfaces the conversion and consent controls requested for the customer goal", async () => {
+    const customerClient = await readFile("app/demo/customer/customer-demo-client.tsx", "utf8");
+    const customerCopy = JSON.stringify(buildCustomerDemoCopyBundle(), null, 2);
+    const text = `${customerClient}\n${customerCopy}`;
+
+    expect(text).toContain("customer-lead-form");
+    expect(text).toContain("Work email");
+    expect(text).toContain("Buyer deadline");
+    expect(text).toContain("Consent wizard");
+    expect(text).toContain("Draft my sample answer");
+    expect(text).toContain("Common buyer questions");
+    expect(text).toContain("sentinel:");
   });
 });

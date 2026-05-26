@@ -31,5 +31,8 @@ describe("customer demo mode", () => {
     }
     expect(text).toContain("Sample data only");
     expect(text).toContain("SOC2 readiness evidence");
+    expect(text).toContain("Consent-first scan setup");
+    expect(text).toContain("Will AI read every file?");
+    expect(text).toContain("Sample risk movement after approval");
   });
 });

@@ -1756,6 +1756,21 @@ dd {
   text-decoration: none;
 }
 
+.customer-download-link {
+  align-items: center;
+  border: 1px solid #c4d9d1;
+  border-radius: 6px;
+  color: var(--accent-dark);
+  display: inline-flex;
+  font-size: 0.9rem;
+  font-weight: 850;
+  gap: 7px;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 12px;
+  text-decoration: none;
+}
+
 .customer-mobile-sticky-cta {
   display: none;
 }
@@ -1838,6 +1853,10 @@ dd {
   gap: 8px;
   margin-top: 4px;
   padding-top: 12px;
+}
+
+.customer-mini-packet .customer-download-link {
+  margin-top: 2px;
 }
 
 .customer-mini-packet ul {
@@ -1941,6 +1960,39 @@ dd {
   text-transform: uppercase;
 }
 
+.customer-risk-movement {
+  align-items: center;
+  background: #f8fafb;
+  border: 1px solid #e5ecef;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr auto 1fr;
+  margin-top: 16px;
+  padding: 12px;
+}
+
+.customer-risk-movement div {
+  display: grid;
+  gap: 3px;
+}
+
+.customer-risk-movement span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.customer-risk-movement strong {
+  font-size: 1.55rem;
+}
+
+.customer-risk-movement svg {
+  color: var(--accent);
+}
+
 .customer-outcome-grid {
   display: grid;
   gap: 18px;
@@ -1984,6 +2036,20 @@ dd {
   margin-top: 2px;
 }
 
+.customer-inline-button {
+  margin-top: 12px;
+}
+
+.customer-answer-preview {
+  background: #f8fafb;
+  border: 1px solid #e5ecef;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+}
+
 .customer-compact-list {
   color: var(--muted);
   display: grid;
@@ -2008,6 +2074,140 @@ dd {
   gap: 18px;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 0.45fr);
   padding: 22px;
+}
+
+.customer-conversion-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 0.85fr) minmax(340px, 1fr) minmax(280px, 0.65fr);
+}
+
+.customer-consent-panel,
+.customer-lead-panel,
+.customer-faq-panel {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.customer-consent-panel p,
+.customer-lead-panel p,
+.customer-faq-panel p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.customer-consent-steps {
+  display: grid;
+  gap: 10px;
+}
+
+.customer-consent-steps > div {
+  border: 1px solid #e5ecef;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  padding: 12px;
+}
+
+.customer-consent-steps > div > span {
+  align-items: center;
+  background: #eef4f1;
+  border-radius: 999px;
+  color: var(--accent-dark);
+  display: inline-flex;
+  font-weight: 900;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.customer-lead-form {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 16px 0 10px;
+}
+
+.customer-field {
+  display: grid;
+  gap: 6px;
+}
+
+.customer-field span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.customer-field input,
+.customer-field select,
+.customer-field textarea {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  font: inherit;
+  min-height: 40px;
+  padding: 9px 10px;
+  width: 100%;
+}
+
+.customer-field textarea {
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.customer-field-wide,
+.customer-lead-form button {
+  grid-column: 1 / -1;
+}
+
+.customer-form-error {
+  color: var(--critical) !important;
+  font-weight: 800;
+  margin-top: 10px;
+}
+
+.customer-lead-success {
+  background: #eef4f1;
+  border: 1px solid #c4d9d1;
+  border-radius: 8px;
+  color: var(--accent-dark);
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px;
+}
+
+.customer-lead-success p {
+  color: var(--accent-dark);
+}
+
+.customer-faq-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.customer-faq-list details {
+  border: 1px solid #e5ecef;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.customer-faq-list summary {
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.customer-faq-list p {
+  margin-top: 8px;
 }
 
 .customer-pilot-panel small {
@@ -2133,6 +2333,7 @@ dd {
   .strategy-grid,
   .customer-hero,
   .customer-demo-grid,
+  .customer-conversion-grid,
   .customer-copilot-band,
   .customer-pilot-panel {
     grid-template-columns: 1fr;
@@ -2221,6 +2422,7 @@ dd {
   .customer-stage-tabs,
   .customer-outcome-grid,
   .customer-feature-list,
+  .customer-lead-form,
   .customer-feature-list article {
     grid-template-columns: 1fr;
   }
