@@ -126,7 +126,31 @@ export function collectCloudRunDeploymentEvidence(
   rootDir = process.cwd()
 ): CloudRunDeploymentEvidence {
   const absolutePath = join(rootDir, manifestPath);
-  return buildCloudRunDeploymentEvidence(readFileSync(absolutePath, "utf8"), { manifestPath });
+  try {
+    return buildCloudRunDeploymentEvidence(readFileSync(absolutePath, "utf8"), { manifestPath });
+  } catch (error) {
+    const evidence = buildCloudRunDeploymentEvidence("", { manifestPath });
+    const readFailure = error instanceof Error ? error.message : "Unknown read failure.";
+    const blocker = `Cloud Run manifest ${manifestPath} is not readable from this runtime bundle. ${readFailure}`;
+
+    return {
+      ...evidence,
+      overallStatus: "blocked",
+      blockers: [
+        blocker,
+        ...evidence.blockers
+      ],
+      nextActions: [
+        "Run the private render, audit, and dry-run packet workflow from the source checkout or operator shell before claiming Cloud Run proof.",
+        "Set NEXT_PUBLIC_PRODUCT_URL and SENTINEL_RELEASE_ID in the deployed runtime only after hosted deployment proof exists.",
+        ...evidence.nextActions
+      ],
+      privateHandling: [
+        "A missing manifest in the hosted runtime is a structured proof blocker, not hosted Cloud Run evidence.",
+        ...evidence.privateHandling
+      ]
+    };
+  }
 }
 
 export function buildCloudRunDeploymentEvidence(

@@ -116,6 +116,22 @@ describe("Cloud Run deployment evidence verifier", () => {
     expect(evidence.nextActions[0]).toContain("Replace all template placeholders");
   });
 
+  it("returns a structured blocker instead of throwing when the manifest is not bundled", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-missing-cloudrun-manifest-"));
+
+    try {
+      const evidence = collectCloudRunDeploymentEvidence("missing-cloudrun.service.yaml", tempDir);
+
+      expect(evidence.overallStatus).toBe("blocked");
+      expect(evidence.manifestPath).toBe("missing-cloudrun.service.yaml");
+      expect(evidence.blockers[0]).toContain("is not readable from this runtime bundle");
+      expect(evidence.nextActions[0]).toContain("private render, audit, and dry-run packet workflow");
+      expect(evidence.privateHandling[0]).toContain("structured proof blocker");
+    } finally {
+      rmSync(tempDir, { force: true, recursive: true });
+    }
+  });
+
   it("treats a rendered manifest as ready for dry-run while keeping attestations in manual review", () => {
     const evidence = buildCloudRunDeploymentEvidence(renderProductionCandidateManifest(), {
       manifestPath: "cloudrun.service.yaml",
