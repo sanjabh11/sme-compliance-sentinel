@@ -2124,6 +2124,36 @@ dd {
   width: 28px;
 }
 
+.customer-consent-template {
+  border-top: 1px solid #e5ecef;
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.customer-consent-template > small {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.customer-consent-download {
+  background: #f8fafc;
+  border: 1px solid #dbe3ec;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.customer-consent-download p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
 .customer-lead-form {
   display: grid;
   gap: 12px;

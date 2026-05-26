@@ -46,6 +46,8 @@ describe("customer entry route", () => {
     expect(text).toContain("Book my one-day scan");
     expect(text).toContain("Request my pilot scope");
     expect(text).toContain("Download sample packet");
+    expect(text).toContain("Prepare my consent packet");
+    expect(text).toContain("Download consent packet");
     expect(text).not.toContain("Start sample demo");
     expect(text).not.toContain("View pilot next step");
   });
@@ -59,6 +61,7 @@ describe("customer entry route", () => {
     expect(text).toContain("Work email");
     expect(text).toContain("Buyer deadline");
     expect(text).toContain("Consent wizard");
+    expect(text).toContain("/api/customer/consent-packet");
     expect(text).toContain("Draft my sample answer");
     expect(text).toContain("Common buyer questions");
     expect(text).toContain("sentinel:");

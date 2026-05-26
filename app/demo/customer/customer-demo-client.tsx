@@ -16,6 +16,7 @@ import {
 import type { Route } from "next";
 import Link from "next/link";
 import { useMemo, useState, type FormEvent } from "react";
+import type { CustomerConsentPacket } from "@/lib/customer-consent";
 import type { CustomerDemoFeature, CustomerDemoScenario, CustomerDemoStep } from "@/lib/customer-demo";
 import type { CustomerLeadReceipt } from "@/lib/customer-leads";
 
@@ -80,6 +81,8 @@ export function CustomerDemoClient({
   const [leadForm, setLeadForm] = useState<LeadFormState>(initialLeadForm);
   const [leadReceipt, setLeadReceipt] = useState<CustomerLeadReceipt | null>(null);
   const [leadError, setLeadError] = useState("");
+  const [consentPacket, setConsentPacket] = useState<CustomerConsentPacket | null>(null);
+  const [consentError, setConsentError] = useState("");
   const [questionnaireQuestion, setQuestionnaireQuestion] = useState(demo.scenario.questionnairePreview.question);
   const [questionnaireDraftVisible, setQuestionnaireDraftVisible] = useState(false);
   const active = demo.steps.find((step) => step.id === activeStep) ?? demo.steps[0];
@@ -110,6 +113,24 @@ export function CustomerDemoClient({
     }
 
     setLeadReceipt(payload.receipt);
+  }
+
+  async function prepareConsentPacket() {
+    setConsentError("");
+    trackCustomerEvent("consent_packet_requested", { source: "consent_panel" });
+
+    const response = await fetch("/api/customer/consent-packet", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(leadForm)
+    });
+    const payload = (await response.json()) as { ok: boolean; packet?: CustomerConsentPacket; error?: string };
+    if (!response.ok || !payload.ok || !payload.packet) {
+      setConsentError(payload.error ?? "Unable to prepare the consent packet.");
+      return;
+    }
+
+    setConsentPacket(payload.packet);
   }
 
   return (
@@ -365,6 +386,34 @@ export function CustomerDemoClient({
                 </div>
               </div>
             ))}
+          </div>
+          <div className="customer-consent-template">
+            <button type="button" className="customer-inline-button" onClick={prepareConsentPacket}>
+              <FileCheck2 size={16} aria-hidden="true" />
+              Prepare my consent packet
+            </button>
+            <small>Template only. Signed consent stays private and must be registered before live Workspace access.</small>
+            {consentError ? <p className="customer-form-error">{consentError}</p> : null}
+            {consentPacket ? (
+              <div className="customer-consent-download" role="status">
+                <strong>{consentPacket.packetTitle}</strong>
+                <p>{consentPacket.scopeSummary}</p>
+                <ul className="customer-compact-list">
+                  {consentPacket.nextSteps.slice(0, 3).map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+                <a
+                  className="customer-download-link"
+                  href={`data:text/markdown;charset=utf-8,${encodeURIComponent(consentPacket.exportText)}`}
+                  download="sme-workspace-sentinel-consent-packet-template.md"
+                  onClick={() => trackCustomerEvent("consent_packet_downloaded", { source: "consent_panel" })}
+                >
+                  <Download size={16} aria-hidden="true" />
+                  Download consent packet
+                </a>
+              </div>
+            ) : null}
           </div>
         </article>
 
