@@ -36,6 +36,7 @@
     "render:cloudrun-manifest": "node scripts/render-cloudrun-manifest.mjs",
     "prepare:cloudrun-dry-run": "node scripts/prepare-cloudrun-dry-run-packet.mjs",
     "verify:cloudrun-dry-run-packet": "node scripts/prepare-cloudrun-dry-run-packet.mjs --verify-packet",
+    "verify:cloudrun-operator-env": "node scripts/verify-cloudrun-operator-environment.mjs",
     "collect:cloudrun-deployment": "node scripts/collect-cloudrun-deployment-transcript.mjs",
     "verify:production": "node scripts/verify-production-readiness.mjs",
     "collect:hosted-proof": "node scripts/collect-hosted-proof-bundle.mjs",
