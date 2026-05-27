@@ -12,6 +12,7 @@ interface HostedProofBundleModule {
     strict: boolean;
     adminTokenEnv: string;
     adminToken: string;
+    refreshExisting: boolean;
   };
   collectHostedProofBundle: (options: {
     url: string;
@@ -19,6 +20,7 @@ interface HostedProofBundleModule {
     releaseId: string;
     includeWriteChecks?: boolean;
     strict?: boolean;
+    refreshExisting?: boolean;
     timeoutMs?: number;
     adminTokenEnv?: string;
     adminToken?: string;
@@ -80,6 +82,7 @@ describe("hosted proof bundle collector", () => {
       "--release-id",
       "release-test",
       "--include-write-checks",
+      "--refresh-existing",
       "--strict",
       "--admin-token-env",
       "SENTINEL_OPERATOR_TOKEN"
@@ -89,6 +92,7 @@ describe("hosted proof bundle collector", () => {
     expect(args.outDir).toBe("/tmp/sentinel-proof");
     expect(args.releaseId).toBe("release-test");
     expect(args.includeWriteChecks).toBe(true);
+    expect(args.refreshExisting).toBe(true);
     expect(args.strict).toBe(true);
     expect(args.adminTokenEnv).toBe("SENTINEL_OPERATOR_TOKEN");
     expect(args.adminToken).toBe("private-admin-token");
@@ -256,6 +260,111 @@ describe("hosted proof bundle collector", () => {
           })
         ])
       );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses passed deployment execution files to satisfy the release execution-control slot during refresh", async () => {
+    const { collectHostedProofBundle } = await loadCollector();
+    const tempDir = await mkdtemp(join(tmpdir(), "sentinel-proof-execution-"));
+    const releaseId = "release-test-unsafe";
+    const outputDirectory = join(tempDir, releaseId);
+    vi.stubEnv("SENTINEL_ADMIN_ACTION_TOKEN", "private-admin-token");
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      const method = init?.method ?? "GET";
+
+      return new Response(JSON.stringify(payloadForRequest(href, method)), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    await mkdir(outputDirectory, { recursive: true });
+    await writeDeploymentExecutionFiles(outputDirectory, { releaseId, sourceUrl: "https://sentinel.example.com" });
+
+    try {
+      const manifest = await collectHostedProofBundle({
+        url: "https://sentinel.example.com",
+        outDir: tempDir,
+        releaseId,
+        includeWriteChecks: true,
+        refreshExisting: true,
+        adminTokenEnv: "SENTINEL_ADMIN_ACTION_TOKEN",
+        adminToken: "private-admin-token",
+        timeoutMs: 1000
+      });
+      const releaseEvidenceJson = await readFile(join(manifest.outputDirectory, "release-evidence-manifest.json"), "utf8");
+      const manifestJson = await readFile(join(manifest.outputDirectory, "manifest.json"), "utf8");
+      const releaseEvidence = JSON.parse(releaseEvidenceJson) as {
+        slots: Array<{ id: string; status: string; evidence: Array<{ id: string; status: string }> }>;
+      };
+      const executionSlot = releaseEvidence.slots.find((slot) => slot.id === "deployment-execution-control");
+      const manifestPayload = JSON.parse(manifestJson) as {
+        bundleUpdateMode: string;
+        artifacts: Array<{ id: string; status: string; expectedOnly?: boolean }>;
+      };
+
+      expect(manifestPayload.bundleUpdateMode).toBe("refresh-existing");
+      expect(executionSlot).toMatchObject({ status: "verified" });
+      expect(executionSlot?.evidence).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "deployment-command-results-template-json", status: "verified" }),
+          expect.objectContaining({ id: "deployment-execution-checklist-json", status: "verified" })
+        ])
+      );
+      expect(manifestPayload.artifacts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "deployment-command-results-template-json",
+            status: "verified",
+            expectedOnly: false
+          }),
+          expect.objectContaining({
+            id: "deployment-execution-checklist-json",
+            status: "verified",
+            expectedOnly: false
+          })
+        ])
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not verify deployment execution files when refresh artifacts are stale", async () => {
+    const { collectHostedProofBundle } = await loadCollector();
+    const tempDir = await mkdtemp(join(tmpdir(), "sentinel-proof-stale-execution-"));
+    const releaseId = "release-test-unsafe";
+    const outputDirectory = join(tempDir, releaseId);
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      const method = init?.method ?? "GET";
+
+      return new Response(JSON.stringify(payloadForRequest(href, method)), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    await mkdir(outputDirectory, { recursive: true });
+    await writeDeploymentExecutionFiles(outputDirectory, {
+      releaseId: "release-stale",
+      sourceUrl: "https://sentinel.example.com"
+    });
+
+    try {
+      const manifest = await collectHostedProofBundle({
+        url: "https://sentinel.example.com",
+        outDir: tempDir,
+        releaseId,
+        refreshExisting: true,
+        timeoutMs: 1000
+      });
+      const releaseEvidenceJson = await readFile(join(manifest.outputDirectory, "release-evidence-manifest.json"), "utf8");
+      const releaseEvidence = JSON.parse(releaseEvidenceJson) as {
+        slots: Array<{ id: string; status: string; missingProof: string[] }>;
+      };
+      const executionSlot = releaseEvidence.slots.find((slot) => slot.id === "deployment-execution-control");
+
+      expect(executionSlot?.status).toBe("needs-review");
+      expect(executionSlot?.missingProof.join(" ")).toContain("deployment-command-results-template-json: needs-review");
+      expect(executionSlot?.missingProof.join(" ")).toContain("deployment-execution-checklist-json: needs-review");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -446,6 +555,54 @@ function headerValue(init: RequestInit | undefined, name: string) {
   }
 
   return headers[name];
+}
+
+async function writeDeploymentExecutionFiles(
+  outputDirectory: string,
+  input: { releaseId: string; sourceUrl: string; entryStatus?: string }
+) {
+  const recordedAt = "2026-05-27T12:12:52.318Z";
+  const entry = {
+    commandId: "lint",
+    status: input.entryStatus ?? "passed",
+    releaseId: input.releaseId,
+    sourceUrl: input.sourceUrl,
+    recordedAt,
+    evidencePath: "gs://sentinel-private-evidence/releases/release-test/lint.log",
+    evidenceSha256: "a".repeat(64),
+    blockers: []
+  };
+  const commandResults = {
+    generatedAt: recordedAt,
+    releaseId: input.releaseId,
+    sourceUrl: input.sourceUrl,
+    entries: [entry]
+  };
+  const checklist = {
+    generatedAt: recordedAt,
+    overallStatus: input.entryStatus === "blocked" ? "blocked" : "passed",
+    releaseId: input.releaseId,
+    sourceUrl: input.sourceUrl,
+    summary: {
+      total: 1,
+      passed: input.entryStatus === "blocked" ? 0 : 1,
+      blocked: input.entryStatus === "blocked" ? 1 : 0,
+      needsReview: 0
+    },
+    resultsTemplate: {
+      status: "passed",
+      releaseId: input.releaseId,
+      sourceUrl: input.sourceUrl,
+      entryCount: 1,
+      expectedCommandCount: 1,
+      blockers: []
+    },
+    entries: [entry],
+    blockers: input.entryStatus === "blocked" ? ["lint status is blocked."] : []
+  };
+
+  await writeFile(join(outputDirectory, "deployment-command-results.json"), `${JSON.stringify(commandResults, null, 2)}\n`, "utf8");
+  await writeFile(join(outputDirectory, "deployment-execution-checklist.json"), `${JSON.stringify(checklist, null, 2)}\n`, "utf8");
 }
 
 function payloadForRequest(

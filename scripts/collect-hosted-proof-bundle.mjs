@@ -1,7 +1,7 @@
 /* global AbortController, URL, clearTimeout, console, fetch, process, setTimeout */
 
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { runProductionReadinessVerification } from "./verify-production-readiness.mjs";
 
@@ -88,7 +88,8 @@ export function parseArgs(argv) {
     strict: false,
     timeoutMs: defaultTimeoutMs,
     adminTokenEnv: defaultAdminTokenEnv,
-    adminToken: ""
+    adminToken: "",
+    refreshExisting: false
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -132,6 +133,11 @@ export function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--refresh-existing") {
+      args.refreshExisting = true;
+      continue;
+    }
+
     if (arg === "--strict") {
       args.strict = true;
       continue;
@@ -172,7 +178,11 @@ export async function collectHostedProofBundle(options) {
   await assertDirectoryPathSafe(outputDirectory, "Hosted proof bundle output directory");
   await mkdir(outputDirectory, { recursive: true });
   await assertDirectoryExistsSafe(outputDirectory, "Hosted proof bundle output directory");
-  await assertDirectoryEmpty(outputDirectory, "Hosted proof bundle output directory");
+  if (options.refreshExisting) {
+    await assertDirectoryRefreshable(outputDirectory, "Hosted proof bundle output directory");
+  } else {
+    await assertDirectoryEmpty(outputDirectory, "Hosted proof bundle output directory");
+  }
 
   const verifyReport = await runProductionReadinessVerification(
     {
@@ -211,7 +221,14 @@ export async function collectHostedProofBundle(options) {
       })
     );
   }
-  artifacts.push(...buildDeploymentExecutionEvidenceArtifacts(endpointPayloads));
+  artifacts.push(
+    ...(await buildDeploymentExecutionEvidenceArtifacts({
+      endpointPayloads,
+      outputDirectory,
+      releaseId,
+      baseUrl
+    }))
+  );
 
   const releaseIntegrity = buildReleaseIntegrity({
     baseUrl,
@@ -244,6 +261,7 @@ export async function collectHostedProofBundle(options) {
     outputDirectory,
     includeWriteChecks: Boolean(options.includeWriteChecks),
     strict: Boolean(options.strict),
+    refreshExisting: Boolean(options.refreshExisting),
     adminTokenEnv: options.adminTokenEnv ?? defaultAdminTokenEnv,
     adminTokenConfigured: Boolean(options.adminToken),
     verifyReport,
@@ -318,8 +336,8 @@ async function writeJsonArtifact(outputDirectory, artifact) {
   };
 }
 
-function buildDeploymentExecutionEvidenceArtifacts(endpointPayloads) {
-  const deploymentPacket = endpointPayloads.get("deployment-packet")?.payload ?? {};
+async function buildDeploymentExecutionEvidenceArtifacts(input) {
+  const deploymentPacket = input.endpointPayloads.get("deployment-packet")?.payload ?? {};
   const packetArtifacts = new Map(
     (Array.isArray(deploymentPacket.artifactManifest) ? deploymentPacket.artifactManifest : [])
       .filter((artifact) => artifact && typeof artifact === "object")
@@ -327,39 +345,61 @@ function buildDeploymentExecutionEvidenceArtifacts(endpointPayloads) {
   );
 
   return [
-    expectedPrivateArtifact({
+    await expectedPrivateArtifact({
       id: "deployment-command-results-template-json",
       fallbackFileName: "deployment-command-results.json",
       fallbackSource:
         "npm run prepare:deployment-execution-checklist -- --write-results-template /secure/local/deployment-command-results.json",
       fallbackPrivateHandling:
         "Expected private command-results template; keep outside source and fill only from reviewed operator command output.",
-      packetArtifact: packetArtifacts.get("deployment-command-results-template-json")
+      packetArtifact: packetArtifacts.get("deployment-command-results-template-json"),
+      outputDirectory: input.outputDirectory,
+      releaseId: input.releaseId,
+      baseUrl: input.baseUrl,
+      verifier: verifyDeploymentCommandResults
     }),
-    expectedPrivateArtifact({
+    await expectedPrivateArtifact({
       id: "deployment-execution-checklist-json",
       fallbackFileName: "deployment-execution-checklist.json",
       fallbackSource:
         "npm run prepare:deployment-execution-checklist -- --results /secure/local/deployment-command-results.json --strict",
       fallbackPrivateHandling:
         "Expected private deployment execution checklist; generated after the command-results template is filled and before confirmed Evidence Vault import.",
-      packetArtifact: packetArtifacts.get("deployment-execution-checklist-json")
+      packetArtifact: packetArtifacts.get("deployment-execution-checklist-json"),
+      outputDirectory: input.outputDirectory,
+      releaseId: input.releaseId,
+      baseUrl: input.baseUrl,
+      verifier: verifyDeploymentExecutionChecklist
     })
   ];
 }
 
-function expectedPrivateArtifact(input) {
+async function expectedPrivateArtifact(input) {
   const packetArtifact = input.packetArtifact ?? {};
+  const fileName = fileNameFromPrivatePath(packetArtifact.privateStorePath, input.fallbackFileName);
+  const existing = await readExistingPrivateProofArtifact({
+    outputDirectory: input.outputDirectory,
+    fileName,
+    releaseId: input.releaseId,
+    baseUrl: input.baseUrl,
+    verifier: input.verifier
+  });
 
   return {
     id: input.id,
-    fileName: fileNameFromPrivatePath(packetArtifact.privateStorePath, input.fallbackFileName),
+    fileName,
     source: cleanString(packetArtifact.sourceCommand) || input.fallbackSource || `deployment-packet:artifactManifest:${input.id}`,
-    redacted: false,
-    expectedOnly: true,
+    redacted: Boolean(existing),
+    expectedOnly: !existing,
     privateHandling:
-      cleanString(packetArtifact.nextAction) || cleanString(packetArtifact.evidenceVaultTarget) || input.fallbackPrivateHandling,
-    status: normalizeStatus(packetArtifact.status) === "missing" ? "external-required" : cleanString(packetArtifact.status) || "external-required"
+      existing?.privateHandling ||
+      cleanString(packetArtifact.nextAction) ||
+      cleanString(packetArtifact.evidenceVaultTarget) ||
+      input.fallbackPrivateHandling,
+    status:
+      existing?.status ??
+      (normalizeStatus(packetArtifact.status) === "missing" ? "external-required" : cleanString(packetArtifact.status) || "external-required"),
+    path: existing?.path
   };
 }
 
@@ -367,6 +407,89 @@ function fileNameFromPrivatePath(privateStorePath, fallback) {
   const path = cleanString(privateStorePath);
   const segment = path.split("/").filter(Boolean).pop();
   return segment || fallback;
+}
+
+async function readExistingPrivateProofArtifact(input) {
+  const path = join(input.outputDirectory, input.fileName);
+
+  try {
+    await assertRegularFileIfExists(path, "Hosted proof bundle existing private artifact");
+    const text = await readFile(path, "utf8");
+    const payload = parseJson(text);
+    const verification = input.verifier(payload, {
+      releaseId: input.releaseId,
+      baseUrl: input.baseUrl,
+      text
+    });
+
+    return {
+      path,
+      status: verification.status,
+      privateHandling: verification.privateHandling
+    };
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+function verifyDeploymentCommandResults(payload, context) {
+  const entries = Array.isArray(payload.entries) ? payload.entries : [];
+  const blockers = [
+    ...(cleanString(payload.releaseId) === context.releaseId
+      ? []
+      : [`releaseId ${cleanString(payload.releaseId) || "missing"} does not match ${context.releaseId}.`]),
+    ...(cleanString(payload.sourceUrl) === context.baseUrl
+      ? []
+      : [`sourceUrl ${cleanString(payload.sourceUrl) || "missing"} does not match ${context.baseUrl}.`]),
+    ...(entries.length ? [] : ["command results must include at least one entry."]),
+    ...entries
+      .filter((entry) => normalizeStatus(entry?.status) !== "passed")
+      .map((entry) => `${cleanString(entry?.commandId) || "unknown-command"} status is ${cleanString(entry?.status) || "missing"}, not passed.`),
+    ...(hasUnsafeText(context.text) ? ["command results contain secret-shaped text."] : [])
+  ];
+
+  return {
+    status: blockers.length ? "needs-review" : "verified",
+    privateHandling: blockers.length
+      ? `Existing deployment command-results artifact needs review before it can satisfy release evidence: ${blockers.slice(0, 3).join(" ")}`
+      : "Existing deployment command-results artifact is release-matched, URL-matched, passed, and secret-scan clean; keep it in the private evidence store."
+  };
+}
+
+function verifyDeploymentExecutionChecklist(payload, context) {
+  const entries = Array.isArray(payload.entries) ? payload.entries : [];
+  const summary = payload.summary && typeof payload.summary === "object" ? payload.summary : {};
+  const blockers = [
+    ...(payload.overallStatus === "passed" ? [] : [`overallStatus is ${cleanString(payload.overallStatus) || "missing"}, not passed.`]),
+    ...(cleanString(payload.releaseId) === context.releaseId
+      ? []
+      : [`releaseId ${cleanString(payload.releaseId) || "missing"} does not match ${context.releaseId}.`]),
+    ...(cleanString(payload.sourceUrl) === context.baseUrl
+      ? []
+      : [`sourceUrl ${cleanString(payload.sourceUrl) || "missing"} does not match ${context.baseUrl}.`]),
+    ...(entries.length ? [] : ["deployment execution checklist must include at least one entry."]),
+    ...(Number(summary.total ?? entries.length) === entries.length
+      ? []
+      : [`summary.total is ${summary.total}, but the checklist has ${entries.length} entries.`]),
+    ...(Number(summary.passed ?? 0) === entries.length ? [] : [`summary.passed is ${summary.passed}, expected ${entries.length}.`]),
+    ...(Number(summary.blocked ?? 0) === 0 ? [] : [`summary.blocked is ${summary.blocked}, not 0.`]),
+    ...(Number(summary.needsReview ?? 0) === 0 ? [] : [`summary.needsReview is ${summary.needsReview}, not 0.`]),
+    ...entries
+      .filter((entry) => normalizeStatus(entry?.status) !== "passed" || (Array.isArray(entry?.blockers) && entry.blockers.length > 0))
+      .map((entry) => `${cleanString(entry?.commandId) || "unknown-command"} is not a passed, blocker-free entry.`),
+    ...(hasUnsafeText(context.text) ? ["deployment execution checklist contains secret-shaped text."] : [])
+  ];
+
+  return {
+    status: blockers.length ? "needs-review" : "verified",
+    privateHandling: blockers.length
+      ? `Existing deployment execution checklist needs review before it can satisfy release evidence: ${blockers.slice(0, 3).join(" ")}`
+      : "Existing deployment execution checklist is release-matched, URL-matched, passed, blocker-free, and secret-scan clean; keep it in the private evidence store."
+  };
 }
 
 function buildReleaseIntegrity(input) {
@@ -537,6 +660,7 @@ function buildManifest(input) {
     outputDirectory: input.outputDirectory,
     mode: input.includeWriteChecks ? "read-and-write-through" : "read-only",
     strict: input.strict,
+    bundleUpdateMode: input.refreshExisting ? "refresh-existing" : "new-directory",
     writeAuth: {
       required: input.includeWriteChecks,
       configured: input.adminTokenConfigured,
@@ -1209,6 +1333,23 @@ async function assertDirectoryEmpty(path, label) {
   }
 }
 
+async function assertDirectoryRefreshable(path, label) {
+  const entries = await readdir(path);
+
+  for (const entry of entries) {
+    const entryPath = join(path, entry);
+    const fileStat = await lstat(entryPath);
+
+    if (fileStat.isSymbolicLink()) {
+      throw new Error(`${label} ${entryPath} is a symbolic link; copy reviewed artifacts into regular files before hosted proof bundle refresh.`);
+    }
+
+    if (!fileStat.isFile()) {
+      throw new Error(`${label} ${entryPath} is not a regular file; use a regular private bundle directory before refresh.`);
+    }
+  }
+}
+
 async function assertRegularFileIfExists(path, label) {
   let fileStat;
 
@@ -1252,6 +1393,17 @@ function redact(value) {
   }
 
   return value;
+}
+
+function hasUnsafeText(value) {
+  return [
+    /Bearer\s+(?!\[REDACTED\])[\w.~+/=-]+/iu,
+    /\bAIza[0-9A-Za-z_-]{20,}/u,
+    /GOCSPX-[0-9A-Za-z_-]{20,}/u,
+    /private-admin-token/u,
+    /refresh[_-]?token["':\s]+(?!\[REDACTED\])[\w.~+/=-]+/iu,
+    /access[_-]?token["':\s]+(?!\[REDACTED\])[\w.~+/=-]+/iu
+  ].some((pattern) => pattern.test(String(value ?? "")));
 }
 
 function isSecretKey(key) {
