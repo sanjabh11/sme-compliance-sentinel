@@ -6,6 +6,7 @@ import { buildPersistenceReadiness } from "@/lib/persistence";
 import { hasLiveWorkspaceSyncEvidence } from "@/lib/workspace-sync";
 import type {
   DashboardSnapshot,
+  EvidenceVaultArtifact,
   HostedEvidenceArtifactCheck,
   HostedEvidenceArtifactTemplate,
   HostedEvidenceCaptureCommand,
@@ -25,11 +26,35 @@ export function buildHostedEvidenceCapturePacket(snapshot: HostedEvidenceSnapsho
   const persistence = buildPersistenceReadiness();
   const deploymentEvidence = collectCloudRunDeploymentEvidence();
   const vault = buildEvidenceVault(snapshot);
+  const vaultArtifactById = new Map(vault.requiredArtifacts.map((artifact) => [artifact.id, artifact]));
+  const productionReadinessArtifact = vaultArtifactById.get("vault_production_readiness_report");
+  const geminiUsageArtifact = vaultArtifactById.get("vault_gemini_usage_log");
+  const gcpPersistenceArtifact = vaultArtifactById.get("vault_gcp_persistence_proof");
+  const workspaceOauthArtifact = vaultArtifactById.get("vault_workspace_oauth_log");
+  const cloudBillingArtifact = vaultArtifactById.get("vault_cloud_billing_proof");
   const cloudCostControls = buildCloudCostControlCenter({ agentRuns: snapshot.agentRuns });
   const hasLiveGeminiRun = snapshot.agentRuns.some((run) => run.provider === "gemini-api");
   const hasMockGeminiRun = snapshot.agentRuns.some((run) => run.provider === "mock-gemini");
+  const hasVerifiedGeminiArtifact = hasVerifiedVaultArtifact(geminiUsageArtifact);
+  const hasUploadedGeminiArtifact = hasUploadedVaultArtifact(geminiUsageArtifact);
   const hasLiveWorkspaceConnection = snapshot.connections.some((connection) => connection.mode !== "mock");
   const hasLiveWorkspaceSync = hasLiveWorkspaceSyncEvidence(snapshot.syncState);
+  const productionReadinessStatus = statusFromVaultArtifact({
+    artifact: productionReadinessArtifact,
+    fallback: hostedUrl ? "missing" : "mock-only"
+  });
+  const persistenceStatus = statusFromVaultArtifact({
+    artifact: gcpPersistenceArtifact,
+    fallback: persistence.configured ? "missing" : "mock-only"
+  });
+  const workspaceStatus = statusFromVaultArtifact({
+    artifact: workspaceOauthArtifact,
+    fallback: evidenceMode === "production" && hasLiveWorkspaceConnection && hasLiveWorkspaceSync ? "captured" : "mock-only"
+  });
+  const costControlsStatus = statusFromVaultArtifact({
+    artifact: cloudBillingArtifact,
+    fallback: "missing"
+  });
   const paidPilotReady =
     evidenceMode === "production" &&
     snapshot.pilotRecords.some(
@@ -67,74 +92,101 @@ export function buildHostedEvidenceCapturePacket(snapshot: HostedEvidenceSnapsho
     artifactCheck({
       id: "production-readiness-readonly",
       label: "Hosted read-only production verification JSON",
-      status: hostedUrl ? "missing" : "mock-only",
+      status: productionReadinessStatus,
       source: "npm run verify:production -- --url",
       requiredFor: "Production Launch",
       ownerRole: "engineering",
-      evidence: hostedUrl ? "Hosted URL is configured, but no read-only smoke JSON is registered in this packet." : "Only local verification is possible until a hosted URL exists.",
+      evidence: evidenceFromVaultArtifact(
+        productionReadinessArtifact,
+        hostedUrl
+          ? "Hosted URL is configured, but no read-only smoke JSON is registered in this packet."
+          : "Only local verification is possible until a hosted URL exists."
+      ),
       fix: "Run the read-only verification command against the Cloud Run URL and register the JSON output after redacting internal ids when needed.",
       privateHandling: "Store the full JSON privately; public material should show only aggregate status and non-sensitive route names."
     }),
     artifactCheck({
       id: "production-readiness-write-through",
       label: "Hosted write-through verification JSON",
-      status: hostedUrl && persistence.configured ? "missing" : "mock-only",
+      status: productionReadinessStatus,
       source: "npm run verify:production -- --include-write-checks",
       requiredFor: "AI-Native Operations",
       ownerRole: "engineering",
-      evidence: persistence.configured
-        ? "GCP persistence is configured, but write-through hosted verification output is not registered."
-        : `Storage mode ${persistence.mode}; missing ${persistence.missingEnv.join(", ") || "gcp-rest mode"}.`,
+      evidence: evidenceFromVaultArtifact(
+        productionReadinessArtifact,
+        persistence.configured
+          ? "GCP persistence is configured, but write-through hosted verification output is not registered."
+          : `Storage mode ${persistence.mode}; missing ${persistence.missingEnv.join(", ") || "gcp-rest mode"}.`
+      ),
       fix: "After service-account IAM is configured, run write-through verification for persistence, cost controls, Gemini, and Workspace reconciliation.",
       privateHandling: "Run write-through checks only on consented test data and keep raw cloud responses private."
     }),
     artifactCheck({
       id: "live-gemini-proof",
       label: "Live Gemini API agent-run proof",
-      status: evidenceMode === "production" && hasLiveGeminiRun ? "captured" : hasMockGeminiRun ? "mock-only" : "missing",
+      status:
+        evidenceMode === "production" && (hasLiveGeminiRun || hasVerifiedGeminiArtifact)
+          ? "captured"
+          : evidenceMode === "production" && hasUploadedGeminiArtifact
+            ? "needs-review"
+            : hasMockGeminiRun
+              ? "mock-only"
+              : "missing",
       source: "/api/production/gemini-smoke",
       requiredFor: "AI-Native Operations",
       ownerRole: "engineering",
-      evidence: hasLiveGeminiRun
-        ? `${snapshot.agentRuns.filter((run) => run.provider === "gemini-api").length} provider=gemini-api run(s) recorded.`
-        : hasMockGeminiRun
-          ? "Only mock Gemini fallback runs are recorded."
-          : "No Gemini API agent run is recorded.",
+      evidence:
+        evidenceMode === "production" && hasVerifiedGeminiArtifact
+          ? evidenceFromVaultArtifact(geminiUsageArtifact, "Verified Gemini usage artifact is registered in the Evidence Vault.")
+          : hasLiveGeminiRun
+            ? `${snapshot.agentRuns.filter((run) => run.provider === "gemini-api").length} provider=gemini-api run(s) recorded.`
+            : hasMockGeminiRun
+              ? "Only mock Gemini fallback runs are recorded."
+              : "No Gemini API agent run is recorded.",
       fix: "Configure GEMINI_API_KEY in Cloud Run, run the synthetic smoke, then persist the redacted agent-run row to BigQuery.",
       privateHandling: "Expose provider, model, timestamp, token/cost estimates, and finding id only; never expose API keys, raw prompts, or customer text."
     }),
     artifactCheck({
       id: "gcp-persistence-proof",
       label: "Firestore, BigQuery, and Secret Manager proof",
-      status: persistence.configured ? "missing" : "mock-only",
+      status: persistenceStatus,
       source: "/api/production/persistence",
       requiredFor: "AI-Native Operations",
       ownerRole: "engineering",
-      evidence: persistence.configured
-        ? `Project ${persistence.projectId}; Firestore ${persistence.firestoreDatabase}; BigQuery ${persistence.bigQueryDataset}.`
-        : `Storage mode ${persistence.mode}; local memory proof is not durable production evidence.`,
+      evidence: evidenceFromVaultArtifact(
+        gcpPersistenceArtifact,
+        persistence.configured
+          ? `Project ${persistence.projectId}; Firestore ${persistence.firestoreDatabase}; BigQuery ${persistence.bigQueryDataset}.`
+          : `Storage mode ${persistence.mode}; local memory proof is not durable production evidence.`
+      ),
       fix: "Set SENTINEL_STORAGE_MODE=gcp-rest, configure the Google Cloud targets, and run hosted persistence write-through verification.",
       privateHandling: "Keep token secret names and BigQuery row samples redacted if they identify pilots or tenants."
     }),
     artifactCheck({
       id: "workspace-oauth-sync-proof",
       label: "Workspace OAuth install and sync proof",
-      status: evidenceMode === "production" && hasLiveWorkspaceConnection && hasLiveWorkspaceSync ? "captured" : "mock-only",
+      status: workspaceStatus,
       source: "/api/workspace/sync/reconcile",
       requiredFor: "AI-Native Operations",
       ownerRole: "security",
-      evidence: `Connection modes ${snapshot.connections.map((connection) => connection.mode).join(", ")}; sync mode ${snapshot.syncState.mode}.`,
+      evidence: evidenceFromVaultArtifact(
+        workspaceOauthArtifact,
+        `Connection modes ${snapshot.connections.map((connection) => connection.mode).join(", ")}; sync mode ${snapshot.syncState.mode}.`
+      ),
       fix: "Collect signed pilot consent, complete OAuth install, run /api/workspace/sync/bootstrap and /api/workspace/sync/renew from Cloud Run, and register redacted Drive/Gmail cursor and renewal output.",
       privateHandling: "Do not expose refresh tokens, file names, email addresses, or channel tokens."
     }),
     artifactCheck({
       id: "cloud-cost-controls-proof",
       label: "Cloud Billing and Gemini key-control proof",
-      status: "missing",
+      status: costControlsStatus,
       source: "/api/production/cost-controls",
       requiredFor: "Business Viability",
       ownerRole: "engineering",
-      evidence: `Cost-control mode ${cloudCostControls.mode}; status ${cloudCostControls.status}; budget ${cloudCostControls.budgetPlan.budgetId ?? "missing"}.`,
+      evidence: evidenceFromVaultArtifact(
+        cloudBillingArtifact,
+        `Cost-control mode ${cloudCostControls.mode}; status ${cloudCostControls.status}; budget ${cloudCostControls.budgetPlan.budgetId ?? "missing"}.`
+      ),
       fix: "Create the Cloud Billing budget, configure Pub/Sub alerts, restrict the Gemini API key, and register redacted screenshots or API responses.",
       privateHandling: "Share budget ids and restriction metadata only; never share API key values."
     }),
@@ -182,7 +234,7 @@ export function buildHostedEvidenceCapturePacket(snapshot: HostedEvidenceSnapsho
     ...deploymentEvidence.blockers.map((blocker) => `Cloud Run manifest: ${blocker}`),
     ...checks.filter((check) => check.status === "needs-redaction").map((check) => `${check.label}: ${check.fix}`)
   ];
-  const missing = checks.filter((check) => check.status === "missing" || check.status === "mock-only");
+  const missing = checks.filter((check) => check.status === "missing" || check.status === "mock-only" || check.status === "needs-review");
   const overallStatus = blockers.length ? "blocked" : missing.length ? "needs-hosted-proof" : "ready-to-capture";
 
   return {
@@ -209,6 +261,43 @@ export function buildHostedEvidenceCapturePacket(snapshot: HostedEvidenceSnapsho
 
 function artifactCheck(input: HostedEvidenceArtifactCheck): HostedEvidenceArtifactCheck {
   return input;
+}
+
+function statusFromVaultArtifact(input: {
+  artifact?: EvidenceVaultArtifact;
+  fallback: HostedEvidenceArtifactCheck["status"];
+}): HostedEvidenceArtifactCheck["status"] {
+  if (hasVerifiedVaultArtifact(input.artifact)) {
+    return "captured";
+  }
+
+  if (hasUploadedVaultArtifact(input.artifact)) {
+    return "needs-review";
+  }
+
+  return input.fallback;
+}
+
+function hasVerifiedVaultArtifact(artifact?: EvidenceVaultArtifact) {
+  return Boolean(artifact?.status === "verified" && artifact.redacted && artifact.checksumSha256);
+}
+
+function hasUploadedVaultArtifact(artifact?: EvidenceVaultArtifact) {
+  return artifact?.status === "uploaded" || artifact?.status === "needs-redaction";
+}
+
+function evidenceFromVaultArtifact(artifact: EvidenceVaultArtifact | undefined, fallback: string) {
+  if (!artifact || (artifact.status !== "uploaded" && artifact.status !== "verified" && artifact.status !== "needs-redaction")) {
+    return fallback;
+  }
+
+  const checksum = artifact.checksumSha256 ? ` checksum ${artifact.checksumSha256.slice(0, 12)}...` : "";
+  const statusNote =
+    artifact.status === "verified"
+      ? "Verified Evidence Vault artifact"
+      : "Evidence Vault artifact is registered but still needs operator review before this can be claimed as final proof";
+
+  return `${statusNote}: ${artifact.label}; status ${artifact.status}; redacted ${artifact.redacted ? "yes" : "no"};${checksum} next action: ${artifact.nextAction}`;
 }
 
 function buildPrivateArtifactTemplates(): HostedEvidenceArtifactTemplate[] {

@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { scanClaimText } from "@/lib/claim-guard";
 import { buildHostedEvidenceCapturePacket } from "@/lib/hosted-evidence-capture";
 import { getDashboardSnapshot, resetState } from "@/lib/store";
@@ -61,5 +61,48 @@ describe("hosted evidence capture packet", () => {
     });
 
     expect(violations).toEqual([]);
+  });
+
+  it("uses verified imported Evidence Vault artifacts without overclaiming uploaded reports", async () => {
+    vi.resetModules();
+    process.env.SENTINEL_EVIDENCE_MODE = "production";
+    process.env.NEXT_PUBLIC_PRODUCT_URL = "https://sme-workspace-sentinel.example";
+
+    try {
+      const store = await import("@/lib/store");
+      const hostedEvidence = await import("@/lib/hosted-evidence-capture");
+
+      store.resetState();
+      store.registerEvidenceVaultArtifact({
+        id: "vault_gemini_usage_log",
+        kind: "gemini-usage-log",
+        label: "Gemini proof status row",
+        status: "verified",
+        checksumSha256: "a".repeat(64),
+        redacted: true,
+        sourceDescription: "Hosted provider=gemini-api smoke row."
+      });
+      store.registerEvidenceVaultArtifact({
+        id: "vault_production_readiness_report",
+        kind: "production-readiness-report",
+        label: "Hosted production readiness verification report",
+        status: "uploaded",
+        redacted: true,
+        sourceDescription: "Hosted verification JSON with blocked rows still pending review."
+      });
+
+      const packet = hostedEvidence.buildHostedEvidenceCapturePacket(store.getDashboardSnapshot());
+
+      expect(packet.checks.find((check) => check.id === "live-gemini-proof")?.status).toBe("captured");
+      expect(packet.checks.find((check) => check.id === "live-gemini-proof")?.evidence).toContain(
+        "Verified Evidence Vault artifact"
+      );
+      expect(packet.checks.find((check) => check.id === "production-readiness-readonly")?.status).toBe("needs-review");
+      expect(packet.checks.find((check) => check.id === "production-readiness-write-through")?.status).toBe("needs-review");
+      expect(packet.overallStatus).toBe("needs-hosted-proof");
+    } finally {
+      delete process.env.SENTINEL_EVIDENCE_MODE;
+      delete process.env.NEXT_PUBLIC_PRODUCT_URL;
+    }
   });
 });

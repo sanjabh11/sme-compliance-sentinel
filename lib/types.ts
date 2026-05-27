@@ -1932,7 +1932,7 @@ export interface ProductionLaunchCommandCenter {
 
 export type HostedEvidenceCaptureStatus = "ready-to-capture" | "needs-hosted-proof" | "blocked";
 
-export type HostedEvidenceArtifactStatus = "captured" | "missing" | "mock-only" | "needs-redaction";
+export type HostedEvidenceArtifactStatus = "captured" | "missing" | "mock-only" | "needs-redaction" | "needs-review";
 
 export interface HostedEvidenceArtifactCheck {
   id: string;
