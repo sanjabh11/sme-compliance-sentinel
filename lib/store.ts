@@ -35,6 +35,7 @@ import type {
   EvidenceCounters,
   EvidenceVaultImportRequest,
   EvidenceVaultArtifact,
+  EvidenceVaultArtifactStatus,
   EvidenceVaultImportResult,
   Finding,
   FindingStatus,
@@ -282,12 +283,7 @@ export function registerEvidenceVaultArtifact(input: EvidenceVaultArtifactInput)
 
   if (existingIndex >= 0) {
     const existing = state.evidenceVaultArtifacts[existingIndex];
-    state.evidenceVaultArtifacts[existingIndex] = {
-      ...existing,
-      ...artifact,
-      createdAt: existing.createdAt,
-      updatedAt: nowIso()
-    };
+    state.evidenceVaultArtifacts[existingIndex] = mergeEvidenceVaultArtifact(existing, artifact);
   } else {
     state.evidenceVaultArtifacts.unshift(artifact);
   }
@@ -307,6 +303,51 @@ export function registerEvidenceVaultArtifact(input: EvidenceVaultArtifactInput)
   appendRiskScoreSnapshot(state, "evidence_vault_artifact_registered", artifact.id, true);
 
   return { artifact: state.evidenceVaultArtifacts.find((candidate) => candidate.id === artifact.id) ?? artifact, snapshot: getDashboardSnapshot() };
+}
+
+function mergeEvidenceVaultArtifact(existing: EvidenceVaultArtifact, incoming: EvidenceVaultArtifact): EvidenceVaultArtifact {
+  const existingRank = evidenceVaultStatusRank(existing.status);
+  const incomingRank = evidenceVaultStatusRank(incoming.status);
+
+  if (incomingRank < existingRank) {
+    return {
+      ...existing,
+      updatedAt: nowIso()
+    };
+  }
+
+  return {
+    ...existing,
+    ...incoming,
+    checksumSha256: incoming.checksumSha256 ?? existing.checksumSha256,
+    redacted: incoming.redacted || existing.redacted,
+    createdAt: existing.createdAt,
+    updatedAt: nowIso()
+  };
+}
+
+function evidenceVaultStatusRank(status: EvidenceVaultArtifactStatus) {
+  if (status === "verified") {
+    return 5;
+  }
+
+  if (status === "uploaded") {
+    return 4;
+  }
+
+  if (status === "requested") {
+    return 3;
+  }
+
+  if (status === "needs-redaction") {
+    return 2;
+  }
+
+  if (status === "mock-only") {
+    return 1;
+  }
+
+  return 0;
 }
 
 export function importEvidenceVaultArtifacts(input: EvidenceVaultImportRequest): {
@@ -356,12 +397,7 @@ function upsertEvidenceVaultArtifact(state: SentinelState, artifact: EvidenceVau
 
   if (existingIndex >= 0) {
     const existing = state.evidenceVaultArtifacts[existingIndex];
-    state.evidenceVaultArtifacts[existingIndex] = {
-      ...existing,
-      ...artifact,
-      createdAt: existing.createdAt,
-      updatedAt: nowIso()
-    };
+    state.evidenceVaultArtifacts[existingIndex] = mergeEvidenceVaultArtifact(existing, artifact);
   } else {
     state.evidenceVaultArtifacts.unshift(artifact);
   }

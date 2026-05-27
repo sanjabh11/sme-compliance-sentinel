@@ -195,6 +195,57 @@ describe("Evidence Vault hosted proof import", () => {
     });
   });
 
+  it("does not downgrade verified Cloud Run proof when a later hosted report still has template rows", () => {
+    const cloudRunImport = importEvidenceVaultArtifacts({
+      source: "cloudrun-deployment",
+      redacted: true,
+      sourceUrl: "https://sme-workspace-sentinel-abc-uc.a.run.app",
+      payload: {
+        generatedAt: "2026-05-27T10:00:00.000Z",
+        status: "ready-for-hosted-verification",
+        releaseId: "release-20260527-abc123",
+        blockers: []
+      }
+    });
+    const verifiedCloudRunArtifact = cloudRunImport.snapshot.readiness.evidenceVault.requiredArtifacts.find(
+      (artifact) => artifact.id === "vault_cloud_run_deployment_proof"
+    );
+
+    expect(verifiedCloudRunArtifact?.status).toBe("verified");
+    expect(verifiedCloudRunArtifact?.checksumSha256).toMatch(/^[a-f0-9]{64}$/u);
+
+    const laterHostedReport = {
+      ...hostedVerifyProductionReport,
+      summary: {
+        total: 1,
+        passedTransport: 1,
+        failedTransport: 0,
+        blockedOrNeedsReview: 1
+      },
+      results: [
+        {
+          id: "cloudrun-deployment-evidence",
+          status: "template-needs-values",
+          detail: "Template still reports placeholder rows in a broader hosted verifier."
+        }
+      ]
+    };
+
+    const hostedReportImport = importEvidenceVaultArtifacts({
+      source: "verify-production",
+      redacted: true,
+      payload: laterHostedReport
+    });
+    const preservedCloudRunArtifact = hostedReportImport.snapshot.readiness.evidenceVault.requiredArtifacts.find(
+      (artifact) => artifact.id === "vault_cloud_run_deployment_proof"
+    );
+
+    expect(preservedCloudRunArtifact).toMatchObject({
+      status: "verified",
+      checksumSha256: verifiedCloudRunArtifact?.checksumSha256
+    });
+  });
+
   it("keeps import packet language inside the claim guard boundary", () => {
     const result = buildEvidenceVaultImport({
       source: "verify-production",
