@@ -178,6 +178,40 @@ describe("deployment execution checklist", () => {
     expect(checklist.entries[0].blockers.join(" ")).toContain("valid evidenceSha256");
   });
 
+  it("accepts hosted proof endpoint wrappers for deployment packet artifacts", async () => {
+    const {
+      deploymentImportRequiredCommandIds,
+      writeDeploymentCommandResultsTemplate
+    } = await loadChecklist();
+    const bundleDir = await makeBundle(deploymentImportRequiredCommandIds, { wrappedDeploymentPacket: true });
+    const resultsTemplatePath = join(bundleDir, "deployment-command-results.template.json");
+
+    const summary = await writeDeploymentCommandResultsTemplate({
+      bundleDir,
+      outputPath: resultsTemplatePath
+    });
+    const template = JSON.parse(await readFile(resultsTemplatePath, "utf8")) as {
+      entries: Array<{
+        commandId: string;
+        expectedArtifactPath: string;
+        commandSha256: string;
+        requiresAdminToken: boolean;
+      }>;
+    };
+
+    expect(summary).toMatchObject({
+      releaseId: "release-1",
+      sourceUrl: "https://sentinel.example.com",
+      entryCount: deploymentImportRequiredCommandIds.length
+    });
+    expect(template.entries[0]).toMatchObject({
+      commandId: deploymentImportRequiredCommandIds[0],
+      expectedArtifactPath: `gs://sentinel-private/releases/release-1/${deploymentImportRequiredCommandIds[0]}.json`,
+      requiresAdminToken: false
+    });
+    expect(template.entries[0].commandSha256).toMatch(/^[a-f0-9]{64}$/u);
+  });
+
   it("writes a passed checklist from private command results", async () => {
     const {
       deploymentImportRequiredCommandIds,
@@ -536,7 +570,7 @@ async function loadChecklist() {
   return (await import("../scripts/prepare-deployment-execution-checklist.mjs")) as DeploymentExecutionChecklistModule;
 }
 
-async function makeBundle(commandIds: string[], options: { localArtifacts?: boolean } = {}) {
+async function makeBundle(commandIds: string[], options: { localArtifacts?: boolean; wrappedDeploymentPacket?: boolean } = {}) {
   const bundleDir = await mkdtemp(join(tmpdir(), "sentinel-deployment-checklist-"));
   tempDirs.push(bundleDir);
   const releaseId = "release-1";
@@ -556,7 +590,7 @@ async function makeBundle(commandIds: string[], options: { localArtifacts?: bool
     label: commandId,
     command: `run ${commandId}`,
     mutatesProduction: commandId.includes("deploy") || commandId.includes("hosted"),
-    requiresAdminToken: commandId.includes("hosted"),
+    requiresAdminToken: options.wrappedDeploymentPacket && !commandId.includes("hosted") ? "[REDACTED]" : commandId.includes("hosted"),
     expectedArtifactId: `${commandId}-artifact`
   }));
 
@@ -565,9 +599,22 @@ async function makeBundle(commandIds: string[], options: { localArtifacts?: bool
     `${JSON.stringify({ releaseId, baseUrl: sourceUrl }, null, 2)}\n`,
     "utf8"
   );
+  const deploymentPacket = { releaseId, productUrl: sourceUrl, artifactManifest, commandSequence };
   await writeFile(
     join(bundleDir, "deployment-packet.json"),
-    `${JSON.stringify({ releaseId, productUrl: sourceUrl, artifactManifest, commandSequence }, null, 2)}\n`,
+    `${JSON.stringify(
+      options.wrappedDeploymentPacket
+        ? {
+            generatedAt: "2026-05-23T12:00:00.000Z",
+            endpoint: "/api/production/deployment-packet",
+            httpStatus: 200,
+            ok: true,
+            payload: deploymentPacket
+          }
+        : deploymentPacket,
+      null,
+      2
+    )}\n`,
     "utf8"
   );
   if (options.localArtifacts) {

@@ -113,7 +113,7 @@ export async function writeDeploymentCommandResultsTemplate(options) {
   }
 
   const manifest = await readJson(join(bundleDir, "manifest.json"));
-  const deploymentPacket = await readJson(join(bundleDir, "deployment-packet.json"));
+  const deploymentPacket = unwrapHostedEndpointPayload(await readJson(join(bundleDir, "deployment-packet.json")));
   const releaseId = cleanString(manifest.releaseId || deploymentPacket.releaseId);
   const sourceUrl = cleanString(manifest.baseUrl || deploymentPacket.productUrl);
   const commandById = new Map((Array.isArray(deploymentPacket.commandSequence) ? deploymentPacket.commandSequence : []).map((command) => [cleanString(command.id), command]));
@@ -145,8 +145,8 @@ export async function writeDeploymentCommandResultsTemplate(options) {
         evidencePath: expectedArtifactPath || "REPLACE_WITH_PRIVATE_EVIDENCE_PATH",
         evidenceSha256: "REPLACE_WITH_SHA256_OF_PRIVATE_ARTIFACT",
         commandSha256: sha256(cleanString(command.command)),
-        mutatesProduction: Boolean(command.mutatesProduction),
-        requiresAdminToken: Boolean(command.requiresAdminToken),
+        mutatesProduction: command.mutatesProduction === true,
+        requiresAdminToken: command.requiresAdminToken === true,
         note: "Record reviewed private operator evidence. Do not include secrets or customer-sensitive details."
       };
     })
@@ -168,7 +168,7 @@ export async function writeDeploymentCommandResultsTemplate(options) {
 export async function prepareDeploymentExecutionChecklist(options) {
   const bundleDir = options.bundleDir || defaultBundleDir;
   const manifest = await readJson(join(bundleDir, "manifest.json"));
-  const deploymentPacket = await readJson(join(bundleDir, "deployment-packet.json"));
+  const deploymentPacket = unwrapHostedEndpointPayload(await readJson(join(bundleDir, "deployment-packet.json")));
   const resultsPayload = options.resultsPath ? await readJson(options.resultsPath) : null;
   const normalizedResults = normalizeResults(resultsPayload);
   const results = normalizedResults.rowsByCommandId;
@@ -286,8 +286,8 @@ async function buildEntry(input) {
     evidenceSha256,
     evidenceFileVerification,
     commandSha256: sha256(cleanString(input.command?.command)),
-    mutatesProduction: Boolean(input.command?.mutatesProduction),
-    requiresAdminToken: Boolean(input.command?.requiresAdminToken),
+    mutatesProduction: input.command?.mutatesProduction === true,
+    requiresAdminToken: input.command?.requiresAdminToken === true,
     note,
     blockers,
     nextAction: blockers.length ? "Record the command result and attach the expected private evidence before hosted proof import." : "Preserve this command result with the release proof bundle."
@@ -476,6 +476,22 @@ async function readJson(path) {
   } catch (error) {
     throw new Error(`Unable to read JSON from ${path}: ${error instanceof Error ? error.message : "unknown error"}`);
   }
+}
+
+function unwrapHostedEndpointPayload(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(value, "payload") &&
+    (Object.prototype.hasOwnProperty.call(value, "endpoint") || Object.prototype.hasOwnProperty.call(value, "httpStatus"))
+  ) {
+    const payload = value.payload;
+    return payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+  }
+
+  return value;
 }
 
 async function writeJson(path, value) {
