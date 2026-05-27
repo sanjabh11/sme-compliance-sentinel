@@ -611,8 +611,8 @@ function buildReleaseEvidenceManifest(input) {
   );
   const artifactsById = new Map(input.artifacts.map((artifact) => [artifact.id, artifact]));
   const slots = releaseEvidenceSlotDefinitions().map((slot) => {
-    const evidence = slot.sources.map((source) => evidenceForSource(source, rowsById, artifactsById));
-    const status = releaseSlotStatus(evidence);
+    const evidence = slot.sources.map((source) => evidenceForSource(source, rowsById, artifactsById, input.endpointPayloads));
+    const status = releaseSlotStatus(evidence, slot);
 
     return {
       id: slot.id,
@@ -860,7 +860,14 @@ function releaseEvidenceSlotDefinitions() {
       id: "cloud-run-deployment",
       label: "Hosted Cloud Run product proof",
       ruleBucket: "Working product URL and Google Cloud usage",
-      sources: [rowSource("cloudrun-deployment-evidence"), rowSource("deployment-evidence-packet"), artifactSource("deployment-packet")],
+      satisfaction: "any-verified",
+      verifiedSourceIds: ["cloudrun-deployment-output"],
+      sources: [
+        hostedEvidenceCheckSource("cloudrun-deployment-output"),
+        rowSource("cloudrun-deployment-evidence"),
+        rowSource("deployment-evidence-packet"),
+        artifactSource("deployment-packet")
+      ],
       nextAction: "Attach Cloud Run dry-run/deploy output, revision URL, hosted screenshot, and successful deployment-packet status.",
       privateHandling: "Redact project ids only if required by customer policy; never include service-account keys or admin tokens."
     },
@@ -981,7 +988,11 @@ function artifactSource(id) {
   return { kind: "artifact", id };
 }
 
-function evidenceForSource(source, rowsById, artifactsById) {
+function hostedEvidenceCheckSource(id) {
+  return { kind: "hosted-evidence-check", id };
+}
+
+function evidenceForSource(source, rowsById, artifactsById, endpointPayloads) {
   if (source.kind === "verify-row") {
     const row = rowsById.get(source.id);
     return {
@@ -990,6 +1001,24 @@ function evidenceForSource(source, rowsById, artifactsById) {
       type: "verify-row",
       status: row ? String(row.status ?? "unknown") : "missing-source",
       detail: row?.detail ? String(row.detail).slice(0, 300) : "Verification row was not present in this release report."
+    };
+  }
+
+  if (source.kind === "hosted-evidence-check") {
+    const hostedEvidence = endpointPayloads.get("hosted-evidence")?.payload ?? {};
+    const checks = Array.isArray(hostedEvidence.checks) ? hostedEvidence.checks : [];
+    const check = checks.find((item) => item && typeof item === "object" && String(item.id ?? "") === source.id);
+
+    return {
+      id: source.id,
+      source: "/api/production/hosted-evidence",
+      type: "hosted-evidence-check",
+      status: check ? String(check.status ?? "unknown") : "missing-source",
+      detail: check?.evidence
+        ? String(check.evidence).slice(0, 300)
+        : check?.fix
+          ? String(check.fix).slice(0, 300)
+          : "Hosted evidence check was not present in this release bundle."
     };
   }
 
@@ -1008,11 +1037,22 @@ function evidenceForSource(source, rowsById, artifactsById) {
   };
 }
 
-function releaseSlotStatus(evidence) {
+function releaseSlotStatus(evidence, slot = {}) {
   const statuses = evidence.map((item) => normalizeStatus(item.status));
 
   if (statuses.includes("transport-error")) {
     return "transport-error";
+  }
+
+  if (
+    slot.satisfaction === "any-verified" &&
+    evidence.some(
+      (item) =>
+        (!Array.isArray(slot.verifiedSourceIds) || slot.verifiedSourceIds.includes(item.id)) &&
+        verifiedStatuses().includes(normalizeStatus(item.status))
+    )
+  ) {
+    return "verified";
   }
 
   if (statuses.includes("missing-source") || statuses.includes("missing") || statuses.includes("external-required")) {

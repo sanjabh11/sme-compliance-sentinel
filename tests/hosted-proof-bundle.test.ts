@@ -204,6 +204,63 @@ describe("hosted proof bundle collector", () => {
     }
   });
 
+  it("lets verified hosted Evidence Vault Cloud Run proof satisfy the release Cloud Run slot", async () => {
+    const { collectHostedProofBundle } = await loadCollector();
+    const tempDir = await mkdtemp(join(tmpdir(), "sentinel-proof-cloudrun-"));
+    vi.stubEnv("SENTINEL_ADMIN_ACTION_TOKEN", "private-admin-token");
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      const method = init?.method ?? "GET";
+
+      return new Response(JSON.stringify(payloadForRequest(href, method, { capturedCloudRunVaultProof: true })), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+
+    try {
+      const manifest = await collectHostedProofBundle({
+        url: "https://sentinel.example.com",
+        outDir: tempDir,
+        releaseId: "release-test-cloudrun",
+        includeWriteChecks: true,
+        adminTokenEnv: "SENTINEL_ADMIN_ACTION_TOKEN",
+        adminToken: "private-admin-token",
+        timeoutMs: 1000
+      });
+      const releaseEvidenceJson = await readFile(join(manifest.outputDirectory, "release-evidence-manifest.json"), "utf8");
+      const releaseEvidence = JSON.parse(releaseEvidenceJson) as {
+        slots: Array<{ id: string; status: string; evidence: Array<{ id: string; status: string }> }>;
+        proofFlagChecks: Array<{ envName: string; status: string }>;
+      };
+      const cloudRunSlot = releaseEvidence.slots.find((slot) => slot.id === "cloud-run-deployment");
+
+      expect(cloudRunSlot).toMatchObject({
+        status: "verified"
+      });
+      expect(cloudRunSlot?.evidence).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "cloudrun-deployment-output",
+            status: "captured"
+          }),
+          expect.objectContaining({
+            id: "cloudrun-deployment-evidence",
+            status: "template-needs-values"
+          })
+        ])
+      );
+      expect(releaseEvidence.proofFlagChecks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            envName: "XPRIZE_GOOGLE_CLOUD_PRODUCT_EVIDENCE_CONFIGURED",
+            status: "passed"
+          })
+        ])
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("fails closed when hosted proof bundle output paths would follow symlinks", async () => {
     const { collectHostedProofBundle } = await loadCollector();
     const tempDir = await mkdtemp(join(tmpdir(), "sentinel-proof-symlink-"));
@@ -394,7 +451,7 @@ function headerValue(init: RequestInit | undefined, name: string) {
 function payloadForRequest(
   url: string,
   method: string,
-  options: { noGeminiProvider?: boolean; claimBusinessEvidence?: boolean } = {}
+  options: { noGeminiProvider?: boolean; claimBusinessEvidence?: boolean; capturedCloudRunVaultProof?: boolean } = {}
 ) {
   if (method === "POST") {
     return {
@@ -464,6 +521,15 @@ function payloadForRequest(
         { id: "repository-access", status: "ready" },
         { id: "live-gemini-log", status: options.noGeminiProvider ? "external-required" : "ready" }
       ],
+      blockers: []
+    };
+  }
+
+  if (url.includes("/api/production/deployment-evidence")) {
+    return {
+      overallStatus: "template-needs-values",
+      status: "template-needs-values",
+      replacementFindings: [{ id: "render-values-required" }],
       blockers: []
     };
   }
@@ -545,7 +611,18 @@ function payloadForRequest(
   if (url.includes("/api/production/hosted-evidence")) {
     return {
       overallStatus: "needs-hosted-proof",
-      checks: [{ status: "missing" }],
+      checks: [
+        ...(options.capturedCloudRunVaultProof
+          ? [
+              {
+                id: "cloudrun-deployment-output",
+                status: "captured",
+                evidence: "Verified Evidence Vault artifact: Cloud Run deployment evidence JSON."
+              }
+            ]
+          : []),
+        { id: "production-readiness-write-through", status: "needs-review" }
+      ],
       blockers: []
     };
   }
