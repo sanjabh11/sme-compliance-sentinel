@@ -27,6 +27,7 @@ export function buildHostedEvidenceCapturePacket(snapshot: HostedEvidenceSnapsho
   const deploymentEvidence = collectCloudRunDeploymentEvidence();
   const vault = buildEvidenceVault(snapshot);
   const vaultArtifactById = new Map(vault.requiredArtifacts.map((artifact) => [artifact.id, artifact]));
+  const cloudRunDeploymentArtifact = vaultArtifactById.get("vault_cloud_run_deployment_proof");
   const productionReadinessArtifact = vaultArtifactById.get("vault_production_readiness_report");
   const geminiUsageArtifact = vaultArtifactById.get("vault_gemini_usage_log");
   const gcpPersistenceArtifact = vaultArtifactById.get("vault_gcp_persistence_proof");
@@ -81,11 +82,17 @@ export function buildHostedEvidenceCapturePacket(snapshot: HostedEvidenceSnapsho
     artifactCheck({
       id: "cloudrun-deployment-output",
       label: "Cloud Run deploy and revision evidence",
-      status: "missing",
+      status: statusFromVaultArtifact({
+        artifact: cloudRunDeploymentArtifact,
+        fallback: "missing"
+      }),
       source: "/api/production/deployment-evidence",
       requiredFor: "AI-Native Operations",
       ownerRole: "engineering",
-      evidence: `${deploymentEvidence.overallStatus}; ${deploymentEvidence.replacementFindings.length} replacement value(s); ${deploymentEvidence.blockers.length} blocker(s).`,
+      evidence: evidenceFromVaultArtifact(
+        cloudRunDeploymentArtifact,
+        `${deploymentEvidence.overallStatus}; ${deploymentEvidence.replacementFindings.length} replacement value(s); ${deploymentEvidence.blockers.length} blocker(s).`
+      ),
       fix: "Render production values, run the Cloud Run dry-run, deploy, then store revision URL/log output as a redacted private artifact.",
       privateHandling: "Keep rendered manifests private if they contain tenant ids, internal service accounts, or judge-only URLs."
     }),

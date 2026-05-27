@@ -43,7 +43,16 @@ const blockedStatuses = new Set([
 ]);
 
 const mockStatuses = new Set(["mock", "mock-only", "simulated", "template-needs-values", "local-mock"]);
-const verifiedStatuses = new Set(["passed", "ready", "verified", "captured", "published", "ready-to-capture", "ready-to-dry-run"]);
+const verifiedStatuses = new Set([
+  "passed",
+  "ready",
+  "verified",
+  "captured",
+  "published",
+  "ready-to-capture",
+  "ready-to-dry-run",
+  "ready-for-hosted-verification"
+]);
 
 export function buildEvidenceVaultImport(input: EvidenceVaultImportRequest, generatedAt = new Date().toISOString()): EvidenceVaultImportResult {
   const payload = parsePayload(input.payload);

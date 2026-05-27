@@ -74,6 +74,15 @@ describe("hosted evidence capture packet", () => {
 
       store.resetState();
       store.registerEvidenceVaultArtifact({
+        id: "vault_cloud_run_deployment_proof",
+        kind: "cloud-run-proof",
+        label: "Cloud Run deployment transcript packet",
+        status: "verified",
+        checksumSha256: "c".repeat(64),
+        redacted: true,
+        sourceDescription: "Cloud Run revision and service URL proof."
+      });
+      store.registerEvidenceVaultArtifact({
         id: "vault_gemini_usage_log",
         kind: "gemini-usage-log",
         label: "Gemini proof status row",
@@ -95,6 +104,10 @@ describe("hosted evidence capture packet", () => {
 
       expect(packet.checks.find((check) => check.id === "live-gemini-proof")?.status).toBe("captured");
       expect(packet.checks.find((check) => check.id === "live-gemini-proof")?.evidence).toContain(
+        "Verified Evidence Vault artifact"
+      );
+      expect(packet.checks.find((check) => check.id === "cloudrun-deployment-output")?.status).toBe("captured");
+      expect(packet.checks.find((check) => check.id === "cloudrun-deployment-output")?.evidence).toContain(
         "Verified Evidence Vault artifact"
       );
       expect(packet.checks.find((check) => check.id === "production-readiness-readonly")?.status).toBe("needs-review");

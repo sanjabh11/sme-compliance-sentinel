@@ -161,6 +161,40 @@ describe("Evidence Vault hosted proof import", () => {
     );
   });
 
+  it("registers reviewed Cloud Run deployment transcript proof as verified hosted evidence", () => {
+    const result = buildEvidenceVaultImport({
+      source: "cloudrun-deployment",
+      redacted: true,
+      sourceUrl: "https://sme-workspace-sentinel-abc-uc.a.run.app",
+      payload: {
+        generatedAt: "2026-05-27T10:00:00.000Z",
+        status: "ready-for-hosted-verification",
+        releaseId: "release-20260527-abc123",
+        checks: [
+          {
+            id: "service-url-present",
+            status: "passed",
+            evidence: "https://sme-workspace-sentinel-abc-uc.a.run.app"
+          },
+          {
+            id: "revision-present",
+            status: "passed",
+            evidence: "sme-workspace-sentinel-00011-87l"
+          }
+        ],
+        blockers: []
+      }
+    });
+
+    expect(result.status).toBe("ready");
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]).toMatchObject({
+      artifactId: "vault_cloud_run_deployment_proof",
+      kind: "cloud-run-proof",
+      status: "verified"
+    });
+  });
+
   it("keeps import packet language inside the claim guard boundary", () => {
     const result = buildEvidenceVaultImport({
       source: "verify-production",
