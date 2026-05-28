@@ -116,7 +116,8 @@ function parseArgs(argv) {
     verifyBundlePath: "",
     markdownOutPath: "",
     bundleDir: "",
-    productUrl: ""
+    productUrl: "",
+    judgeHostedProofPath: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -158,6 +159,20 @@ function parseArgs(argv) {
 
     if (arg.startsWith("--product-url=")) {
       args.productUrl = normalizeProductUrl(arg.slice("--product-url=".length), "--product-url");
+      continue;
+    }
+
+    if (arg === "--judge-hosted-proof") {
+      args.judgeHostedProofPath = argv[index + 1] ?? "";
+      if (!args.judgeHostedProofPath) {
+        throw new Error("--judge-hosted-proof requires a private signed-out hosted proof JSON path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--judge-hosted-proof=")) {
+      args.judgeHostedProofPath = arg.slice("--judge-hosted-proof=".length);
       continue;
     }
 
@@ -1531,8 +1546,11 @@ function runGate(definition, args) {
 }
 
 function childArgsForGate(definition, args) {
-  if (definition.id === "judge-access-readiness" && args.productUrl) {
-    return ["--url", args.productUrl];
+  if (definition.id === "judge-access-readiness") {
+    return [
+      ...(args.productUrl ? ["--url", args.productUrl] : []),
+      ...(args.judgeHostedProofPath ? ["--hosted-proof", args.judgeHostedProofPath] : [])
+    ];
   }
 
   return [];

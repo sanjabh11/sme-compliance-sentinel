@@ -30,7 +30,8 @@ function parseArgs(argv) {
   const args = {
     strict: false,
     outPath: "",
-    productUrl: ""
+    productUrl: "",
+    hostedProofPath: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -75,6 +76,20 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--hosted-proof") {
+      args.hostedProofPath = argv[index + 1] ?? "";
+      if (!args.hostedProofPath) {
+        throw new Error("--hosted-proof requires a private signed-out proof JSON path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--hosted-proof=")) {
+      args.hostedProofPath = arg.slice("--hosted-proof=".length);
+      continue;
+    }
+
     throw new Error(`Unsupported argument: ${arg}`);
   }
 
@@ -84,6 +99,7 @@ function parseArgs(argv) {
 function buildReport(args = { productUrl: "" }) {
   const packageJson = readPackageJson();
   const productUrl = resolveProductUrl(args.productUrl);
+  const hostedProductProof = verifyHostedProductProof(args.hostedProofPath, productUrl);
   const repositoryUrl = env("XPRIZE_REPOSITORY_URL") || packageJson.repository?.url || "";
   const demoVideoUrl = env("XPRIZE_DEMO_VIDEO_URL");
   const testingInstructions = env("XPRIZE_TESTING_INSTRUCTIONS");
@@ -91,6 +107,7 @@ function buildReport(args = { productUrl: "" }) {
   const testingInstructionsContainSecret = secretTextPatterns.some((pattern) => pattern.test(testingInstructions));
   const checks = buildChecks({
     productUrl,
+    hostedProductProof,
     repositoryUrl,
     demoVideoUrl,
     testingInstructionsConfigured,
@@ -110,6 +127,7 @@ function buildReport(args = { productUrl: "" }) {
     testingInstructionsSummary: testingInstructionsConfigured
       ? "Private testing instructions are marked configured; this report intentionally withholds their contents."
       : "Private testing instructions are not configured.",
+    hostedProductProof,
     accessChecks: checks,
     smokeCommands: buildSmokeCommands(productUrl),
     evidenceResponsePlan: buildEvidenceResponsePlan(),
@@ -135,6 +153,7 @@ function buildReport(args = { productUrl: "" }) {
 
 function buildChecks(input) {
   const productUrlReady = isHttpsUrl(input.productUrl) && flag("XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED");
+  const hostedProofReady = input.hostedProductProof.status === "verified";
   const judgeAccessReady = productUrlReady && flag("XPRIZE_JUDGE_ACCESS_CONFIGURED");
   const freeAccessReady =
     judgeAccessReady &&
@@ -158,9 +177,16 @@ function buildChecks(input) {
     check({
       id: "hosted-product-url",
       label: "Hosted product URL",
-      status: productUrlReady ? "ready" : "missing",
-      evidence: `Product URL ${input.productUrl ? "configured" : "missing"}; HTTPS ${isHttpsUrl(input.productUrl) ? "confirmed" : "missing"}; working project access ${flag("XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED") ? "confirmed" : "missing"}.`,
-      fix: "Deploy the Cloud Run URL, verify it from a signed-out or judge-like browser, and set XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED=true only after private proof exists.",
+      status: productUrlReady ? "ready" : hostedProofReady ? "private-on-request" : "missing",
+      evidence: [
+        `Product URL ${input.productUrl ? "configured" : "missing"}`,
+        `HTTPS ${isHttpsUrl(input.productUrl) ? "confirmed" : "missing"}`,
+        `working project access ${flag("XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED") ? "confirmed" : "missing"}`,
+        `private signed-out proof ${hostedProofReady ? "verified" : input.hostedProductProof.status}`
+      ].join("; ") + ".",
+      fix: hostedProofReady
+        ? "Human-review the private signed-out proof, then set XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED=true only if the proof is approved and still current."
+        : "Deploy the Cloud Run URL, verify it from a signed-out browser or judge-like account, store a private proof JSON, and set XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED=true only after private proof exists.",
       ownerRole: "engineering",
       requiredBeforeSubmit: true,
       privateHandling: "Store screenshots or browser-smoke JSON privately; do not include judge credentials in source."
@@ -296,6 +322,56 @@ function buildEvidenceResponsePlan() {
   ];
 }
 
+function verifyHostedProductProof(hostedProofPath, productUrl) {
+  if (!hostedProofPath) {
+    return {
+      status: "missing",
+      path: "missing",
+      sourceUrl: productUrl || "missing",
+      checkedAt: "missing",
+      passedChecks: [],
+      blockers: ["No --hosted-proof path was provided."]
+    };
+  }
+
+  const proof = readJsonFile(hostedProofPath, "Hosted product proof JSON");
+  const text = JSON.stringify(proof);
+  const sourceUrl = normalizeOptionalProductUrl(proof.sourceUrl || proof.productUrl || "");
+  const checks = Array.isArray(proof.checks) ? proof.checks : [];
+  const checksById = new Map(checks.map((check) => [String(check?.id ?? ""), check]));
+  const requiredChecks = ["homepage", "judge-access-pack", "submission-gate", "claim-guard"];
+  const passedChecks = requiredChecks.filter((id) => {
+    const check = checksById.get(id);
+    const status = String(check?.status ?? "");
+    const httpStatus = Number(check?.httpStatus ?? 0);
+
+    return status === "passed" && httpStatus >= 200 && httpStatus < 400;
+  });
+  const blockers = [
+    ...(sourceUrl && productUrl && sourceUrl === productUrl
+      ? []
+      : [`Proof sourceUrl ${sourceUrl || "missing"} does not match product URL ${productUrl || "missing"}.`]),
+    ...(proof.signedOut === true ? [] : ["Proof must explicitly set signedOut=true."]),
+    ...(isIsoTimestamp(proof.checkedAt || proof.generatedAt) ? [] : ["Proof checkedAt/generatedAt must be an ISO timestamp."]),
+    ...requiredChecks
+      .filter((id) => !passedChecks.includes(id))
+      .map((id) => `${id} check is missing or not passed with a 2xx/3xx HTTP status.`),
+    ...(secretTextPatterns.some((pattern) => pattern.test(text)) ? ["Proof JSON contains secret-shaped text."] : [])
+  ];
+
+  return {
+    status: blockers.length ? "blocked" : "verified",
+    path: resolve(hostedProofPath),
+    sourceUrl: sourceUrl || "missing",
+    checkedAt: proof.checkedAt || proof.generatedAt || "missing",
+    signedOut: proof.signedOut === true,
+    passedChecks,
+    blockers,
+    privateHandling:
+      "Keep the full signed-out proof JSON and screenshots in private storage. Public submission copy may reference only the reviewed hosted URL status."
+  };
+}
+
 function buildNextActions(checks, blockers) {
   if (blockers.length > 0) {
     return checks
@@ -318,6 +394,15 @@ function readPackageJson() {
   } catch {
     return {};
   }
+}
+
+function readJsonFile(path, label) {
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+  assertDirectoryPathSafe(parentDirectory, `${label} parent directory`);
+  assertRegularFileIfExists(absolutePath, label);
+
+  return JSON.parse(readFileSync(absolutePath, "utf8"));
 }
 
 function env(name) {
@@ -391,6 +476,15 @@ function isAllowedDemoUrl(value) {
   } catch {
     return false;
   }
+}
+
+function isIsoTimestamp(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return false;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && value.includes("T");
 }
 
 function check(input) {

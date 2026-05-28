@@ -1105,6 +1105,46 @@ describe("local XPRIZE submission verifier", () => {
     expect(report.remainingBlockers.join(" ")).toContain("Private judge testing instructions");
   });
 
+  it("passes private signed-out hosted proof into judge-access readiness without approving judge flags", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-hosted-proof-"));
+    const proofPath = join(tempDir, "signed-out-proof.json");
+    const productUrl = "https://sme-workspace-sentinel.example.com";
+
+    try {
+      writeFileSync(
+        proofPath,
+        JSON.stringify(
+          {
+            checkedAt: "2026-05-28T07:45:00.000Z",
+            sourceUrl: productUrl,
+            signedOut: true,
+            checks: [
+              { id: "homepage", status: "passed", httpStatus: 200 },
+              { id: "judge-access-pack", status: "passed", httpStatus: 200 },
+              { id: "submission-gate", status: "passed", httpStatus: 200 },
+              { id: "claim-guard", status: "passed", httpStatus: 200 }
+            ]
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+
+      const report = runVerifier(["--url", productUrl, "--judge-hosted-proof", proofPath]);
+      const gatesById = Object.fromEntries(report.gates.map((gate) => [gate.id, gate]));
+
+      expect(gatesById["judge-access-readiness"].command).toContain(`--hosted-proof ${proofPath}`);
+      expect(gatesById["judge-access-readiness"].evidence).toContain("5 missing or blocked access check(s)");
+      expect(gatesById["judge-access-readiness"].blockers.join(" ")).not.toContain("Hosted product URL:");
+      expect(gatesById["judge-access-readiness"].blockers.join(" ")).toContain("Private judge testing instructions:");
+      expect(report.remainingBlockers.join(" ")).not.toContain("Hosted product URL: Deploy");
+      expect(report.remainingBlockers.join(" ")).toContain("Public demo video access");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("reflects verified Cloud Run handoff artifacts without treating them as hosted proof", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-cloudrun-artifacts-"));
     const valuesPath = join(tempDir, "cloudrun-render-values.json");

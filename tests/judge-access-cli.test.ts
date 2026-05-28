@@ -10,9 +10,15 @@ type JudgeAccessCliReport = {
   repositoryUrl: string;
   demoVideoUrl: string;
   testingInstructionsSummary: string;
+  hostedProductProof: {
+    status: "missing" | "blocked" | "verified";
+    sourceUrl: string;
+    passedChecks: string[];
+    blockers: string[];
+  };
   accessChecks: Array<{
     id: string;
-    status: "missing" | "blocked" | "private-on-request" | "ready";
+    status: "missing" | "blocked" | "private-on-request" | "ready" | "verified";
     evidence: string;
     fix: string;
     requiredBeforeSubmit: boolean;
@@ -102,6 +108,93 @@ describe("judge access CLI verifier", () => {
       "curl -I https://sme-workspace-sentinel.vercel.app/"
     );
     expect(report.blockers.join(" ")).toContain("set XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED=true only after private proof exists");
+  });
+
+  it("accepts private signed-out hosted proof without setting public judge-access flags", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-judge-hosted-proof-"));
+    const proofPath = join(tempDir, "signed-out-proof.json");
+    const productUrl = "https://sme-workspace-sentinel.example.com";
+
+    try {
+      writeFileSync(
+        proofPath,
+        JSON.stringify(
+          {
+            checkedAt: "2026-05-28T07:45:00.000Z",
+            sourceUrl: productUrl,
+            signedOut: true,
+            checks: [
+              { id: "homepage", status: "passed", httpStatus: 200 },
+              { id: "judge-access-pack", status: "passed", httpStatus: 200 },
+              { id: "submission-gate", status: "passed", httpStatus: 200 },
+              { id: "claim-guard", status: "passed", httpStatus: 200 }
+            ]
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+
+      const report = runVerifier(baseEnv, ["--url", productUrl, "--hosted-proof", proofPath]);
+      const checksById = Object.fromEntries(report.accessChecks.map((check) => [check.id, check]));
+
+      expect(report.overallStatus).toBe("blocked");
+      expect(report.hostedProductProof).toMatchObject({
+        status: "verified",
+        sourceUrl: productUrl,
+        passedChecks: ["homepage", "judge-access-pack", "submission-gate", "claim-guard"]
+      });
+      expect(checksById["hosted-product-url"]).toMatchObject({
+        status: "private-on-request",
+        evidence: expect.stringContaining("private signed-out proof verified")
+      });
+      expect(report.blockers.join(" ")).not.toContain("Hosted product URL:");
+      expect(report.blockers.join(" ")).toContain("Private judge testing instructions:");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks stale or mismatched hosted proof", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-judge-hosted-proof-mismatch-"));
+    const proofPath = join(tempDir, "signed-out-proof.json");
+
+    try {
+      writeFileSync(
+        proofPath,
+        JSON.stringify(
+          {
+            checkedAt: "2026-05-28T07:45:00.000Z",
+            sourceUrl: "https://other.example.com",
+            signedOut: true,
+            checks: [
+              { id: "homepage", status: "passed", httpStatus: 200 },
+              { id: "judge-access-pack", status: "passed", httpStatus: 200 },
+              { id: "submission-gate", status: "passed", httpStatus: 200 },
+              { id: "claim-guard", status: "passed", httpStatus: 200 }
+            ]
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+
+      const report = runVerifier(baseEnv, [
+        "--url",
+        "https://sme-workspace-sentinel.example.com",
+        "--hosted-proof",
+        proofPath
+      ]);
+      const checksById = Object.fromEntries(report.accessChecks.map((check) => [check.id, check]));
+
+      expect(report.hostedProductProof.status).toBe("blocked");
+      expect(report.hostedProductProof.blockers.join(" ")).toContain("does not match product URL");
+      expect(checksById["hosted-product-url"].status).toBe("missing");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("falls back to Vercel hosted URL env vars when NEXT_PUBLIC_PRODUCT_URL is not set", () => {
