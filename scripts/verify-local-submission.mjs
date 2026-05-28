@@ -2275,7 +2275,7 @@ function verifyLocalSubmissionBundleManifest(path) {
     checks.push(
       verificationCheck(
         "bundle-private-handling",
-        Array.isArray(manifest.privateHandling) && manifest.privateHandling.join(" ").includes("/secure/local") ? "passed" : "blocked",
+        bundlePrivateHandlingIsExplicit(manifest.privateHandling) ? "passed" : "blocked",
         "Bundle private-handling guidance must keep generated artifacts under private or ignored paths."
       )
     );
@@ -2406,6 +2406,19 @@ function bundleProofBoundaryIsExplicit(value) {
     text.includes("human attestation") &&
     text.includes("organizer approval") &&
     text.includes("judging evidence")
+  );
+}
+
+function bundlePrivateHandlingIsExplicit(value) {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+
+  const text = value.join(" ");
+
+  return (
+    text.includes("private packets") &&
+    (text.includes("/secure/local") || text.includes("/private/tmp") || text.includes("ignored artifacts paths"))
   );
 }
 

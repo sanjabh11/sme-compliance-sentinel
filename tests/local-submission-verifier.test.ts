@@ -698,6 +698,7 @@ describe("local XPRIZE submission verifier", () => {
         files: Array<{ id: string; path: string; sha256: string; bytes: number }>;
         proofBoundary: string;
         stopConditions: string[];
+        privateHandling: string[];
         phaseProgress?: {
           recommendedNextCodeControllablePhaseId?: string;
           recommendedNextCodeControllableAction?: {
@@ -782,6 +783,7 @@ describe("local XPRIZE submission verifier", () => {
       );
       expect(bundleManifest.manualInterventionSummary?.total).toBeGreaterThan(0);
       expect(bundleManifest.stopConditions.join(" ")).toContain("Do not set XPRIZE");
+      expect(bundleManifest.privateHandling.join(" ")).toContain("/secure/local");
       expect(combined).not.toContain("Bearer ");
       expect(combined).not.toContain("password:");
       expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
@@ -873,6 +875,29 @@ describe("local XPRIZE submission verifier", () => {
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
       rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it("verifies local-submission bundles generated with a non-default private root", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-bundle-private-root-"));
+    const privateRoot = join(tempDir, "private-root");
+    const bundleDir = join(privateRoot, "local-submission-bundle");
+    const bundleManifestPath = join(bundleDir, "local-submission-bundle-manifest.json");
+
+    try {
+      const report = runVerifier(["--bundle-dir", bundleDir], { SENTINEL_PRIVATE_ROOT: privateRoot });
+      const bundleManifest = JSON.parse(readFileSync(bundleManifestPath, "utf8")) as {
+        privateHandling: string[];
+      };
+      const verification = runLocalBundleVerifier(bundleManifestPath, ["--strict"]);
+
+      expect(report.privateRoot).toBe(privateRoot);
+      expect(report.localSubmissionBundle?.bundleManifestPath).toBe(bundleManifestPath);
+      expect(bundleManifest.privateHandling.join(" ")).toContain(privateRoot);
+      expect(verification.overallStatus).toBe("verified");
+      expect(verification.summary.blocked).toBe(0);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
     }
   });
 
