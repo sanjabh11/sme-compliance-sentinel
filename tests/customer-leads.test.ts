@@ -20,6 +20,13 @@ describe("customer lead capture", () => {
     expect(JSON.stringify(receipt)).not.toContain("priya@example.com");
     expect(receipt.destinationStatus).toBe("lead-destination-needed");
     expect(receipt.consentChecklist.join(" ")).toContain("Non-trivial remediation remains human-approved");
+    expect(receipt.manualHandoff.status).toBe("ready-for-manual-follow-up");
+    expect(receipt.manualHandoff.subject).toContain("Example SaaS");
+    expect(receipt.manualHandoff.body).toContain("Consent boundary");
+    expect(receipt.manualHandoff.packetMarkdown).toContain("Manual Pilot Scope Handoff");
+    expect(receipt.manualHandoff.packetMarkdown).toContain("signed customer consent");
+    expect(receipt.manualHandoff.proofBoundary).toContain("not durable CRM evidence");
+    expect(JSON.stringify(receipt.manualHandoff)).not.toContain("priya@example.com");
   });
 
   it("rejects invalid work email before retaining a lead receipt", () => {
@@ -43,5 +50,6 @@ describe("customer lead capture", () => {
 
     expect(listRetainedLeadReceipts()[0]).toEqual(receipt);
     expect(JSON.stringify(listRetainedLeadReceipts())).not.toContain("buyer@example.com");
+    expect(listRetainedLeadReceipts()[0].manualHandoff.packetMarkdown).toContain("Buyer Co");
   });
 });

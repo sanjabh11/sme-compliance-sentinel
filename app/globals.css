@@ -2218,6 +2218,36 @@ dd {
   color: var(--accent-dark);
 }
 
+.customer-lead-handoff {
+  background: #ffffff;
+  border: 1px solid #c4d9d1;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.customer-lead-handoff > span {
+  color: var(--accent-dark);
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.customer-lead-handoff p {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.customer-lead-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .customer-faq-list {
   display: grid;
   gap: 10px;

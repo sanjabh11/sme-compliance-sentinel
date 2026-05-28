@@ -48,6 +48,8 @@ describe("customer entry route", () => {
     expect(text).toContain("Download sample packet");
     expect(text).toContain("Prepare my consent packet");
     expect(text).toContain("Download consent packet");
+    expect(text).toContain("Download scope packet");
+    expect(text).toContain("Open follow-up draft");
     expect(text).not.toContain("Start sample demo");
     expect(text).not.toContain("View pilot next step");
   });

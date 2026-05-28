@@ -89,6 +89,14 @@ export function CustomerDemoClient({
   const buyerHighlights = demo.scenario.showcaseHighlights;
   const trustPacketDownload = useMemo(() => buildTrustPacketDownload(demo.scenario), [demo.scenario]);
   const trustPacketHref = `data:text/markdown;charset=utf-8,${encodeURIComponent(trustPacketDownload)}`;
+  const leadScopePacketHref = leadReceipt
+    ? `data:text/markdown;charset=utf-8,${encodeURIComponent(leadReceipt.manualHandoff.packetMarkdown)}`
+    : "";
+  const leadFollowUpHref = leadReceipt
+    ? `mailto:?subject=${encodeURIComponent(leadReceipt.manualHandoff.subject)}&body=${encodeURIComponent(
+        leadReceipt.manualHandoff.body
+      )}`
+    : "";
 
   function startDemo() {
     trackCustomerEvent("customer_demo_started", { source: "hero" });
@@ -468,6 +476,29 @@ export function CustomerDemoClient({
                   <li key={item}>{item}</li>
                 ))}
               </ul>
+              <div className="customer-lead-handoff">
+                <span>Manual follow-up packet</span>
+                <p>{leadReceipt.manualHandoff.proofBoundary}</p>
+                <div className="customer-lead-actions">
+                  <a
+                    className="customer-download-link"
+                    href={leadScopePacketHref}
+                    download="sme-workspace-sentinel-pilot-scope-handoff.md"
+                    onClick={() => trackCustomerEvent("lead_scope_packet_downloaded", { source: "lead_form" })}
+                  >
+                    <Download size={16} aria-hidden="true" />
+                    Download scope packet
+                  </a>
+                  <a
+                    className="customer-download-link"
+                    href={leadFollowUpHref}
+                    onClick={() => trackCustomerEvent("lead_follow_up_draft_opened", { source: "lead_form" })}
+                  >
+                    <Mail size={16} aria-hidden="true" />
+                    Open follow-up draft
+                  </a>
+                </div>
+              </div>
             </div>
           ) : null}
         </article>
