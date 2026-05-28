@@ -99,6 +99,15 @@ describe("hosted evidence capture packet", () => {
         redacted: true,
         sourceDescription: "Hosted verification JSON with blocked rows still pending review."
       });
+      store.registerEvidenceVaultArtifact({
+        id: "vault_product_url_proof",
+        kind: "product-url-proof",
+        label: "Signed-out hosted product URL proof",
+        status: "verified",
+        checksumSha256: "d".repeat(64),
+        redacted: true,
+        sourceDescription: "Signed-out homepage, judge-access-pack, submission-gate, and claim-guard checks passed."
+      });
 
       const packet = hostedEvidence.buildHostedEvidenceCapturePacket(store.getDashboardSnapshot());
 
@@ -112,6 +121,10 @@ describe("hosted evidence capture packet", () => {
       );
       expect(packet.checks.find((check) => check.id === "production-readiness-readonly")?.status).toBe("needs-review");
       expect(packet.checks.find((check) => check.id === "production-readiness-write-through")?.status).toBe("needs-review");
+      expect(packet.checks.find((check) => check.id === "hosted-product-url")?.status).toBe("needs-review");
+      expect(packet.checks.find((check) => check.id === "hosted-product-url")?.evidence).toContain(
+        "Verified Evidence Vault artifact"
+      );
       expect(packet.overallStatus).toBe("needs-hosted-proof");
     } finally {
       delete process.env.SENTINEL_EVIDENCE_MODE;

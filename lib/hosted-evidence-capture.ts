@@ -33,6 +33,7 @@ export function buildHostedEvidenceCapturePacket(snapshot: HostedEvidenceSnapsho
   const gcpPersistenceArtifact = vaultArtifactById.get("vault_gcp_persistence_proof");
   const workspaceOauthArtifact = vaultArtifactById.get("vault_workspace_oauth_log");
   const cloudBillingArtifact = vaultArtifactById.get("vault_cloud_billing_proof");
+  const productUrlArtifact = vaultArtifactById.get("vault_product_url_proof");
   const cloudCostControls = buildCloudCostControlCenter({ agentRuns: snapshot.agentRuns });
   const hasLiveGeminiRun = snapshot.agentRuns.some((run) => run.provider === "gemini-api");
   const hasMockGeminiRun = snapshot.agentRuns.some((run) => run.provider === "mock-gemini");
@@ -71,11 +72,11 @@ export function buildHostedEvidenceCapturePacket(snapshot: HostedEvidenceSnapsho
     artifactCheck({
       id: "hosted-product-url",
       label: "Hosted product URL and judge access",
-      status: hostedUrl && hasJudgeProductAccess() ? "captured" : "missing",
+      status: hostedUrl && hasJudgeProductAccess() ? "captured" : hasVerifiedVaultArtifact(productUrlArtifact) ? "needs-review" : "missing",
       source: "NEXT_PUBLIC_PRODUCT_URL plus XPRIZE judge-access flags",
       requiredFor: "Submission Logistics",
       ownerRole: "engineering",
-      evidence: judgeProductAccessSummary(),
+      evidence: evidenceFromVaultArtifact(productUrlArtifact, judgeProductAccessSummary()),
       fix: "Deploy the product, verify signed-out access, then configure private judge access and free judging-period access outside the repository.",
       privateHandling: "Never commit judge credentials or private testing instructions."
     }),
