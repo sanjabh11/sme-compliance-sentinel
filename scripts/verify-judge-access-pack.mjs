@@ -29,7 +29,8 @@ const secretTextPatterns = [
 function parseArgs(argv) {
   const args = {
     strict: false,
-    outPath: ""
+    outPath: "",
+    productUrl: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -58,15 +59,31 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--url" || arg === "--product-url") {
+      args.productUrl = normalizeProductUrl(argv[index + 1] ?? "", arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--url=")) {
+      args.productUrl = normalizeProductUrl(arg.slice("--url=".length), "--url");
+      continue;
+    }
+
+    if (arg.startsWith("--product-url=")) {
+      args.productUrl = normalizeProductUrl(arg.slice("--product-url=".length), "--product-url");
+      continue;
+    }
+
     throw new Error(`Unsupported argument: ${arg}`);
   }
 
   return args;
 }
 
-function buildReport() {
+function buildReport(args = { productUrl: "" }) {
   const packageJson = readPackageJson();
-  const productUrl = env("NEXT_PUBLIC_PRODUCT_URL");
+  const productUrl = resolveProductUrl(args.productUrl);
   const repositoryUrl = env("XPRIZE_REPOSITORY_URL") || packageJson.repository?.url || "";
   const demoVideoUrl = env("XPRIZE_DEMO_VIDEO_URL");
   const testingInstructions = env("XPRIZE_TESTING_INSTRUCTIONS");
@@ -307,6 +324,53 @@ function env(name) {
   return process.env[name] ?? "";
 }
 
+function resolveProductUrl(override) {
+  return (
+    normalizeOptionalProductUrl(override) ||
+    normalizeOptionalProductUrl(env("NEXT_PUBLIC_PRODUCT_URL")) ||
+    normalizeOptionalProductUrl(env("VERCEL_PROJECT_PRODUCTION_URL")) ||
+    normalizeOptionalProductUrl(env("VERCEL_URL")) ||
+    ""
+  );
+}
+
+function normalizeProductUrl(value, source) {
+  const normalized = normalizeOptionalProductUrl(value);
+  if (!normalized) {
+    throw new Error(`${source} requires a hosted HTTPS product URL.`);
+  }
+
+  return normalized;
+}
+
+function normalizeOptionalProductUrl(value) {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const candidate = trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
+
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "https:" || !url.hostname || ["localhost", "127.0.0.1"].includes(url.hostname)) {
+      return "";
+    }
+
+    if (url.username || url.password || url.search || url.hash) {
+      throw new Error("Hosted product URL must not include credentials, query strings, or fragments.");
+    }
+
+    return `${url.origin}${url.pathname.replace(/\/+$/u, "")}`;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("must not include")) {
+      throw error;
+    }
+
+    return "";
+  }
+}
+
 function flag(name) {
   return process.env[name] === "true";
 }
@@ -497,7 +561,7 @@ function isAllowedSystemDirectorySymlink(path) {
 
 try {
   const args = parseArgs(process.argv.slice(2));
-  const report = buildReport();
+  const report = buildReport(args);
 
   if (args.outPath) {
     writeJson(args.outPath, report);

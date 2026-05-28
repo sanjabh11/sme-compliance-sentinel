@@ -88,6 +88,34 @@ describe("judge access CLI verifier", () => {
     }
   });
 
+  it("accepts a non-secret hosted URL argument without treating access as proven", () => {
+    const report = runVerifier(baseEnv, ["--url", "https://sme-workspace-sentinel.vercel.app/"]);
+    const checksById = Object.fromEntries(report.accessChecks.map((check) => [check.id, check]));
+
+    expect(report.overallStatus).toBe("blocked");
+    expect(report.productUrl).toBe("https://sme-workspace-sentinel.vercel.app");
+    expect(checksById["hosted-product-url"]).toMatchObject({
+      status: "missing",
+      evidence: expect.stringContaining("Product URL configured; HTTPS confirmed; working project access missing")
+    });
+    expect(report.smokeCommands.find((command) => command.id === "homepage")?.command).toBe(
+      "curl -I https://sme-workspace-sentinel.vercel.app/"
+    );
+    expect(report.blockers.join(" ")).toContain("set XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED=true only after private proof exists");
+  });
+
+  it("falls back to Vercel hosted URL env vars when NEXT_PUBLIC_PRODUCT_URL is not set", () => {
+    const report = runVerifier({
+      ...baseEnv,
+      VERCEL_PROJECT_PRODUCTION_URL: "sme-workspace-sentinel.vercel.app"
+    });
+
+    expect(report.productUrl).toBe("https://sme-workspace-sentinel.vercel.app");
+    expect(report.smokeCommands.find((command) => command.id === "judge-access-pack")?.command).toContain(
+      "https://sme-workspace-sentinel.vercel.app/api/xprize/judge-access-pack"
+    );
+  });
+
   it("replaces existing private output without stale bytes or temp leftovers", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-judge-access-existing-output-"));
     const outPath = join(tempDir, "judge-access-readiness.json");
@@ -185,6 +213,8 @@ describe("judge access CLI verifier", () => {
       status: "blocked"
     });
     expect(() => runVerifier(baseEnv, ["--api-key=raw-secret"])).toThrow();
+    expect(() => runVerifier(baseEnv, ["--url", "https://user:pass@example.com"])).toThrow(/must not include credentials/u);
+    expect(() => runVerifier(baseEnv, ["--url", "https://example.com/?token=secret"])).toThrow(/must not include credentials/u);
   });
 
   it("fails closed when the private packet output path is a symlink", () => {
