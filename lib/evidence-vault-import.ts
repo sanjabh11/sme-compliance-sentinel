@@ -122,6 +122,10 @@ function buildCandidates(context: ImportContext): EvidenceVaultImportCandidate[]
     return buildHostedEvidenceCandidates(context);
   }
 
+  if (context.source === "judge-access") {
+    return buildJudgeAccessCandidates(context);
+  }
+
   return [candidateForSource(context, context.source, statusFromPayload(context.payload), detailFromPayload(context.payload))];
 }
 
@@ -192,6 +196,35 @@ function buildHostedEvidenceCandidates(context: ImportContext): EvidenceVaultImp
       });
     })
     .filter((item): item is EvidenceVaultImportCandidate => Boolean(item));
+}
+
+function buildJudgeAccessCandidates(context: ImportContext): EvidenceVaultImportCandidate[] {
+  const checks = Array.isArray(context.payload.checks) ? (context.payload.checks as JsonObject[]) : [];
+  const passedChecks = checks.filter((check) => String(check.status ?? "").toLowerCase() === "passed");
+  const requiredIds = new Set(["homepage", "judge-access-pack", "submission-gate", "claim-guard"]);
+  const passedIds = new Set(passedChecks.map((check) => String(check.id ?? "")));
+  const signedOut = context.payload.signedOut === true;
+  const requiredPassed = [...requiredIds].every((id) => passedIds.has(id));
+  const rawStatus = signedOut && requiredPassed ? "passed" : "blocked";
+  const detail = signedOut
+    ? `Signed-out hosted checks passed: ${[...passedIds].filter((id) => requiredIds.has(id)).join(", ") || "none"}.`
+    : "Signed-out hosted proof was not confirmed.";
+
+  return [
+    candidate({
+      context,
+      artifactId: "vault_product_url_proof",
+      kind: "product-url-proof",
+      label: "Signed-out hosted product URL proof",
+      rawStatus,
+      detail,
+      requiredFor: "Submission Logistics",
+      nextAction:
+        rawStatus === "passed"
+          ? "Keep this signed-out URL proof private; final judge/free-access flags still need human confirmation."
+          : "Capture signed-out homepage, judge-access-pack, submission-gate, and claim-guard proof from the hosted product."
+    })
+  ];
 }
 
 function candidateForSource(
@@ -467,6 +500,10 @@ function buildWarnings(context: ImportContext, candidates: EvidenceVaultImportCa
 }
 
 function inferSource(payload: JsonObject): EvidenceVaultImportSource {
+  if (payload.signedOut === true && Array.isArray(payload.checks) && typeof payload.sourceUrl === "string") {
+    return "judge-access";
+  }
+
   if (Array.isArray(payload.results)) {
     return "verify-production";
   }
@@ -505,7 +542,7 @@ function detailFromPayload(payload: JsonObject) {
 }
 
 function sourceUrlFromPayload(payload: JsonObject) {
-  return cleanOptional(String(payload.baseUrl ?? payload.productUrl ?? ""));
+  return cleanOptional(String(payload.baseUrl ?? payload.productUrl ?? payload.sourceUrl ?? ""));
 }
 
 function urlFromPayload(payload: JsonObject) {

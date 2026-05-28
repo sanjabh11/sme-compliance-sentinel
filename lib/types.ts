@@ -1207,6 +1207,7 @@ export interface EvidenceVault {
 export type EvidenceVaultImportSource =
   | "verify-production"
   | "hosted-evidence"
+  | "judge-access"
   | "cloudrun-deployment"
   | "gemini-smoke"
   | "persistence"

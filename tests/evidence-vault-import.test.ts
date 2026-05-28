@@ -195,6 +195,49 @@ describe("Evidence Vault hosted proof import", () => {
     });
   });
 
+  it("registers signed-out hosted route proof as product URL evidence without claiming judge approval", () => {
+    const signedOutProof = {
+      generatedAt: "2026-05-28T17:17:00.000Z",
+      checkedAt: "2026-05-28T17:17:01.000Z",
+      sourceUrl: "https://sme-workspace-sentinel-abc-uc.a.run.app",
+      signedOut: true,
+      checks: [
+        { id: "homepage", httpStatus: 200, status: "passed" },
+        { id: "judge-access-pack", httpStatus: 200, status: "passed" },
+        { id: "submission-gate", httpStatus: 200, status: "passed" },
+        { id: "claim-guard", httpStatus: 200, status: "passed" }
+      ],
+      disclaimer: "This does not prove revenue, legal/IP attestation, demo video clearance, or organizer acceptance."
+    };
+
+    const result = buildEvidenceVaultImport({
+      source: "judge-access",
+      redacted: true,
+      payload: signedOutProof
+    });
+
+    expect(result.status).toBe("ready");
+    expect(result.candidates).toEqual([
+      expect.objectContaining({
+        artifactId: "vault_product_url_proof",
+        kind: "product-url-proof",
+        label: "Signed-out hosted product URL proof",
+        status: "verified",
+        sourceDescription: expect.stringContaining("Signed-out hosted checks passed")
+      })
+    ]);
+    expect(result.candidates.map((candidate) => candidate.artifactId)).not.toContain("vault_demo_video_proof");
+
+    const { snapshot } = importEvidenceVaultArtifacts({
+      redacted: true,
+      payload: signedOutProof
+    });
+    expect(snapshot.readiness.evidenceVault.requiredArtifacts.find((artifact) => artifact.id === "vault_product_url_proof")).toMatchObject({
+      status: "verified",
+      redacted: true
+    });
+  });
+
   it("does not downgrade verified Cloud Run proof when a later hosted report still has template rows", () => {
     const cloudRunImport = importEvidenceVaultArtifacts({
       source: "cloudrun-deployment",
