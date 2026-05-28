@@ -16,6 +16,7 @@ type LocalSubmissionReport = {
   };
   gates: Array<{
     id: string;
+    command: string;
     rawStatus: string;
     status: "passed" | "warning" | "blocked";
     externalRequired: boolean;
@@ -1086,6 +1087,24 @@ describe("local XPRIZE submission verifier", () => {
     expect(rowsById["business-traction-proof"].pending.join(" ")).not.toContain("project-created-after-start");
   });
 
+  it("passes a hosted URL into judge-access readiness without treating judge access as proven", () => {
+    const report = runVerifier(["--url", "https://sme-workspace-sentinel.vercel.app/"]);
+    const gatesById = Object.fromEntries(report.gates.map((gate) => [gate.id, gate]));
+
+    expect(report.overallStatus).toBe("blocked");
+    expect(gatesById["judge-access-readiness"].command).toContain(
+      "npm run verify:judge-access -- --url https://sme-workspace-sentinel.vercel.app"
+    );
+    expect(gatesById["judge-access-readiness"].evidence).toContain(
+      "Product URL https://sme-workspace-sentinel.vercel.app"
+    );
+    expect(gatesById["judge-access-readiness"].evidence).not.toContain("Product URL missing");
+    expect(gatesById["judge-access-readiness"].blockers.join(" ")).toContain(
+      "XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED=true only after private proof exists"
+    );
+    expect(report.remainingBlockers.join(" ")).toContain("Private judge testing instructions");
+  });
+
   it("reflects verified Cloud Run handoff artifacts without treating them as hosted proof", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-cloudrun-artifacts-"));
     const valuesPath = join(tempDir, "cloudrun-render-values.json");
@@ -1434,6 +1453,8 @@ describe("local XPRIZE submission verifier", () => {
 
   it("rejects raw secret-shaped CLI arguments", () => {
     expect(() => runVerifier(["--api-key=raw-secret"])).toThrow();
+    expect(() => runVerifier(["--url", "https://user:pass@example.com"])).toThrow(/must not include credentials/u);
+    expect(() => runVerifier(["--url", "https://example.com/?token=secret"])).toThrow(/must not include credentials/u);
   });
 });
 

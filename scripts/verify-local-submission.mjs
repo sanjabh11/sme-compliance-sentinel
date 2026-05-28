@@ -6,6 +6,7 @@ import { Buffer } from "node:buffer";
 import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { URL } from "node:url";
 
 const officialRuleSources = ["https://xprize.devpost.com/rules", "https://www.geminixprize.com/rules"];
 const operationalBestPracticeSources = [
@@ -114,7 +115,8 @@ function parseArgs(argv) {
     verifyManifestPath: "",
     verifyBundlePath: "",
     markdownOutPath: "",
-    bundleDir: ""
+    bundleDir: "",
+    productUrl: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -140,6 +142,22 @@ function parseArgs(argv) {
 
     if (arg.startsWith("--out=")) {
       args.outPath = arg.slice("--out=".length);
+      continue;
+    }
+
+    if (arg === "--url" || arg === "--product-url") {
+      args.productUrl = normalizeProductUrl(argv[index + 1] ?? "", arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--url=")) {
+      args.productUrl = normalizeProductUrl(arg.slice("--url=".length), "--url");
+      continue;
+    }
+
+    if (arg.startsWith("--product-url=")) {
+      args.productUrl = normalizeProductUrl(arg.slice("--product-url=".length), "--product-url");
       continue;
     }
 
@@ -219,8 +237,8 @@ function parseArgs(argv) {
   return args;
 }
 
-function buildReport() {
-  const gateReports = gates.map(runGate);
+function buildReport(args = { productUrl: "" }) {
+  const gateReports = gates.map((gate) => runGate(gate, args));
   const summary = gateReports.reduce(
     (totals, gate) => {
       totals[gate.status] += 1;
@@ -1481,14 +1499,16 @@ function codeControllableActionDetailsForPhase(phase, action) {
   return cloudRunActionDetailsForBlocker({ action, state: readCloudRunRenderArtifactState() });
 }
 
-function runGate(definition) {
-  const child = runChild(definition.script);
+function runGate(definition, args) {
+  const childArgs = childArgsForGate(definition, args);
+  const child = runChild(definition.script, childArgs);
+  const command = commandForGate(definition, childArgs);
 
   if (!child.report) {
     return {
       id: definition.id,
       label: definition.label,
-      command: definition.command,
+      command,
       priority: definition.priority,
       rawStatus: "unreadable",
       status: "blocked",
@@ -1503,16 +1523,32 @@ function runGate(definition) {
   return {
     id: definition.id,
     label: definition.label,
-    command: definition.command,
+    command,
     priority: definition.priority,
     ...definition.summarize(child.report),
     childExitCode: child.exitCode
   };
 }
 
-function runChild(script) {
+function childArgsForGate(definition, args) {
+  if (definition.id === "judge-access-readiness" && args.productUrl) {
+    return ["--url", args.productUrl];
+  }
+
+  return [];
+}
+
+function commandForGate(definition, childArgs) {
+  if (childArgs.length === 0) {
+    return definition.command;
+  }
+
+  return `${definition.command} -- ${childArgs.join(" ")}`;
+}
+
+function runChild(script, args = []) {
   try {
-    const stdout = execFileSync(process.execPath, [script], {
+    const stdout = execFileSync(process.execPath, [script, ...args], {
       cwd: process.cwd(),
       env: process.env,
       encoding: "utf8",
@@ -1690,6 +1726,43 @@ function parseJson(output) {
     return JSON.parse(trimmed);
   } catch {
     return undefined;
+  }
+}
+
+function normalizeProductUrl(value, source) {
+  const normalized = normalizeOptionalProductUrl(value);
+  if (!normalized) {
+    throw new Error(`${source} requires a hosted HTTPS product URL.`);
+  }
+
+  return normalized;
+}
+
+function normalizeOptionalProductUrl(value) {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const candidate = trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
+
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "https:" || !url.hostname || ["localhost", "127.0.0.1"].includes(url.hostname)) {
+      return "";
+    }
+
+    if (url.username || url.password || url.search || url.hash) {
+      throw new Error("Hosted product URL must not include credentials, query strings, or fragments.");
+    }
+
+    return `${url.origin}${url.pathname.replace(/\/+$/u, "")}`;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("must not include")) {
+      throw error;
+    }
+
+    return "";
   }
 }
 
@@ -2943,7 +3016,7 @@ try {
       process.exitCode = 1;
     }
   } else {
-    const report = applyPrivateRoot(buildReport());
+    const report = applyPrivateRoot(buildReport(args));
 
     if (args.manualPacketsDir) {
       report.manualInterventionPlan.packetFiles = writeManualInterventionPackets(args.manualPacketsDir, report);
