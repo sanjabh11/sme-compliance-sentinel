@@ -23,7 +23,8 @@ const prohibitedCliPatterns = [
 function parseArgs(argv) {
   const args = {
     strict: false,
-    outDir: ""
+    outDir: "",
+    localSubmissionReportPath: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -52,17 +53,36 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--local-submission-report") {
+      args.localSubmissionReportPath = argv[index + 1] ?? "";
+      if (!args.localSubmissionReportPath) {
+        throw new Error("--local-submission-report requires a private local-submission JSON path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--local-submission-report=")) {
+      args.localSubmissionReportPath = arg.slice("--local-submission-report=".length);
+      if (!args.localSubmissionReportPath) {
+        throw new Error("--local-submission-report requires a private local-submission JSON path.");
+      }
+      continue;
+    }
+
     throw new Error(`Unsupported argument: ${arg}`);
   }
 
   return args;
 }
 
-function buildPacket() {
+function buildPacket(args = {}) {
   const sourceRelease = runJson("scripts/verify-source-release.mjs");
   const provenance = runJson("scripts/verify-project-provenance.mjs");
   const licenseManifest = runJson("scripts/verify-license-manifest.mjs");
-  const localSubmission = runJson("scripts/verify-local-submission.mjs");
+  const localSubmission = args.localSubmissionReportPath
+    ? readPrivateJsonReport(args.localSubmissionReportPath, "Local submission readiness report")
+    : runJson("scripts/verify-local-submission.mjs");
   const objectiveSourceReady = sourceRelease.report?.overallStatus === "published" && objectiveProvenanceChecksPassed(provenance.report);
   const reviewGates = buildReviewGates({ sourceRelease, provenance, licenseManifest, localSubmission, objectiveSourceReady });
   const blocked = reviewGates.filter((gate) => gate.status === "blocked");
@@ -428,6 +448,22 @@ function runJson(script) {
   }
 }
 
+function readPrivateJsonReport(path, label) {
+  const absolutePath = resolve(path);
+
+  assertRegularReadableFile(absolutePath, label);
+
+  const stdout = readFileSync(absolutePath, "utf8");
+
+  return {
+    report: parseJson(stdout),
+    stdout,
+    stderr: "",
+    exitCode: 0,
+    sourcePath: absolutePath
+  };
+}
+
 function parseJson(output) {
   const trimmed = output.trim();
   if (!trimmed) {
@@ -641,6 +677,23 @@ function assertRegularFileIfExists(path, label) {
   }
 }
 
+function assertRegularReadableFile(path, label) {
+  const absolutePath = resolve(path);
+  const parentDirectory = dirname(absolutePath);
+
+  assertDirectoryPathSafe(parentDirectory, `${label} parent directory`);
+
+  const fileStat = lstatSync(absolutePath);
+
+  if (fileStat.isSymbolicLink()) {
+    throw new Error(`${label} ${absolutePath} is a symbolic link; copy the reviewed JSON into a regular private file before packet generation.`);
+  }
+
+  if (!fileStat.isFile()) {
+    throw new Error(`${label} ${absolutePath} is not a regular file.`);
+  }
+}
+
 function isAllowedSystemDirectorySymlink(path) {
   if (process.platform !== "darwin") {
     return false;
@@ -676,7 +729,7 @@ function toText(value) {
 
 try {
   const args = parseArgs(process.argv.slice(2));
-  const packet = buildPacket();
+  const packet = buildPacket(args);
   const outputFiles = args.outDir ? writePacket(args.outDir, packet) : undefined;
   const output = outputFiles ? { ...packet, outputFiles } : packet;
 

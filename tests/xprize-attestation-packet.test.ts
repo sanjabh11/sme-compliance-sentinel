@@ -99,6 +99,45 @@ describe("XPRIZE human attestation packet CLI", () => {
     }
   });
 
+  it("can build from a reviewed current local-submission report without rerunning weaker defaults", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-xprize-attestation-current-report-"));
+    const reportPath = join(tempDir, "local-submission-readiness.json");
+
+    try {
+      writeFileSync(
+        reportPath,
+        `${JSON.stringify({
+          overallStatus: "blocked",
+          summary: { passed: 3, warning: 2, blocked: 3, externalRequired: 5 },
+          remainingBlockers: ["human attestation still required"]
+        })}\n`,
+        "utf8"
+      );
+
+      const packet = runPacket(["--local-submission-report", reportPath]);
+
+      expect(packet.localSubmission.overallStatus).toBe("blocked");
+      expect(JSON.stringify(packet.localSubmission)).toContain("human attestation still required");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects symlinked current local-submission report inputs", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-xprize-attestation-current-report-symlink-"));
+    const realReportPath = join(tempDir, "reviewed-local-submission.json");
+    const symlinkPath = join(tempDir, "local-submission-link.json");
+
+    try {
+      writeFileSync(realReportPath, "{\"overallStatus\":\"blocked\"}\n", "utf8");
+      symlinkSync(realReportPath, symlinkPath);
+
+      expect(() => runPacket(["--local-submission-report", symlinkPath])).toThrow(/symbolic link/u);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("replaces existing private review artifacts without stale bytes or temp leftovers", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-xprize-attestation-existing-output-"));
     const jsonPath = join(tempDir, "xprize-human-attestation-packet.json");
