@@ -269,7 +269,9 @@ const localSubmissionEnv = {
   XPRIZE_PROJECT_CREATED_AFTER_START_CONFIRMED: "false",
   XPRIZE_THIRD_PARTY_REVIEW_APPROVED: "false",
   XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED: "false",
-  XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED: "false"
+  XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED: "false",
+  VERCEL_PROJECT_ID: "prj_test",
+  VERCEL_ORG_ID: "team_test"
 };
 
 describe("local XPRIZE submission verifier", () => {
@@ -286,6 +288,7 @@ describe("local XPRIZE submission verifier", () => {
         "source-release",
         "project-provenance",
         "license-ip-review",
+        "customer-demo-deployment-lineage",
         "cloudrun-deployment-template",
         "judge-access-readiness",
         "business-evidence-readiness"
@@ -310,6 +313,12 @@ describe("local XPRIZE submission verifier", () => {
       status: "warning",
       externalRequired: true
     });
+    expect(gatesById["customer-demo-deployment-lineage"]).toMatchObject({
+      rawStatus: "blocked",
+      status: "blocked",
+      externalRequired: true
+    });
+    expect(gatesById["customer-demo-deployment-lineage"].evidence).toContain("Product URL");
     expect(gatesById["judge-access-readiness"]).toMatchObject({
       rawStatus: "blocked",
       status: "blocked",
@@ -398,6 +407,7 @@ describe("local XPRIZE submission verifier", () => {
       ])
     );
     expect(report.phasePlan.recommendedNextCodeControllableAction.proofBoundary).toContain("Code-controllable preparation only");
+    expect(report.phasePlan.phases.map((phase) => phase.id)).toContain("customer-demo-deployment");
     expect(report.phasePlan.confidenceBoundary).toContain("not a win-probability estimate");
     expect(report.phasePlan.sourceGateStatus).toMatch(/passed|warning/);
     expect(report.manualInterventionPlan.status).toBe("manual-intervention-required");
@@ -437,6 +447,7 @@ describe("local XPRIZE submission verifier", () => {
       "human-attestation-review",
       "cloudrun-render-dry-run",
       "hosted-proof-capture",
+      "customer-demo-deployment",
       "business-traction-proof"
     ]);
     expect(report.phasePlan.phases.every((phase) => phase.priority >= 1 && phase.priority <= 5)).toBe(true);
@@ -507,7 +518,7 @@ describe("local XPRIZE submission verifier", () => {
       expect(report.overallStatus).toBe("blocked");
       expect(JSON.parse(outJson)).toHaveProperty("phaseProgressChart");
       expect(markdown).toContain("# Local Submission Readiness Summary");
-      expect(`${outJson}${markdown}`).not.toContain("stale");
+      expect(outJson).not.toContain('"overallStatus":"stale"');
       expect(`${outJson}${markdown}`).not.toContain("padding");
       expect(`${outJson}${markdown}`).not.toContain("# Stale");
       expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
@@ -1013,6 +1024,14 @@ describe("local XPRIZE submission verifier", () => {
     expect(phasesById["hosted-proof-capture"].evidenceNeeded.join(" ")).toContain("provider=gemini-api");
     expect(phasesById["hosted-proof-capture"].evidenceNeeded.join(" ")).toContain("business-evidence readiness packet");
     expect(phasesById["hosted-proof-capture"].evidenceNeeded.join(" ")).toContain("judge-access readiness packet");
+    expect(phasesById["customer-demo-deployment"]).toMatchObject({
+      status: "external-required",
+      owner: "engineering"
+    });
+    expect(phasesById["customer-demo-deployment"].commands.join(" ")).toContain("verify:vercel-deployment");
+    expect(phasesById["customer-demo-deployment"].commands.join(" ")).toContain("npx vercel deploy --prod --yes");
+    expect(phasesById["customer-demo-deployment"].relatedGateIds).toContain("customer-demo-deployment-lineage");
+    expect(phasesById["customer-demo-deployment"].stopConditions.join(" ")).toContain("Do not treat Vercel");
     expect(phasesById["business-traction-proof"]).toMatchObject({
       status: "external-required",
       owner: "founder/sales"
@@ -1035,6 +1054,7 @@ describe("local XPRIZE submission verifier", () => {
     const humanRows = rowsByPhase["human-attestation-review"] ?? [];
     const cloudRunRows = rowsByPhase["cloudrun-render-dry-run"] ?? [];
     const hostedRows = rowsByPhase["hosted-proof-capture"] ?? [];
+    const customerDemoRows = rowsByPhase["customer-demo-deployment"] ?? [];
     const businessRows = rowsByPhase["business-traction-proof"] ?? [];
 
     expect(humanRows.some((row) => row.action.includes("project-created-after-start"))).toBe(true);
@@ -1074,6 +1094,11 @@ describe("local XPRIZE submission verifier", () => {
       )
     ).toBe(true);
     expect(hostedRows.every((row) => row.proofBoundary.includes("external artifact evidence"))).toBe(true);
+    expect(customerDemoRows.some((row) => row.action.includes("Vercel production deployment"))).toBe(true);
+    expect(customerDemoRows.some((row) => row.privateArtifactPaths.includes("/secure/local/vercel-deployments.json"))).toBe(
+      true
+    );
+    expect(customerDemoRows.every((row) => row.proofBoundary.includes("external artifact evidence"))).toBe(true);
     expect(businessRows.some((row) => row.action.includes("invoice/payment"))).toBe(true);
     expect(businessRows.some((row) => row.privateArtifactPaths.includes("/secure/local/business-evidence.json"))).toBe(true);
     expect(ownerPacketsByOwner.engineering.privateArtifactPaths).toEqual(
@@ -1106,10 +1131,87 @@ describe("local XPRIZE submission verifier", () => {
     expect(rowsById["cloudrun-render-dry-run"].pending.join(" ")).toContain("release-prefilled private render-values file");
     expect(rowsById["cloudrun-render-dry-run"].evidence).not.toContain("judge-access-readiness");
     expect(rowsById["hosted-proof-capture"].pending.join(" ")).toContain("hosted live Gemini API call evidence");
+    expect(rowsById["customer-demo-deployment"].pending.join(" ")).toContain("Vercel production deployment");
+    expect(rowsById["customer-demo-deployment"].evidence).toContain("customer-demo-deployment-lineage");
     expect(rowsById["business-traction-proof"].pending.join(" ")).toContain("invoice/payment");
     expect(rowsById["business-traction-proof"].evidence).not.toContain("project-provenance");
     expect(rowsById["business-traction-proof"].evidence).not.toContain("license-ip-review");
     expect(rowsById["business-traction-proof"].pending.join(" ")).not.toContain("project-created-after-start");
+  });
+
+  it("passes Vercel deployment lineage inputs into the customer demo gate and blocks stale deployments", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-vercel-stale-"));
+    const deploymentsPath = join(tempDir, "vercel-deployments.json");
+    const expectedCommit = "1111111111111111111111111111111111111111";
+    const staleCommit = "2222222222222222222222222222222222222222";
+
+    try {
+      writeFileSync(deploymentsPath, JSON.stringify(buildVercelDeploymentExport({ sha: staleCommit }), null, 2), "utf8");
+      const report = runVerifier([
+        "--vercel-deployments-json",
+        deploymentsPath,
+        "--vercel-url",
+        "https://sme-workspace-sentinel.vercel.app",
+        "--vercel-expected-commit",
+        expectedCommit
+      ]);
+      const gatesById = Object.fromEntries(report.gates.map((gate) => [gate.id, gate]));
+      const phase = report.phasePlan.phases.find((item) => item.id === "customer-demo-deployment");
+
+      expect(gatesById["customer-demo-deployment-lineage"].command).toContain(`--deployments-json ${deploymentsPath}`);
+      expect(gatesById["customer-demo-deployment-lineage"].command).toContain("--url https://sme-workspace-sentinel.vercel.app");
+      expect(gatesById["customer-demo-deployment-lineage"].command).toContain(`--expected-commit ${expectedCommit}`);
+      expect(gatesById["customer-demo-deployment-lineage"]).toMatchObject({
+        rawStatus: "blocked",
+        status: "blocked",
+        externalRequired: true
+      });
+      expect(gatesById["customer-demo-deployment-lineage"].evidence).toContain(`expected ${expectedCommit}`);
+      expect(gatesById["customer-demo-deployment-lineage"].evidence).toContain(`deployed ${staleCommit}`);
+      expect(gatesById["customer-demo-deployment-lineage"].blockers.join(" ")).toContain(
+        "Production deployment source lineage"
+      );
+      expect(phase?.status).toBe("external-required");
+      expect(
+        report.manualInterventionPlan.actionRows.some(
+          (row) => row.phaseId === "customer-demo-deployment" && row.action.includes("Redeploy")
+        )
+      ).toBe(true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("marks customer demo deployment phase passed when Vercel lineage matches expected source", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-vercel-current-"));
+    const deploymentsPath = join(tempDir, "vercel-deployments.json");
+    const expectedCommit = "3333333333333333333333333333333333333333";
+
+    try {
+      writeFileSync(deploymentsPath, JSON.stringify(buildVercelDeploymentExport({ sha: expectedCommit }), null, 2), "utf8");
+      const report = runVerifier([
+        "--vercel-deployments-json",
+        deploymentsPath,
+        "--vercel-url",
+        "https://sme-workspace-sentinel.vercel.app",
+        "--vercel-expected-commit",
+        expectedCommit
+      ]);
+      const gatesById = Object.fromEntries(report.gates.map((gate) => [gate.id, gate]));
+      const phase = report.phasePlan.phases.find((item) => item.id === "customer-demo-deployment");
+
+      expect(gatesById["customer-demo-deployment-lineage"]).toMatchObject({
+        rawStatus: "verified",
+        status: "passed",
+        externalRequired: false
+      });
+      expect(phase?.status).toBe("passed");
+      expect(report.manualInterventionPlan.actionRows.some((row) => row.phaseId === "customer-demo-deployment")).toBe(
+        false
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("passes a hosted URL into judge-access readiness without treating judge access as proven", () => {
@@ -1604,6 +1706,28 @@ function runLocalBundleVerifier(bundleManifestPath: string, args: string[] = [])
   });
 
   return JSON.parse(output) as LocalBundleVerificationReport;
+}
+
+function buildVercelDeploymentExport({ sha }: { sha: string }) {
+  return {
+    deployments: {
+      deployments: [
+        {
+          id: "dpl_current",
+          name: "sme-workspace-sentinel",
+          url: "sme-workspace-sentinel.vercel.app",
+          created: 1779950615088,
+          state: "READY",
+          target: "production",
+          meta: {
+            githubCommitSha: sha,
+            githubCommitRef: "main",
+            githubCommitMessage: "test deployment"
+          }
+        }
+      ]
+    }
+  };
 }
 
 function sha256Hex(value: string) {

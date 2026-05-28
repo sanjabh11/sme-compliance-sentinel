@@ -82,6 +82,14 @@ const gates = [
     summarize: summarizeGeminiModelReadiness
   },
   {
+    id: "customer-demo-deployment-lineage",
+    label: "Customer Vercel demo deployment lineage",
+    command: "npm run verify:vercel-deployment",
+    script: "scripts/verify-vercel-deployment.mjs",
+    priority: 5,
+    summarize: summarizeVercelDeployment
+  },
+  {
     id: "cloudrun-deployment-template",
     label: "Cloud Run deployment evidence template",
     command: "npm run verify:cloudrun-deployment",
@@ -118,7 +126,10 @@ function parseArgs(argv) {
     bundleDir: "",
     productUrl: "",
     judgeHostedProofPath: "",
-    judgeTestingProofPath: ""
+    judgeTestingProofPath: "",
+    vercelDeploymentsJsonPath: "",
+    vercelProductUrl: "",
+    vercelExpectedCommit: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -160,6 +171,53 @@ function parseArgs(argv) {
 
     if (arg.startsWith("--product-url=")) {
       args.productUrl = normalizeProductUrl(arg.slice("--product-url=".length), "--product-url");
+      continue;
+    }
+
+    if (arg === "--vercel-deployments-json") {
+      args.vercelDeploymentsJsonPath = argv[index + 1] ?? "";
+      if (!args.vercelDeploymentsJsonPath) {
+        throw new Error("--vercel-deployments-json requires a private non-secret Vercel deployments JSON path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--vercel-deployments-json=")) {
+      args.vercelDeploymentsJsonPath = arg.slice("--vercel-deployments-json=".length);
+      continue;
+    }
+
+    if (arg === "--vercel-url" || arg === "--customer-demo-url") {
+      args.vercelProductUrl = normalizeProductUrl(argv[index + 1] ?? "", arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--vercel-url=")) {
+      args.vercelProductUrl = normalizeProductUrl(arg.slice("--vercel-url=".length), "--vercel-url");
+      continue;
+    }
+
+    if (arg.startsWith("--customer-demo-url=")) {
+      args.vercelProductUrl = normalizeProductUrl(arg.slice("--customer-demo-url=".length), "--customer-demo-url");
+      continue;
+    }
+
+    if (arg === "--vercel-expected-commit") {
+      args.vercelExpectedCommit = normalizeCommit(argv[index + 1] ?? "");
+      if (!args.vercelExpectedCommit) {
+        throw new Error("--vercel-expected-commit requires a Git commit SHA.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--vercel-expected-commit=")) {
+      args.vercelExpectedCommit = normalizeCommit(arg.slice("--vercel-expected-commit=".length));
+      if (!args.vercelExpectedCommit) {
+        throw new Error("--vercel-expected-commit requires a Git commit SHA.");
+      }
       continue;
     }
 
@@ -701,6 +759,15 @@ function manualStatusForPhaseEvidence(phase, evidence) {
 }
 
 function checklistForManualRow(phase, action) {
+  if (phase.id === "customer-demo-deployment") {
+    return [
+      "Trigger a Vercel production redeploy only after the intended source commit is pushed.",
+      "Export the fresh Vercel deployment metadata to a private JSON file; do not commit Vercel dashboard exports or tokens.",
+      "Rerun `npm run verify:vercel-deployment` with the customer URL and private deployments JSON, then retain the readiness packet outside Git.",
+      "Keep Vercel customer-demo freshness separate from Cloud Run, Gemini, Workspace OAuth, revenue, judge-access, or organizer proof."
+    ];
+  }
+
   if (phase.id !== "cloudrun-render-dry-run") {
     return [];
   }
@@ -724,7 +791,7 @@ function checklistForManualRow(phase, action) {
 }
 
 function ownerForManualRow(phase, action) {
-  if (phase.id === "cloudrun-render-dry-run") {
+  if (phase.id === "cloudrun-render-dry-run" || phase.id === "customer-demo-deployment") {
     return "engineering";
   }
 
@@ -762,6 +829,10 @@ function privateArtifactPathsForGate(gateId) {
       "artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-dry-run-packet-verifier.json"
     ],
     "gemini-model-readiness": ["/secure/local/gemini-model-readiness.json"],
+    "customer-demo-deployment-lineage": [
+      "/secure/local/vercel-deployments.json",
+      "/secure/local/vercel-deployment-readiness.json"
+    ],
     "judge-access-readiness": ["/secure/local/judge-access-readiness.json", "artifacts/hosted-proof/$SENTINEL_RELEASE_ID/judge-access-pack.json"],
     "business-evidence-readiness": ["/secure/local/business-evidence-template.json", "/secure/local/business-evidence.json"]
   };
@@ -794,6 +865,10 @@ function privateArtifactPathsForPhase(phaseId) {
       "artifacts/hosted-proof/$SENTINEL_RELEASE_ID/manifest.json",
       "artifacts/hosted-proof/$SENTINEL_RELEASE_ID/release-evidence-manifest.json"
     ],
+    "customer-demo-deployment": [
+      "/secure/local/vercel-deployments.json",
+      "/secure/local/vercel-deployment-readiness.json"
+    ],
     "business-traction-proof": ["/secure/local/business-evidence-template.json", "/secure/local/business-evidence.json"]
   };
 
@@ -815,6 +890,10 @@ function stopConditionForGate(gate) {
 
   if (gate.id === "gemini-model-readiness") {
     return "Stop before deployed Gemini proof if the SDK, model allowlist, or official-doc review is stale or blocked.";
+  }
+
+  if (gate.id === "customer-demo-deployment-lineage") {
+    return "Stop before sending customer-demo links if Vercel production is stale, missing deployment metadata, or not aligned to the pushed source commit.";
   }
 
   if (gate.id === "judge-access-readiness") {
@@ -1309,9 +1388,11 @@ function buildPhasePlan(gateReports) {
   const licenseGate = gatesById.get("license-ip-review");
   const cloudRunGate = gatesById.get("cloudrun-deployment-template");
   const geminiGate = gatesById.get("gemini-model-readiness");
+  const vercelDeploymentGate = gatesById.get("customer-demo-deployment-lineage");
   const humanReviewPassed = provenanceGate?.status === "passed" && licenseGate?.status === "passed";
   const geminiModelReady = geminiGate?.status === "passed";
   const cloudRunReady = cloudRunGate?.rawStatus === "ready-to-dry-run" && geminiModelReady;
+  const customerDemoReady = vercelDeploymentGate?.status === "passed";
 
   const phases = [
     {
@@ -1396,6 +1477,29 @@ function buildPhasePlan(gateReports) {
       stopConditions: [
         "Do not set Google Cloud, Gemini, repository, product-running, or AI-native proof flags until hosted artifacts exist.",
         "Do not import hosted proof into the Evidence Vault until dry-run import and redaction review pass."
+      ]
+    },
+    {
+      id: "customer-demo-deployment",
+      label: "Customer Vercel demo deployment freshness",
+      bucket: "external-proof",
+      priority: 5,
+      owner: "engineering",
+      status: customerDemoReady ? "passed" : "external-required",
+      relatedGateIds: ["customer-demo-deployment-lineage"],
+      commands: [
+        "npm run verify:vercel-deployment -- --deployments-json /secure/local/vercel-deployments.json --url https://sme-workspace-sentinel.vercel.app --strict",
+        "npx vercel deploy --prod --yes",
+        "npm run verify:vercel-deployment -- --deployments-json /secure/local/vercel-deployments.json --url https://sme-workspace-sentinel.vercel.app --strict --out /secure/local/vercel-deployment-readiness.json"
+      ],
+      evidenceNeeded: [
+        "Vercel production deployment is READY for the customer-facing demo URL",
+        "Vercel production deployment commit matches the pushed source commit",
+        "private Vercel deployment export and lineage readiness packet retained outside Git"
+      ],
+      stopConditions: [
+        "Do not send the customer-facing demo link as current-source proof until Vercel production lineage matches the pushed commit.",
+        "Do not treat Vercel customer-demo deployment as Cloud Run, Gemini, GCP, Workspace OAuth, revenue, judge-access, or organizer proof."
       ]
     },
     {
@@ -1561,6 +1665,14 @@ function runGate(definition, args) {
 }
 
 function childArgsForGate(definition, args) {
+  if (definition.id === "customer-demo-deployment-lineage") {
+    return [
+      ...(args.vercelDeploymentsJsonPath ? ["--deployments-json", args.vercelDeploymentsJsonPath] : []),
+      ...(args.vercelProductUrl ? ["--url", args.vercelProductUrl] : []),
+      ...(args.vercelExpectedCommit ? ["--expected-commit", args.vercelExpectedCommit] : [])
+    ];
+  }
+
   if (definition.id === "judge-access-readiness") {
     return [
       ...(args.productUrl ? ["--url", args.productUrl] : []),
@@ -1677,6 +1789,29 @@ function summarizeGeminiModelReadiness(report) {
   };
 }
 
+function summarizeVercelDeployment(report) {
+  const status = report.overallStatus === "verified" ? "passed" : "blocked";
+  const deployment = report.latestProductionDeployment ?? {};
+  const deploymentSummary =
+    deployment.status === "found"
+      ? `deployment ${deployment.id ?? "missing"}; state ${deployment.state ?? "missing"}; target ${deployment.target ?? "missing"}; deployed ${deployment.githubCommitSha ?? "missing"}.`
+      : "deployment missing.";
+
+  return {
+    rawStatus: report.overallStatus ?? "unknown",
+    status,
+    externalRequired: status !== "passed",
+    evidence: `Product URL ${report.productUrl ?? "missing"}; expected ${report.expectedCommit ?? "missing"}; ${deploymentSummary}`,
+    blockers: report.blockers ?? [],
+    nextActions:
+      report.nextActions?.length > 0
+        ? report.nextActions
+        : [
+            "Trigger a Vercel production redeploy, export current deployment metadata privately, and rerun Vercel deployment lineage verification."
+          ]
+  };
+}
+
 function summarizeCloudRunDeployment(report) {
   const rawStatus = report.overallStatus ?? "unknown";
   const status = rawStatus === "blocked" ? "blocked" : rawStatus === "ready-to-dry-run" ? "warning" : "warning";
@@ -1733,7 +1868,7 @@ function summarizeBusinessEvidence(report) {
 }
 
 function normalizeStatus(status) {
-  if (status === "passed" || status === "published" || status === "ready") {
+  if (status === "passed" || status === "published" || status === "ready" || status === "verified") {
     return "passed";
   }
 
@@ -1770,6 +1905,12 @@ function normalizeProductUrl(value, source) {
   }
 
   return normalized;
+}
+
+function normalizeCommit(value) {
+  const text = String(value || "").trim().toLowerCase();
+
+  return /^[a-f0-9]{7,40}$/u.test(text) ? text : "";
 }
 
 function normalizeOptionalProductUrl(value) {
