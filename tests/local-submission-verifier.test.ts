@@ -1675,6 +1675,100 @@ describe("local XPRIZE submission verifier", () => {
     }
   });
 
+  it("uses private hosted proof inputs to remove completed Cloud Run and Gemini rows from manual packets", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-hosted-production-proof-"));
+    const cloudRunProofPath = join(tempDir, "cloudrun-deployment-transcript-packet.json");
+    const productionProofPath = join(tempDir, "verify-production-write.json");
+    const productUrl = "https://sme-workspace-sentinel.example.com";
+
+    try {
+      writeFileSync(
+        cloudRunProofPath,
+        `${JSON.stringify(
+          {
+            status: "ready-for-hosted-verification",
+            readyForHostedVerification: true,
+            releaseId: "release-test",
+            describeSummary: {
+              url: productUrl,
+              latestReadyRevisionName: "sme-workspace-sentinel-00023-test",
+              serviceAccountName: "sentinel-runtime@example.iam.gserviceaccount.com"
+            },
+            checks: [
+              { id: "service-url-present", status: "passed", evidence: productUrl },
+              { id: "ready-revision-present", status: "passed", evidence: "sme-workspace-sentinel-00023-test" }
+            ],
+            blockers: []
+          },
+          null,
+          2
+        )}\n`,
+        "utf8"
+      );
+      writeFileSync(
+        productionProofPath,
+        `${JSON.stringify(
+          {
+            overallStatus: "needs-review",
+            baseUrl: productUrl,
+            releaseId: "release-test",
+            releaseLineage: { status: "passed" },
+            results: [
+              {
+                id: "gemini-smoke-write-through",
+                status: "passed",
+                detail: "gemini-api on gemini-3.5-flash; hosted smoke proof captured."
+              },
+              {
+                id: "persistence-write-through",
+                status: "blocked",
+                detail: "6 persistence check(s)."
+              },
+              {
+                id: "workspace-bootstrap",
+                status: "blocked",
+                detail: "1 bootstrap check(s); attempted live API false."
+              },
+              {
+                id: "workspace-watch-renewal",
+                status: "blocked",
+                detail: "1 renewal check(s); attempted live API false."
+              }
+            ],
+            blockers: ["persistence-write-through: blocked", "workspace-bootstrap: blocked"]
+          },
+          null,
+          2
+        )}\n`,
+        "utf8"
+      );
+
+      const report = runVerifier([
+        "--url",
+        productUrl,
+        "--cloudrun-deployment-proof",
+        cloudRunProofPath,
+        "--production-proof",
+        productionProofPath
+      ]);
+      const progress = report.phaseProgressChart.rows.find((row) => row.phaseId === "hosted-proof-capture");
+      const hostedActions = report.manualInterventionPlan.actionRows
+        .filter((row) => row.phaseId === "hosted-proof-capture")
+        .map((row) => row.action)
+        .join(" ");
+
+      expect(progress?.done.join(" ")).toContain("Cloud Run service URL, revision, release id");
+      expect(progress?.done.join(" ")).toContain("hosted live Gemini API call evidence");
+      expect(progress?.pending.join(" ")).not.toContain("Cloud Run service URL, revision, release id");
+      expect(progress?.pending.join(" ")).not.toContain("hosted live Gemini API call evidence");
+      expect(hostedActions).not.toContain("Cloud Run service URL, revision, release id");
+      expect(hostedActions).not.toContain("hosted live Gemini API call evidence");
+      expect(hostedActions).toContain("hosted GCP persistence and Workspace OAuth/sync proof");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("routes private artifact instructions through SENTINEL_PRIVATE_ROOT when configured", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-private-root-"));
     const privateRoot = join(tempDir, "private-root");

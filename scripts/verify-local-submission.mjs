@@ -130,7 +130,9 @@ function parseArgs(argv) {
     vercelDeploymentsJsonPath: "",
     vercelProductUrl: "",
     vercelExpectedCommit: "",
-    cloudRunManifestPath: ""
+    cloudRunManifestPath: "",
+    cloudRunDeploymentProofPath: "",
+    productionProofPath: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -235,6 +237,40 @@ function parseArgs(argv) {
       args.cloudRunManifestPath = arg.slice("--cloudrun-manifest=".length);
       if (!args.cloudRunManifestPath) {
         throw new Error("--cloudrun-manifest requires a private non-secret rendered Cloud Run manifest path.");
+      }
+      continue;
+    }
+
+    if (arg === "--cloudrun-deployment-proof") {
+      args.cloudRunDeploymentProofPath = argv[index + 1] ?? "";
+      if (!args.cloudRunDeploymentProofPath) {
+        throw new Error("--cloudrun-deployment-proof requires a private non-secret Cloud Run deployment proof JSON path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--cloudrun-deployment-proof=")) {
+      args.cloudRunDeploymentProofPath = arg.slice("--cloudrun-deployment-proof=".length);
+      if (!args.cloudRunDeploymentProofPath) {
+        throw new Error("--cloudrun-deployment-proof requires a private non-secret Cloud Run deployment proof JSON path.");
+      }
+      continue;
+    }
+
+    if (arg === "--production-proof") {
+      args.productionProofPath = argv[index + 1] ?? "";
+      if (!args.productionProofPath) {
+        throw new Error("--production-proof requires a private non-secret hosted production verifier JSON path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--production-proof=")) {
+      args.productionProofPath = arg.slice("--production-proof=".length);
+      if (!args.productionProofPath) {
+        throw new Error("--production-proof requires a private non-secret hosted production verifier JSON path.");
       }
       continue;
     }
@@ -345,6 +381,7 @@ function parseArgs(argv) {
 
 function buildReport(args = { productUrl: "" }) {
   const gateReports = gates.map((gate) => runGate(gate, args));
+  const externalEvidenceState = buildExternalEvidenceState(args);
   const summary = gateReports.reduce(
     (totals, gate) => {
       totals[gate.status] += 1;
@@ -363,9 +400,9 @@ function buildReport(args = { productUrl: "" }) {
     ...unique(gateReports.flatMap((gate) => gate.nextActions)),
     ...(overallStatus === "passed" ? ["Run hosted production verification and attach live evidence before final Devpost submission."] : [])
   ];
-  const phasePlan = buildPhasePlan(gateReports);
-  const phaseProgressChart = buildPhaseProgressChart(phasePlan, gateReports);
-  const manualInterventionPlan = buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReports });
+  const phasePlan = buildPhasePlan(gateReports, externalEvidenceState);
+  const phaseProgressChart = buildPhaseProgressChart(phasePlan, gateReports, externalEvidenceState);
+  const manualInterventionPlan = buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReports, externalEvidenceState });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -389,7 +426,96 @@ function buildReport(args = { productUrl: "" }) {
   };
 }
 
-function buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReports }) {
+function buildExternalEvidenceState(args) {
+  return {
+    cloudRunDeployment: summarizeCloudRunDeploymentProof(args.cloudRunDeploymentProofPath),
+    production: summarizeProductionProof(args.productionProofPath)
+  };
+}
+
+function summarizeCloudRunDeploymentProof(filePath) {
+  const proof = readOptionalJson(filePath);
+  if (!proof.loaded) {
+    return { ...proof, status: "missing", ready: false, evidence: "Cloud Run deployment proof not provided." };
+  }
+
+  const report = proof.json;
+  const checks = Array.isArray(report.checks) ? report.checks : [];
+  const blockers = Array.isArray(report.blockers) ? report.blockers.map((item) => String(item)) : [];
+  const ready =
+    report.readyForHostedVerification === true ||
+    report.status === "ready-for-hosted-verification" ||
+    (checks.some((check) => check?.id === "service-url-present" && check.status === "passed") &&
+      checks.some((check) => check?.id === "ready-revision-present" && check.status === "passed"));
+
+  return {
+    ...proof,
+    status: ready && blockers.length === 0 ? "passed" : "blocked",
+    ready: ready && blockers.length === 0,
+    releaseId: cleanString(report.releaseId),
+    url: cleanString(report.describeSummary?.url) || evidenceForCheck(checks, "service-url-present"),
+    revision: cleanString(report.describeSummary?.latestReadyRevisionName),
+    serviceAccount: cleanString(report.describeSummary?.serviceAccountName),
+    evidence: ready
+      ? `Cloud Run deployment transcript ready for ${cleanString(report.releaseId) || "release"} at ${
+          cleanString(report.describeSummary?.url) || "hosted URL"
+        }.`
+      : blockers.join("; ") || "Cloud Run deployment proof is present but not ready for hosted verification.",
+    blockers
+  };
+}
+
+function summarizeProductionProof(filePath) {
+  const proof = readOptionalJson(filePath);
+  if (!proof.loaded) {
+    return { ...proof, status: "missing", resultsById: new Map(), evidence: "Hosted production proof not provided." };
+  }
+
+  const report = proof.json;
+  const results = Array.isArray(report.results) ? report.results : [];
+  const resultsById = new Map(results.map((result) => [String(result?.id || ""), result]));
+
+  return {
+    ...proof,
+    status: cleanString(report.overallStatus) || "unknown",
+    releaseId: cleanString(report.releaseId),
+    baseUrl: cleanString(report.baseUrl),
+    releaseLineageStatus: cleanString(report.releaseLineage?.status),
+    resultsById,
+    evidence: `Hosted production verifier ${cleanString(report.overallStatus) || "unknown"} for ${
+      cleanString(report.releaseId) || "release"
+    }.`
+  };
+}
+
+function readOptionalJson(filePath) {
+  if (!filePath) {
+    return { loaded: false, path: "", json: null, error: "" };
+  }
+
+  try {
+    return { loaded: true, path: filePath, json: JSON.parse(readFileSync(filePath, "utf8")), error: "" };
+  } catch (error) {
+    return {
+      loaded: false,
+      path: filePath,
+      json: null,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+function cleanString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function evidenceForCheck(checks, id) {
+  const check = checks.find((item) => item?.id === id);
+
+  return cleanString(check?.evidence);
+}
+
+function buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReports, externalEvidenceState = buildExternalEvidenceState({}) }) {
   const gatesById = new Map(gateReports.map((gate) => [gate.id, gate]));
   const progressByPhaseId = new Map(phaseProgressChart.rows.map((row) => [row.phaseId, row]));
   const actionRows = phasePlan.phases.flatMap((phase) => {
@@ -399,11 +525,12 @@ function buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReport
       ? phase.relatedGateIds
           .map((gateId) => gatesById.get(gateId))
           .filter(Boolean)
+          .filter((gate) => shouldIncludeGateCheckpoint({ phase, gate, externalEvidenceState }))
           .flatMap((gate) => manualRowsForGate({ phase, phaseProgress, gate }))
       : [];
     const evidenceRows = includePhaseRows
       ? phase.evidenceNeeded
-          .filter(() => phase.status !== "passed")
+          .filter((evidence) => phase.status !== "passed" && isEvidencePendingInProgress(phaseProgress, evidence))
           .map((evidence, index) =>
             manualInterventionRow({
               id: `${phase.id}-evidence-${index + 1}`,
@@ -455,6 +582,14 @@ function buildManualInterventionPlan({ phasePlan, phaseProgressChart, gateReport
       "Keep owner signoff notes and source evidence private until a human reviewer approves a redacted judge packet."
     ]
   };
+}
+
+function isEvidencePendingInProgress(phaseProgress, evidence) {
+  if (!phaseProgress) {
+    return true;
+  }
+
+  return phaseProgress.pending.some((pending) => pending === evidence || pending.includes(evidence) || evidence.includes(pending));
 }
 
 function buildPhaseFocusPlan({ phasePlan, phaseProgressChart, actionRows }) {
@@ -979,10 +1114,10 @@ function countBy(values) {
   }, {});
 }
 
-function buildPhaseProgressChart(phasePlan, gateReports) {
+function buildPhaseProgressChart(phasePlan, gateReports, externalEvidenceState = buildExternalEvidenceState({})) {
   const gatesById = new Map(gateReports.map((gate) => [gate.id, gate]));
   const rows = phasePlan.phases.map((phase) => {
-    const checkpoints = buildPhaseCheckpoints(phase, gatesById);
+    const checkpoints = buildPhaseCheckpoints(phase, gatesById, externalEvidenceState);
     const checkpointCounts = countCheckpoints(checkpoints);
     const currentPhaseRemainingPercent = remainingPercentFromCounts(checkpointCounts);
     const bucket = phase.bucket ?? bucketForPhase(phase);
@@ -1036,12 +1171,13 @@ function buildPhaseProgressChart(phasePlan, gateReports) {
   };
 }
 
-function buildPhaseCheckpoints(phase, gatesById) {
+function buildPhaseCheckpoints(phase, gatesById, externalEvidenceState = buildExternalEvidenceState({})) {
   const bucket = phase.bucket ?? bucketForPhase(phase);
   const cloudRunArtifactState = phase.id === "cloudrun-render-dry-run" ? readCloudRunRenderArtifactState() : null;
   const gateCheckpoints = phase.relatedGateIds
     .map((id) => gatesById.get(id))
     .filter(Boolean)
+    .filter((gate) => shouldIncludeGateCheckpoint({ phase, gate, externalEvidenceState }))
     .map((gate) => ({
       label: gate.label,
       source: `gate:${gate.id}`,
@@ -1051,7 +1187,7 @@ function buildPhaseCheckpoints(phase, gatesById) {
       evidence: gate.evidence
     }));
   const evidenceCheckpoints = phase.evidenceNeeded.map((item) =>
-    buildEvidenceCheckpoint({ phase, item, bucket, cloudRunArtifactState })
+    buildEvidenceCheckpoint({ phase, item, bucket, cloudRunArtifactState, externalEvidenceState })
   );
   const cloudRunRenderValueCheckpoints =
     phase.id === "cloudrun-render-dry-run" && cloudRunArtifactState
@@ -1061,9 +1197,21 @@ function buildPhaseCheckpoints(phase, gatesById) {
   return [...cloudRunRenderValueCheckpoints, ...evidenceCheckpoints, ...gateCheckpoints];
 }
 
-function buildEvidenceCheckpoint({ phase, item, bucket, cloudRunArtifactState }) {
+function shouldIncludeGateCheckpoint({ phase, gate, externalEvidenceState }) {
+  if (phase.id === "hosted-proof-capture" && gate.id === "cloudrun-deployment-template" && externalEvidenceState.cloudRunDeployment.ready) {
+    return false;
+  }
+
+  return true;
+}
+
+function buildEvidenceCheckpoint({ phase, item, bucket, cloudRunArtifactState, externalEvidenceState }) {
   if (phase.id === "cloudrun-render-dry-run" && cloudRunArtifactState) {
     return buildCloudRunEvidenceCheckpoint({ item, bucket, state: cloudRunArtifactState });
+  }
+
+  if (phase.id === "hosted-proof-capture") {
+    return buildHostedProofEvidenceCheckpoint({ item, bucket, externalEvidenceState });
   }
 
   return {
@@ -1073,6 +1221,95 @@ function buildEvidenceCheckpoint({ phase, item, bucket, cloudRunArtifactState })
     status: phase.status === "passed" ? "done" : bucket === "external-proof" ? "external-required" : "pending",
     blockers: phase.status === "passed" ? [] : [item],
     evidence: item
+  };
+}
+
+function buildHostedProofEvidenceCheckpoint({ item, bucket, externalEvidenceState }) {
+  const label = String(item);
+  const production = externalEvidenceState.production;
+  const result = (id) => production.resultsById?.get(id);
+
+  if (label.startsWith("Cloud Run service URL")) {
+    if (externalEvidenceState.cloudRunDeployment.ready) {
+      return {
+        label,
+        source: "private-hosted-artifact",
+        bucket,
+        status: "done",
+        blockers: [],
+        evidence: externalEvidenceState.cloudRunDeployment.evidence
+      };
+    }
+
+    return {
+      label,
+      source: "required-evidence",
+      bucket,
+      status: "external-required",
+      blockers: [label],
+      evidence: externalEvidenceState.cloudRunDeployment.error || externalEvidenceState.cloudRunDeployment.evidence
+    };
+  }
+
+  if (label.startsWith("hosted live Gemini")) {
+    const gemini = result("gemini-smoke-write-through");
+    if (gemini?.status === "passed" && /gemini-api/iu.test(String(gemini.detail || ""))) {
+      return {
+        label,
+        source: "private-hosted-artifact",
+        bucket,
+        status: "done",
+        blockers: [],
+        evidence: gemini.detail
+      };
+    }
+
+    return {
+      label,
+      source: production.loaded ? "private-hosted-artifact" : "required-evidence",
+      bucket,
+      status: production.loaded ? "blocked" : "external-required",
+      blockers: [gemini?.detail || label],
+      evidence: gemini?.detail || production.error || production.evidence
+    };
+  }
+
+  if (label.startsWith("hosted GCP persistence")) {
+    const persistence = result("persistence-write-through");
+    const bootstrap = result("workspace-bootstrap");
+    const renewal = result("workspace-watch-renewal");
+    const blockers = [persistence, bootstrap, renewal]
+      .filter((itemResult) => itemResult && itemResult.status !== "passed")
+      .map((itemResult) => `${itemResult.id}: ${itemResult.detail || itemResult.status}`);
+
+    if (production.loaded && blockers.length === 0 && persistence && bootstrap && renewal) {
+      return {
+        label,
+        source: "private-hosted-artifact",
+        bucket,
+        status: "done",
+        blockers: [],
+        evidence: "Persistence write-through and Workspace sync checks passed in hosted production verifier."
+      };
+    }
+
+    return {
+      label,
+      source: production.loaded ? "private-hosted-artifact" : "required-evidence",
+      bucket,
+      status: production.loaded ? "blocked" : "external-required",
+      blockers: blockers.length ? [label, ...blockers] : [label],
+      evidence: production.loaded ? blockers.join("; ") || production.evidence : production.error || production.evidence
+    };
+  }
+
+  return {
+    label,
+    source: "required-evidence",
+    bucket,
+    status: "external-required",
+    blockers: [label],
+    evidence: label
   };
 }
 
@@ -1399,7 +1636,7 @@ function ratingForCheckpointCounts(counts, bucket) {
   return Math.max(1, Math.min(5, Math.round((completedPoints / counts.total) * 4) + 1));
 }
 
-function buildPhasePlan(gateReports) {
+function buildPhasePlan(gateReports, externalEvidenceState = buildExternalEvidenceState({})) {
   const gatesById = new Map(gateReports.map((gate) => [gate.id, gate]));
   const sourceGate = gatesById.get("source-release");
   const provenanceGate = gatesById.get("project-provenance");
@@ -1549,7 +1786,7 @@ function buildPhasePlan(gateReports) {
     }
   ];
   const phasesWithProgress = phases.map((phase) => {
-    const checkpointCounts = countCheckpoints(buildPhaseCheckpoints(phase, gatesById));
+    const checkpointCounts = countCheckpoints(buildPhaseCheckpoints(phase, gatesById, externalEvidenceState));
     const locallyCompleteCodePhase =
       (phase.bucket ?? bucketForPhase(phase)) === "code-controllable" &&
       checkpointCounts.pending === 0 &&
