@@ -129,7 +129,8 @@ function parseArgs(argv) {
     judgeTestingProofPath: "",
     vercelDeploymentsJsonPath: "",
     vercelProductUrl: "",
-    vercelExpectedCommit: ""
+    vercelExpectedCommit: "",
+    cloudRunManifestPath: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -217,6 +218,23 @@ function parseArgs(argv) {
       args.vercelExpectedCommit = normalizeCommit(arg.slice("--vercel-expected-commit=".length));
       if (!args.vercelExpectedCommit) {
         throw new Error("--vercel-expected-commit requires a Git commit SHA.");
+      }
+      continue;
+    }
+
+    if (arg === "--cloudrun-manifest") {
+      args.cloudRunManifestPath = argv[index + 1] ?? "";
+      if (!args.cloudRunManifestPath) {
+        throw new Error("--cloudrun-manifest requires a private non-secret rendered Cloud Run manifest path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--cloudrun-manifest=")) {
+      args.cloudRunManifestPath = arg.slice("--cloudrun-manifest=".length);
+      if (!args.cloudRunManifestPath) {
+        throw new Error("--cloudrun-manifest requires a private non-secret rendered Cloud Run manifest path.");
       }
       continue;
     }
@@ -1671,6 +1689,10 @@ function childArgsForGate(definition, args) {
       ...(args.vercelProductUrl ? ["--url", args.vercelProductUrl] : []),
       ...(args.vercelExpectedCommit ? ["--expected-commit", args.vercelExpectedCommit] : [])
     ];
+  }
+
+  if (definition.id === "cloudrun-deployment-template") {
+    return [...(args.cloudRunManifestPath ? [`--manifest=${args.cloudRunManifestPath}`] : [])];
   }
 
   if (definition.id === "judge-access-readiness") {

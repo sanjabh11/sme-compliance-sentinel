@@ -1214,6 +1214,33 @@ describe("local XPRIZE submission verifier", () => {
     }
   });
 
+  it("passes a rendered Cloud Run manifest into the deployment gate without claiming hosted proof", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-cloudrun-current-"));
+    const manifestPath = join(tempDir, "cloudrun.service.rendered.yaml");
+
+    try {
+      writeFileSync(manifestPath, renderProductionCandidateManifest(), "utf8");
+      const report = runVerifier(["--cloudrun-manifest", manifestPath]);
+      const gatesById = Object.fromEntries(report.gates.map((gate) => [gate.id, gate]));
+      const phase = report.phasePlan.phases.find((item) => item.id === "cloudrun-render-dry-run");
+
+      expect(gatesById["cloudrun-deployment-template"].command).toContain(`--manifest=${manifestPath}`);
+      expect(gatesById["cloudrun-deployment-template"]).toMatchObject({
+        rawStatus: "ready-to-dry-run",
+        status: "warning",
+        externalRequired: true
+      });
+      expect(gatesById["cloudrun-deployment-template"].blockers).toEqual([]);
+      expect(gatesById["cloudrun-deployment-template"].nextActions.join(" ")).toContain("dry-run/deploy/describe");
+      expect(phase?.status).toBe("ready-to-dry-run");
+      expect(report.remainingBlockers.join(" ")).toContain("human-attestation");
+      expect(report.remainingBlockers.join(" ")).toContain("Private business evidence file");
+      expect(report.stopConditions.join(" ")).toContain("does not prove live Gemini API usage");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("passes a hosted URL into judge-access readiness without treating judge access as proven", () => {
     const report = runVerifier(["--url", "https://sme-workspace-sentinel.vercel.app/"]);
     const gatesById = Object.fromEntries(report.gates.map((gate) => [gate.id, gate]));
@@ -1728,6 +1755,53 @@ function buildVercelDeploymentExport({ sha }: { sha: string }) {
       ]
     }
   };
+}
+
+function renderProductionCandidateManifest() {
+  return readFileSync(join(process.cwd(), "cloudrun.service.yaml"), "utf8")
+    .replace("REGION-docker.pkg.dev/PROJECT_ID/sentinel/web:RELEASE_ID", "us-central1-docker.pkg.dev/sentinel-prod/sentinel/web:release-20260523-001")
+    .replace("sentinel-runtime@PROJECT_ID.iam.gserviceaccount.com", "sentinel-runtime@sentinel-prod.iam.gserviceaccount.com")
+    .replaceAll("https://YOUR-SERVICE-URL", "https://sme-workspace-sentinel-abc-uc.a.run.app")
+    .replace("https://youtu.be/YOUR_VIDEO", "https://youtu.be/sentinel-demo")
+    .replace('name: SENTINEL_RELEASE_ID\n              value: "RELEASE_ID"', 'name: SENTINEL_RELEASE_ID\n              value: "release-20260523-001"')
+    .replace(
+      'name: SENTINEL_SOURCE_COMMIT\n              value: "SOURCE_COMMIT"',
+      'name: SENTINEL_SOURCE_COMMIT\n              value: "0123456789abcdef0123456789abcdef01234567"'
+    )
+    .replace(
+      'name: SENTINEL_SOURCE_COMMIT_AT\n              value: "SOURCE_COMMIT_AT"',
+      'name: SENTINEL_SOURCE_COMMIT_AT\n              value: "2026-05-23T17:24:17.894Z"'
+    )
+    .replace(
+      'name: SENTINEL_PRIVATE_EVIDENCE_BUCKET\n              value: "gs://PROJECT_ID-sentinel-private-evidence"',
+      'name: SENTINEL_PRIVATE_EVIDENCE_BUCKET\n              value: "gs://sentinel-prod-sentinel-private-evidence"'
+    )
+    .replace('name: GOOGLE_CLOUD_PROJECT\n              value: "PROJECT_ID"', 'name: GOOGLE_CLOUD_PROJECT\n              value: "sentinel-prod"')
+    .replace(
+      'name: GOOGLE_CLOUD_PROJECT_NUMBER\n              value: "PROJECT_NUMBER"',
+      'name: GOOGLE_CLOUD_PROJECT_NUMBER\n              value: "123456789012"'
+    )
+    .replaceAll("projects/PROJECT_NUMBER/secrets/", "projects/123456789012/secrets/")
+    .replace(
+      'name: GOOGLE_CLOUD_BILLING_ACCOUNT_ID\n              value: "BILLING_ACCOUNT_ID"',
+      'name: GOOGLE_CLOUD_BILLING_ACCOUNT_ID\n              value: "000000-111111-222222"'
+    )
+    .replace(
+      'name: SENTINEL_GCP_BUDGET_ID\n              value: "billingAccounts/BILLING_ACCOUNT_ID/budgets/BUDGET_ID"',
+      'name: SENTINEL_GCP_BUDGET_ID\n              value: "billingAccounts/000000-111111-222222/budgets/budget-123"'
+    )
+    .replaceAll("projects/PROJECT_ID/", "projects/sentinel-prod/")
+    .replace("workspace-push@PROJECT_ID.iam.gserviceaccount.com", "workspace-push@sentinel-prod.iam.gserviceaccount.com")
+    .replace("YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com", "123456789012-abcdef.apps.googleusercontent.com")
+    .replace(
+      "projects/PROJECT_NUMBER/locations/global/keys/GEMINI_API_KEY_ID",
+      "projects/123456789012/locations/global/keys/gemini-key-123"
+    )
+    .replace('name: XPRIZE_ENTRANT_TYPE\n              value: ""', 'name: XPRIZE_ENTRANT_TYPE\n              value: "team"')
+    .replace(
+      'name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS\n              value: ""',
+      'name: SENTINEL_GEMINI_API_ALLOWED_SERVER_IPS\n              value: "34.10.10.10"'
+    );
 }
 
 function sha256Hex(value: string) {
