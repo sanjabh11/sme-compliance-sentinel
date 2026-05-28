@@ -16,6 +16,17 @@ type JudgeAccessCliReport = {
     passedChecks: string[];
     blockers: string[];
   };
+  privateTestingInstructionsProof: {
+    status: "missing" | "blocked" | "verified";
+    freeAccessStatus: "missing" | "blocked" | "verified";
+    repositoryAccessStatus: "missing" | "blocked" | "verified";
+    evidenceResponseStatus: "missing" | "blocked" | "verified";
+    blockers: string[];
+  };
+  privateTestingInstructionsTemplate?: {
+    path: string;
+    status: "written";
+  };
   accessChecks: Array<{
     id: string;
     status: "missing" | "blocked" | "private-on-request" | "ready" | "verified";
@@ -192,6 +203,127 @@ describe("judge access CLI verifier", () => {
       expect(report.hostedProductProof.status).toBe("blocked");
       expect(report.hostedProductProof.blockers.join(" ")).toContain("does not match product URL");
       expect(checksById["hosted-product-url"].status).toBe("missing");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes a private testing-instructions template without approving access", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-judge-testing-template-"));
+    const templatePath = join(tempDir, "private-testing-template.json");
+
+    try {
+      const report = runVerifier(baseEnv, ["--write-testing-template", templatePath]);
+      const template = JSON.parse(readFileSync(templatePath, "utf8")) as {
+        testingInstructionsConfigured: boolean;
+        credentialHandling: string;
+        privateHandling: string[];
+        stopConditions: string[];
+      };
+
+      expect(report.overallStatus).toBe("blocked");
+      expect(report.privateTestingInstructionsTemplate).toMatchObject({ status: "written", path: templatePath });
+      expect(template.testingInstructionsConfigured).toBe(false);
+      expect(template.credentialHandling).toBe("devpost-private-field");
+      expect(template.privateHandling.join(" ")).toContain("Keep real judge credentials out of this JSON");
+      expect(template.stopConditions.join(" ")).toContain("does not create judge access");
+      expect(JSON.stringify(template)).not.toContain("password:");
+      expect(readdirSync(tempDir).filter((path) => path.endsWith(".tmp"))).toEqual([]);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts private testing-instructions proof without requiring secrets in the report", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-judge-testing-proof-"));
+    const proofPath = join(tempDir, "private-testing-proof.json");
+    const productUrl = "https://sme-workspace-sentinel.example.com";
+    const repositoryUrl = "https://github.com/sanjabh11/sme-compliance-sentinel.git";
+
+    try {
+      writeFileSync(
+        proofPath,
+        JSON.stringify(
+          {
+            productUrl,
+            repositoryUrl,
+            reviewedAt: "2026-05-28T08:15:00.000Z",
+            testingInstructionsConfigured: true,
+            judgeAccessConfigured: true,
+            freeAccessThroughJudgingConfirmed: true,
+            judgingPeriodEndAt: "2026-09-15T17:00:00-07:00",
+            repositoryAccessConfigured: true,
+            sourceCodeCompleteConfirmed: true,
+            evidenceResponsePrivateContactConfigured: true,
+            evidenceResponseSlaBusinessDays: 2,
+            credentialHandling: "devpost-private-field",
+            testAccountPath: "Private Devpost instructions point judges to the hosted seeded demo flow.",
+            expectedWorkflow: [
+              "Open the hosted product URL.",
+              "Run the seeded Workspace risk scan demo.",
+              "Open Evidence Vault and Claim Guard."
+            ]
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+
+      const report = runVerifier(baseEnv, ["--url", productUrl, "--testing-instructions-proof", proofPath]);
+      const checksById = Object.fromEntries(report.accessChecks.map((check) => [check.id, check]));
+
+      expect(report.privateTestingInstructionsProof).toMatchObject({
+        status: "verified",
+        freeAccessStatus: "verified",
+        repositoryAccessStatus: "verified",
+        evidenceResponseStatus: "verified"
+      });
+      expect(checksById["private-testing-instructions"].status).toBe("private-on-request");
+      expect(checksById["judge-access-window"].status).toBe("private-on-request");
+      expect(checksById["repository-access"].status).toBe("private-on-request");
+      expect(checksById["evidence-response-owner"].status).toBe("private-on-request");
+      expect(report.blockers.join(" ")).toContain("Hosted product URL:");
+      expect(report.blockers.join(" ")).toContain("Public demo video access:");
+      expect(report.blockers.join(" ")).not.toContain("Private judge testing instructions:");
+      expect(JSON.stringify(report)).not.toContain("password:");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks private testing-instructions proof that contains secret-shaped text", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-judge-testing-proof-secret-"));
+    const proofPath = join(tempDir, "private-testing-proof.json");
+
+    try {
+      writeFileSync(
+        proofPath,
+        JSON.stringify(
+          {
+            productUrl: "https://sme-workspace-sentinel.example.com",
+            repositoryUrl: "https://github.com/sanjabh11/sme-compliance-sentinel.git",
+            reviewedAt: "2026-05-28T08:15:00.000Z",
+            testingInstructionsConfigured: true,
+            credentialHandling: "devpost-private-field",
+            testAccountPath: "password: do-not-store",
+            expectedWorkflow: ["Open app", "Run demo", "Check evidence"]
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+
+      const report = runVerifier(baseEnv, [
+        "--url",
+        "https://sme-workspace-sentinel.example.com",
+        "--testing-instructions-proof",
+        proofPath
+      ]);
+
+      expect(report.privateTestingInstructionsProof.status).toBe("blocked");
+      expect(report.privateTestingInstructionsProof.blockers.join(" ")).toContain("secret-shaped text");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

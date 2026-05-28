@@ -1145,6 +1145,56 @@ describe("local XPRIZE submission verifier", () => {
     }
   });
 
+  it("passes private testing-instructions proof into judge-access readiness without approving demo or business proof", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-testing-proof-"));
+    const proofPath = join(tempDir, "private-testing-proof.json");
+    const productUrl = "https://sme-workspace-sentinel.example.com";
+
+    try {
+      writeFileSync(
+        proofPath,
+        JSON.stringify(
+          {
+            productUrl,
+            repositoryUrl: "https://github.com/sanjabh11/sme-compliance-sentinel.git",
+            reviewedAt: "2026-05-28T08:15:00.000Z",
+            testingInstructionsConfigured: true,
+            judgeAccessConfigured: true,
+            freeAccessThroughJudgingConfirmed: true,
+            judgingPeriodEndAt: "2026-09-15T17:00:00-07:00",
+            repositoryAccessConfigured: true,
+            sourceCodeCompleteConfirmed: true,
+            evidenceResponsePrivateContactConfigured: true,
+            evidenceResponseSlaBusinessDays: 2,
+            credentialHandling: "devpost-private-field",
+            testAccountPath: "Private Devpost instructions point judges to the hosted seeded demo flow.",
+            expectedWorkflow: [
+              "Open the hosted product URL.",
+              "Run the seeded Workspace risk scan demo.",
+              "Open Evidence Vault and Claim Guard."
+            ]
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+
+      const report = runVerifier(["--url", productUrl, "--judge-testing-proof", proofPath]);
+      const gatesById = Object.fromEntries(report.gates.map((gate) => [gate.id, gate]));
+
+      expect(gatesById["judge-access-readiness"].command).toContain(`--testing-instructions-proof ${proofPath}`);
+      expect(gatesById["judge-access-readiness"].evidence).toContain("2 missing or blocked access check(s)");
+      expect(gatesById["judge-access-readiness"].blockers.join(" ")).not.toContain("Private judge testing instructions:");
+      expect(gatesById["judge-access-readiness"].blockers.join(" ")).not.toContain("Repository access:");
+      expect(gatesById["judge-access-readiness"].blockers.join(" ")).toContain("Hosted product URL:");
+      expect(gatesById["judge-access-readiness"].blockers.join(" ")).toContain("Public demo video access:");
+      expect(report.remainingBlockers.join(" ")).toContain("Business viability evidence packet");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("reflects verified Cloud Run handoff artifacts without treating them as hosted proof", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-cloudrun-artifacts-"));
     const valuesPath = join(tempDir, "cloudrun-render-values.json");

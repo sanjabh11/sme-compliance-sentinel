@@ -31,7 +31,9 @@ function parseArgs(argv) {
     strict: false,
     outPath: "",
     productUrl: "",
-    hostedProofPath: ""
+    hostedProofPath: "",
+    testingInstructionsProofPath: "",
+    writeTestingTemplatePath: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -90,6 +92,34 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--testing-instructions-proof") {
+      args.testingInstructionsProofPath = argv[index + 1] ?? "";
+      if (!args.testingInstructionsProofPath) {
+        throw new Error("--testing-instructions-proof requires a private testing-instructions proof JSON path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--testing-instructions-proof=")) {
+      args.testingInstructionsProofPath = arg.slice("--testing-instructions-proof=".length);
+      continue;
+    }
+
+    if (arg === "--write-testing-template") {
+      args.writeTestingTemplatePath = argv[index + 1] ?? "";
+      if (!args.writeTestingTemplatePath) {
+        throw new Error("--write-testing-template requires a private template output path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--write-testing-template=")) {
+      args.writeTestingTemplatePath = arg.slice("--write-testing-template=".length);
+      continue;
+    }
+
     throw new Error(`Unsupported argument: ${arg}`);
   }
 
@@ -102,12 +132,18 @@ function buildReport(args = { productUrl: "" }) {
   const hostedProductProof = verifyHostedProductProof(args.hostedProofPath, productUrl);
   const repositoryUrl = env("XPRIZE_REPOSITORY_URL") || packageJson.repository?.url || "";
   const demoVideoUrl = env("XPRIZE_DEMO_VIDEO_URL");
+  const privateTestingInstructionsProof = verifyPrivateTestingInstructionsProof(args.testingInstructionsProofPath, {
+    productUrl,
+    repositoryUrl,
+    demoVideoUrl
+  });
   const testingInstructions = env("XPRIZE_TESTING_INSTRUCTIONS");
   const testingInstructionsConfigured = flag("XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED");
   const testingInstructionsContainSecret = secretTextPatterns.some((pattern) => pattern.test(testingInstructions));
   const checks = buildChecks({
     productUrl,
     hostedProductProof,
+    privateTestingInstructionsProof,
     repositoryUrl,
     demoVideoUrl,
     testingInstructionsConfigured,
@@ -126,8 +162,11 @@ function buildReport(args = { productUrl: "" }) {
     demoVideoUrl: demoVideoUrl || "missing",
     testingInstructionsSummary: testingInstructionsConfigured
       ? "Private testing instructions are marked configured; this report intentionally withholds their contents."
-      : "Private testing instructions are not configured.",
+      : privateTestingInstructionsProof.status === "verified"
+        ? "Private testing instructions proof is verified and withheld from this packet."
+        : "Private testing instructions are not configured.",
     hostedProductProof,
+    privateTestingInstructionsProof,
     accessChecks: checks,
     smokeCommands: buildSmokeCommands(productUrl),
     evidenceResponsePlan: buildEvidenceResponsePlan(),
@@ -155,12 +194,16 @@ function buildChecks(input) {
   const productUrlReady = isHttpsUrl(input.productUrl) && flag("XPRIZE_WORKING_PROJECT_ACCESS_CONFIGURED");
   const hostedProofReady = input.hostedProductProof.status === "verified";
   const judgeAccessReady = productUrlReady && flag("XPRIZE_JUDGE_ACCESS_CONFIGURED");
+  const testingProofReady = input.privateTestingInstructionsProof.status === "verified";
+  const testingInstructionsReady = flag("XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED") || testingProofReady;
   const freeAccessReady =
     judgeAccessReady &&
     flag("XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED") &&
     env("XPRIZE_JUDGING_PERIOD_END_AT") === requiredJudgingPeriodEndAt;
+  const privateFreeAccessReady = input.privateTestingInstructionsProof.freeAccessStatus === "verified";
   const repositoryReady =
     Boolean(input.repositoryUrl) && flag("XPRIZE_REPOSITORY_ACCESS_CONFIGURED") && flag("XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED");
+  const privateRepositoryReady = input.privateTestingInstructionsProof.repositoryAccessStatus === "verified";
   const demoReady =
     isAllowedDemoUrl(input.demoVideoUrl) &&
     flag("XPRIZE_DEMO_VIDEO_UNDER_3_MIN_CONFIRMED") &&
@@ -194,11 +237,13 @@ function buildChecks(input) {
     check({
       id: "private-testing-instructions",
       label: "Private judge testing instructions",
-      status: input.testingInstructionsContainSecret ? "blocked" : input.testingInstructionsConfigured ? "private-on-request" : "missing",
+      status: input.testingInstructionsContainSecret ? "blocked" : testingInstructionsReady ? "private-on-request" : "missing",
       evidence: input.testingInstructionsContainSecret
         ? "Secret-shaped text was detected in XPRIZE_TESTING_INSTRUCTIONS."
         : input.testingInstructionsConfigured
           ? "Private testing instructions are configured and withheld from this packet."
+          : testingProofReady
+            ? "Private testing instructions proof is verified and withheld from this packet."
           : "XPRIZE_TESTING_INSTRUCTIONS_CONFIGURED is not confirmed.",
       fix: input.testingInstructionsContainSecret
         ? "Move credentials and support contacts out of environment/source text and into Devpost private testing instructions or an approved private channel."
@@ -210,9 +255,11 @@ function buildChecks(input) {
     check({
       id: "judge-access-window",
       label: "Judge access and free judging-period window",
-      status: freeAccessReady ? "ready" : "missing",
-      evidence: `Judge access ${flag("XPRIZE_JUDGE_ACCESS_CONFIGURED") ? "configured" : "missing"}; free access ${flag("XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED") ? "confirmed" : "missing"}; judging-period end ${env("XPRIZE_JUDGING_PERIOD_END_AT") || "missing"}.`,
-      fix: "Configure hosted judge access and confirm the product remains free through the official judging-period end before setting judge/free-access flags.",
+      status: freeAccessReady ? "ready" : privateFreeAccessReady ? "private-on-request" : "missing",
+      evidence: `Judge access ${flag("XPRIZE_JUDGE_ACCESS_CONFIGURED") ? "configured" : "missing"}; free access ${flag("XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED") ? "confirmed" : "missing"}; judging-period end ${env("XPRIZE_JUDGING_PERIOD_END_AT") || "missing"}; private free-access proof ${input.privateTestingInstructionsProof.freeAccessStatus}.`,
+      fix: privateFreeAccessReady
+        ? "Human-review the private free-access proof, then set XPRIZE_JUDGE_ACCESS_CONFIGURED and XPRIZE_FREE_JUDGE_ACCESS_THROUGH_JUDGING_CONFIRMED only if the proof is approved and still current."
+        : "Configure hosted judge access and confirm the product remains free through the official judging-period end before setting judge/free-access flags.",
       ownerRole: "founder",
       requiredBeforeSubmit: true,
       privateHandling: "Keep billing/hosting owner, credential rotation, and support contact in the private access packet."
@@ -220,9 +267,11 @@ function buildChecks(input) {
     check({
       id: "repository-access",
       label: "Repository access",
-      status: repositoryReady ? "ready" : "missing",
-      evidence: `${input.repositoryUrl || "Repository URL missing"}; repository access ${flag("XPRIZE_REPOSITORY_ACCESS_CONFIGURED") ? "confirmed" : "missing"}; source completeness ${flag("XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED") ? "confirmed" : "missing"}.`,
-      fix: "Keep the repository public or shared with required judge/testing accounts, then set repository/source flags only after access and source completeness are reviewed.",
+      status: repositoryReady ? "ready" : privateRepositoryReady ? "private-on-request" : "missing",
+      evidence: `${input.repositoryUrl || "Repository URL missing"}; repository access ${flag("XPRIZE_REPOSITORY_ACCESS_CONFIGURED") ? "confirmed" : "missing"}; source completeness ${flag("XPRIZE_SOURCE_CODE_COMPLETE_CONFIRMED") ? "confirmed" : "missing"}; private repository proof ${input.privateTestingInstructionsProof.repositoryAccessStatus}.`,
+      fix: privateRepositoryReady
+        ? "Human-review the private repository/source proof, then set repository/source flags only if the proof is approved and still current."
+        : "Keep the repository public or shared with required judge/testing accounts, then set repository/source flags only after access and source completeness are reviewed.",
       ownerRole: "engineering",
       requiredBeforeSubmit: true,
       privateHandling: "Do not include private evidence, .env files, invoices, customer findings, or judge credentials in the source repository."
@@ -240,9 +289,11 @@ function buildChecks(input) {
     check({
       id: "evidence-response-owner",
       label: "Two-business-day evidence response owner",
-      status: responseReady ? "private-on-request" : "missing",
-      evidence: `Private response contact ${flag("XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED") ? "configured" : "missing"}; response SLA ${env("XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS") || "missing"} business day(s).`,
-      fix: "Assign a human owner who can answer organizer evidence requests within two business days and access the private Evidence Vault.",
+      status: responseReady || input.privateTestingInstructionsProof.evidenceResponseStatus === "verified" ? "private-on-request" : "missing",
+      evidence: `Private response contact ${flag("XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED") ? "configured" : "missing"}; response SLA ${env("XPRIZE_EVIDENCE_RESPONSE_SLA_BUSINESS_DAYS") || "missing"} business day(s); private response-owner proof ${input.privateTestingInstructionsProof.evidenceResponseStatus}.`,
+      fix: input.privateTestingInstructionsProof.evidenceResponseStatus === "verified"
+        ? "Human-review the private response-owner proof, then set XPRIZE_EVIDENCE_RESPONSE_PRIVATE_CONTACT_CONFIGURED only if the owner and SLA are approved."
+        : "Assign a human owner who can answer organizer evidence requests within two business days and access the private Evidence Vault.",
       ownerRole: "founder",
       requiredBeforeSubmit: true,
       privateHandling: "Keep the owner's direct contact in private testing instructions, not public source or this JSON packet."
@@ -369,6 +420,121 @@ function verifyHostedProductProof(hostedProofPath, productUrl) {
     blockers,
     privateHandling:
       "Keep the full signed-out proof JSON and screenshots in private storage. Public submission copy may reference only the reviewed hosted URL status."
+  };
+}
+
+function verifyPrivateTestingInstructionsProof(testingProofPath, context) {
+  if (!testingProofPath) {
+    return {
+      status: "missing",
+      path: "missing",
+      reviewedAt: "missing",
+      freeAccessStatus: "missing",
+      repositoryAccessStatus: "missing",
+      evidenceResponseStatus: "missing",
+      blockers: ["No --testing-instructions-proof path was provided."]
+    };
+  }
+
+  const proof = readJsonFile(testingProofPath, "Private testing-instructions proof JSON");
+  const text = JSON.stringify(proof);
+  const productUrl = normalizeOptionalProductUrl(proof.productUrl || "");
+  const repositoryUrl = String(proof.repositoryUrl || "").trim();
+  const expectedWorkflow = Array.isArray(proof.expectedWorkflow)
+    ? proof.expectedWorkflow.map((step) => String(step || "").trim()).filter(Boolean)
+    : [];
+  const credentialHandling = String(proof.credentialHandling || "").trim();
+  const allowedCredentialHandling = new Set(["devpost-private-field", "approved-private-channel", "no-login-required-seeded-demo"]);
+  const responseSlaBusinessDays = Number(proof.evidenceResponseSlaBusinessDays ?? 0);
+  const privateTestingBlockers = [
+    ...(productUrl && context.productUrl && productUrl === context.productUrl
+      ? []
+      : [`Testing proof productUrl ${productUrl || "missing"} does not match product URL ${context.productUrl || "missing"}.`]),
+    ...(repositoryUrl && context.repositoryUrl && repositoryUrl === context.repositoryUrl
+      ? []
+      : [`Testing proof repositoryUrl ${repositoryUrl || "missing"} does not match repository URL ${context.repositoryUrl || "missing"}.`]),
+    ...(proof.testingInstructionsConfigured === true ? [] : ["testingInstructionsConfigured must be true."]),
+    ...(String(proof.testAccountPath || "").trim() ? [] : ["testAccountPath is required and must not contain credentials."]),
+    ...(expectedWorkflow.length >= 3 ? [] : ["expectedWorkflow must include at least three non-secret steps."]),
+    ...(allowedCredentialHandling.has(credentialHandling)
+      ? []
+      : [`credentialHandling must be one of ${Array.from(allowedCredentialHandling).join(", ")}.`]),
+    ...(isIsoTimestamp(proof.reviewedAt) ? [] : ["reviewedAt must be an ISO timestamp."]),
+    ...(secretTextPatterns.some((pattern) => pattern.test(text)) ? ["Testing proof contains secret-shaped text."] : [])
+  ];
+  const freeAccessBlockers = [
+    ...(proof.judgeAccessConfigured === true ? [] : ["judgeAccessConfigured must be true."]),
+    ...(proof.freeAccessThroughJudgingConfirmed === true ? [] : ["freeAccessThroughJudgingConfirmed must be true."]),
+    ...(proof.judgingPeriodEndAt === requiredJudgingPeriodEndAt
+      ? []
+      : [`judgingPeriodEndAt must equal ${requiredJudgingPeriodEndAt}.`])
+  ];
+  const repositoryAccessBlockers = [
+    ...(proof.repositoryAccessConfigured === true ? [] : ["repositoryAccessConfigured must be true."]),
+    ...(proof.sourceCodeCompleteConfirmed === true ? [] : ["sourceCodeCompleteConfirmed must be true."])
+  ];
+  const evidenceResponseBlockers = [
+    ...(proof.evidenceResponsePrivateContactConfigured === true
+      ? []
+      : ["evidenceResponsePrivateContactConfigured must be true."]),
+    ...(responseSlaBusinessDays > 0 && responseSlaBusinessDays <= requiredEvidenceResponseSlaBusinessDays
+      ? []
+      : [`evidenceResponseSlaBusinessDays must be between 1 and ${requiredEvidenceResponseSlaBusinessDays}.`])
+  ];
+  const blockers = [
+    ...privateTestingBlockers,
+    ...freeAccessBlockers,
+    ...repositoryAccessBlockers,
+    ...evidenceResponseBlockers
+  ];
+
+  return {
+    status: privateTestingBlockers.length ? "blocked" : "verified",
+    path: resolve(testingProofPath),
+    reviewedAt: proof.reviewedAt || "missing",
+    credentialHandling,
+    expectedWorkflowCount: expectedWorkflow.length,
+    freeAccessStatus: freeAccessBlockers.length || privateTestingBlockers.length ? "blocked" : "verified",
+    repositoryAccessStatus: repositoryAccessBlockers.length || privateTestingBlockers.length ? "blocked" : "verified",
+    evidenceResponseStatus: evidenceResponseBlockers.length || privateTestingBlockers.length ? "blocked" : "verified",
+    blockers,
+    privateHandling:
+      "Keep real credentials, private support contacts, and reset channels outside this proof JSON. Store them only in Devpost private testing instructions or approved private channels."
+  };
+}
+
+function buildPrivateTestingInstructionsTemplate(report) {
+  return {
+    generatedAt: new Date().toISOString(),
+    productUrl: report.productUrl === "missing" ? "" : report.productUrl,
+    repositoryUrl: report.repositoryUrl === "missing" ? "" : report.repositoryUrl,
+    reviewedAt: "",
+    reviewerRole: "founder/legal",
+    testingInstructionsConfigured: false,
+    judgeAccessConfigured: false,
+    freeAccessThroughJudgingConfirmed: false,
+    judgingPeriodEndAt: requiredJudgingPeriodEndAt,
+    repositoryAccessConfigured: false,
+    sourceCodeCompleteConfirmed: false,
+    evidenceResponsePrivateContactConfigured: false,
+    evidenceResponseSlaBusinessDays: requiredEvidenceResponseSlaBusinessDays,
+    credentialHandling: "devpost-private-field",
+    testAccountPath: "Describe the non-secret access path only. Do not include username, password, magic link, token, or private email.",
+    expectedWorkflow: [
+      "Open the hosted product URL in a signed-out or judge-like browser.",
+      "Run the seeded Workspace risk scan demo.",
+      "Open Evidence Vault, Claim Guard, and Judge Access Pack surfaces."
+    ],
+    supportOwnerAlias: "founder/legal private contact configured outside this JSON",
+    privateHandling: [
+      "Keep real judge credentials out of this JSON and out of Git.",
+      "Put credentials only in Devpost private testing instructions or an approved private channel.",
+      "Set boolean fields to true only after the owner has reviewed the matching private evidence."
+    ],
+    stopConditions: [
+      "This template does not create judge access, free access, demo video proof, or organizer approval.",
+      "Do not set XPRIZE judge-access flags from this template until the filled proof is reviewed and verified."
+    ]
   };
 }
 
@@ -656,6 +822,15 @@ function isAllowedSystemDirectorySymlink(path) {
 try {
   const args = parseArgs(process.argv.slice(2));
   const report = buildReport(args);
+
+  if (args.writeTestingTemplatePath) {
+    writeJson(args.writeTestingTemplatePath, buildPrivateTestingInstructionsTemplate(report));
+    report.privateTestingInstructionsTemplate = {
+      path: resolve(args.writeTestingTemplatePath),
+      status: "written",
+      privateHandling: "Fill this template outside Git and rerun with --testing-instructions-proof after human review."
+    };
+  }
 
   if (args.outPath) {
     writeJson(args.outPath, report);

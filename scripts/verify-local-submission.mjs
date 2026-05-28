@@ -117,7 +117,8 @@ function parseArgs(argv) {
     markdownOutPath: "",
     bundleDir: "",
     productUrl: "",
-    judgeHostedProofPath: ""
+    judgeHostedProofPath: "",
+    judgeTestingProofPath: ""
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -173,6 +174,20 @@ function parseArgs(argv) {
 
     if (arg.startsWith("--judge-hosted-proof=")) {
       args.judgeHostedProofPath = arg.slice("--judge-hosted-proof=".length);
+      continue;
+    }
+
+    if (arg === "--judge-testing-proof") {
+      args.judgeTestingProofPath = argv[index + 1] ?? "";
+      if (!args.judgeTestingProofPath) {
+        throw new Error("--judge-testing-proof requires a private testing-instructions proof JSON path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--judge-testing-proof=")) {
+      args.judgeTestingProofPath = arg.slice("--judge-testing-proof=".length);
       continue;
     }
 
@@ -1549,7 +1564,8 @@ function childArgsForGate(definition, args) {
   if (definition.id === "judge-access-readiness") {
     return [
       ...(args.productUrl ? ["--url", args.productUrl] : []),
-      ...(args.judgeHostedProofPath ? ["--hosted-proof", args.judgeHostedProofPath] : [])
+      ...(args.judgeHostedProofPath ? ["--hosted-proof", args.judgeHostedProofPath] : []),
+      ...(args.judgeTestingProofPath ? ["--testing-instructions-proof", args.judgeTestingProofPath] : [])
     ];
   }
 
