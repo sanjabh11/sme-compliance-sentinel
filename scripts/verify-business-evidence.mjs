@@ -488,7 +488,7 @@ function buildTemplate() {
     userBreakdown: [{ segment: "", count: 0 }],
     relatedPartyRevenueUsd: 0,
     relatedPartyNotes: "",
-    testimonials: [{ customerAlias: "", quoteRedacted: "", consentConfirmed: false }],
+    testimonials: [],
     artifacts: Object.fromEntries(
       privateArtifactBuckets.map((bucket) => [
         bucket,

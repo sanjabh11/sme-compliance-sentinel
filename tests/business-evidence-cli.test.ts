@@ -72,9 +72,13 @@ describe("business evidence CLI verifier", () => {
     try {
       const report = runVerifier(baseEnv, ["--write-template", templatePath, "--out", outPath]);
 
-      const template = JSON.parse(readFileSync(templatePath, "utf8")) as { artifacts: Record<string, unknown> };
+      const template = JSON.parse(readFileSync(templatePath, "utf8")) as {
+        artifacts: Record<string, unknown>;
+        testimonials: unknown[];
+      };
 
       expect(template).toMatchObject({ schema: "sme-sentinel-business-evidence-v1" });
+      expect(template.testimonials).toEqual([]);
       expect(Object.keys(template.artifacts)).toEqual(expect.arrayContaining(["testimonialConsents"]));
       expect(readFileSync(outPath, "utf8")).toContain('"overallStatus": "blocked"');
       expect(report.overallStatus).toBe("blocked");
