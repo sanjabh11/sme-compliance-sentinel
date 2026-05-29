@@ -1173,7 +1173,12 @@ function buildPhaseProgressChart(phasePlan, gateReports, externalEvidenceState =
 
 function buildPhaseCheckpoints(phase, gatesById, externalEvidenceState = buildExternalEvidenceState({})) {
   const bucket = phase.bucket ?? bucketForPhase(phase);
-  const cloudRunArtifactState = phase.id === "cloudrun-render-dry-run" ? readCloudRunRenderArtifactState() : null;
+  const cloudRunDeploymentSupersedesPrep =
+    phase.id === "cloudrun-render-dry-run" && externalEvidenceState.cloudRunDeployment.ready;
+  const cloudRunArtifactState =
+    phase.id === "cloudrun-render-dry-run" && !cloudRunDeploymentSupersedesPrep
+      ? readCloudRunRenderArtifactState()
+      : null;
   const gateCheckpoints = phase.relatedGateIds
     .map((id) => gatesById.get(id))
     .filter(Boolean)
@@ -1198,6 +1203,14 @@ function buildPhaseCheckpoints(phase, gatesById, externalEvidenceState = buildEx
 }
 
 function shouldIncludeGateCheckpoint({ phase, gate, externalEvidenceState }) {
+  if (
+    phase.id === "cloudrun-render-dry-run" &&
+    gate.id === "cloudrun-deployment-template" &&
+    externalEvidenceState.cloudRunDeployment.ready
+  ) {
+    return false;
+  }
+
   if (phase.id === "hosted-proof-capture" && gate.id === "cloudrun-deployment-template" && externalEvidenceState.cloudRunDeployment.ready) {
     return false;
   }
@@ -1206,6 +1219,17 @@ function shouldIncludeGateCheckpoint({ phase, gate, externalEvidenceState }) {
 }
 
 function buildEvidenceCheckpoint({ phase, item, bucket, cloudRunArtifactState, externalEvidenceState }) {
+  if (phase.id === "cloudrun-render-dry-run" && externalEvidenceState.cloudRunDeployment.ready) {
+    return {
+      label: item,
+      source: "private-cloudrun-deployment-proof",
+      bucket,
+      status: "done",
+      blockers: [],
+      evidence: `${item} superseded by verified Cloud Run deployment transcript: ${externalEvidenceState.cloudRunDeployment.evidence}`
+    };
+  }
+
   if (phase.id === "cloudrun-render-dry-run" && cloudRunArtifactState) {
     return buildCloudRunEvidenceCheckpoint({ item, bucket, state: cloudRunArtifactState });
   }

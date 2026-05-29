@@ -1752,8 +1752,14 @@ describe("local XPRIZE submission verifier", () => {
         productionProofPath
       ]);
       const progress = report.phaseProgressChart.rows.find((row) => row.phaseId === "hosted-proof-capture");
+      const cloudRunPrepProgress = report.phaseProgressChart.rows.find((row) => row.phaseId === "cloudrun-render-dry-run");
+      const cloudRunPrepPhase = report.phasePlan.phases.find((row) => row.id === "cloudrun-render-dry-run");
       const hostedActions = report.manualInterventionPlan.actionRows
         .filter((row) => row.phaseId === "hosted-proof-capture")
+        .map((row) => row.action)
+        .join(" ");
+      const cloudRunPrepActions = report.manualInterventionPlan.actionRows
+        .filter((row) => row.phaseId === "cloudrun-render-dry-run")
         .map((row) => row.action)
         .join(" ");
 
@@ -1761,6 +1767,11 @@ describe("local XPRIZE submission verifier", () => {
       expect(progress?.done.join(" ")).toContain("hosted live Gemini API call evidence");
       expect(progress?.pending.join(" ")).not.toContain("Cloud Run service URL, revision, release id");
       expect(progress?.pending.join(" ")).not.toContain("hosted live Gemini API call evidence");
+      expect(cloudRunPrepProgress?.ratingOutOf5).toBe(5);
+      expect(cloudRunPrepProgress?.pending).toEqual([]);
+      expect(cloudRunPrepPhase?.status).toBe("local-ready-for-external-dry-run");
+      expect(report.phasePlan.recommendedNextCodeControllableAction.status).toBe("not-needed");
+      expect(cloudRunPrepActions).toBe("");
       expect(hostedActions).not.toContain("Cloud Run service URL, revision, release id");
       expect(hostedActions).not.toContain("hosted live Gemini API call evidence");
       expect(hostedActions).toContain("hosted GCP persistence and Workspace OAuth/sync proof");
