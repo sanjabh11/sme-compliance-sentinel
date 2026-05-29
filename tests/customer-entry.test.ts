@@ -11,6 +11,7 @@ describe("customer entry route", () => {
     expect(rootPage).toContain("CustomerDemoClient");
     expect(rootPage).not.toContain("DashboardClient");
     expect(adminPage).toContain("DashboardClient");
+    expect(adminPage).toContain("AdminUnlockClient");
     expect(adminPage).toContain("getDashboardSnapshot");
   });
 

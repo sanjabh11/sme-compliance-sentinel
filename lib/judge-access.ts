@@ -202,11 +202,11 @@ function buildSmokeCommands(productUrl: string): JudgeAccessSmokeCommand[] {
       redactionRequired: false
     }),
     smokeCommand({
-      id: "readiness",
-      label: "Readiness JSON loads",
-      command: `curl -s ${base}/api/readiness`,
-      expectedEvidence: "JSON response includes readiness and current blockers.",
-      redactionRequired: true
+      id: "customer-demo",
+      label: "Customer demo loads",
+      command: `curl -I ${base}/demo/customer`,
+      expectedEvidence: "HTTP 200 with customer-safe demo copy and no internal proof language.",
+      redactionRequired: false
     }),
     smokeCommand({
       id: "submission-gate",

@@ -35,8 +35,9 @@ describe("judge access pack", () => {
     );
     expect(pack.walkthrough.find((step) => step.id === "hybrid-scan")?.proofBoundary).toContain("provider=gemini-api");
     expect(pack.smokeCommands.map((command) => command.id)).toEqual(
-      expect.arrayContaining(["homepage", "readiness", "submission-gate", "judge-access-pack", "claim-guard"])
+      expect.arrayContaining(["homepage", "customer-demo", "submission-gate", "judge-access-pack", "claim-guard"])
     );
+    expect(pack.smokeCommands.map((command) => command.id)).not.toContain("readiness");
     expect(pack.smokeCommands.find((command) => command.id === "judge-access-pack")?.command).toContain(
       "/api/xprize/judge-access-pack"
     );

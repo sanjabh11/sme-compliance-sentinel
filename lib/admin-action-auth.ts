@@ -1,43 +1,66 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import {
+  adminSessionCookieName,
+  adminSessionValuePrefix,
+  adminTokenHeader,
+  buildAdminSessionHashInput,
+  getExpectedAdminToken,
+  requiresAdminProtection
+} from "@/lib/admin-session";
 
 export type AdminActionAuthResult =
-  | { ok: true; mode: "local-bypass" | "token" }
+  | { ok: true; mode: "local-bypass" | "token" | "session" }
   | { ok: false; status: 401 | 403 | 503; error: string };
 
-const adminTokenHeader = "x-sentinel-admin-token";
-
 export function authorizeAdminAction(request: Request, actionLabel = "production operator action"): AdminActionAuthResult {
-  if (!requiresAdminToken()) {
+  if (!requiresAdminProtection()) {
     return { ok: true, mode: "local-bypass" };
   }
 
-  const expectedToken = process.env.SENTINEL_ADMIN_ACTION_TOKEN?.trim() ?? "";
+  const expectedToken = getExpectedAdminToken();
   if (!expectedToken) {
     return {
       ok: false,
       status: 503,
-      error: `Production ${actionLabel} requires SENTINEL_ADMIN_ACTION_TOKEN from Secret Manager.`
+      error: `Admin-only ${actionLabel} requires SENTINEL_ADMIN_ACTION_TOKEN from Secret Manager.`
     };
   }
 
   const providedToken = readProvidedToken(request);
-  if (!providedToken) {
+  const providedSession = readAdminSessionCookie(request.headers.get("cookie") ?? "");
+  if (!providedToken && !providedSession) {
     return {
       ok: false,
       status: 401,
-      error: `Missing ${adminTokenHeader} or Bearer token for production ${actionLabel}.`
+      error: `Missing ${adminTokenHeader}, Bearer token, or admin session for ${actionLabel}.`
     };
   }
 
-  if (!safeEqual(providedToken, expectedToken)) {
-    return { ok: false, status: 403, error: `Invalid production ${actionLabel} token.` };
+  if (providedToken && safeEqual(providedToken, expectedToken)) {
+    return { ok: true, mode: "token" };
   }
 
-  return { ok: true, mode: "token" };
+  if (providedSession && isValidAdminSessionValue(providedSession, expectedToken)) {
+    return { ok: true, mode: "session" };
+  }
+
+  return { ok: false, status: 403, error: `Invalid ${actionLabel} token or admin session.` };
 }
 
-function requiresAdminToken() {
-  return process.env.SENTINEL_MOCK_MODE === "false" || process.env.SENTINEL_EVIDENCE_MODE === "production";
+export function buildAdminSessionValue(token = getExpectedAdminToken()) {
+  if (!token) {
+    return "";
+  }
+
+  return `${adminSessionValuePrefix}${createHash("sha256").update(buildAdminSessionHashInput(token)).digest("hex")}`;
+}
+
+export function isValidAdminSessionValue(value: string | undefined, expectedToken = getExpectedAdminToken()) {
+  if (!value || !expectedToken || !value.startsWith(adminSessionValuePrefix)) {
+    return false;
+  }
+
+  return safeEqual(value, buildAdminSessionValue(expectedToken));
 }
 
 function readProvidedToken(request: Request) {
@@ -49,6 +72,15 @@ function readProvidedToken(request: Request) {
   const authorization = request.headers.get("authorization")?.trim();
   const bearerMatch = authorization?.match(/^Bearer\s+(.+)$/iu);
   return bearerMatch?.[1]?.trim() ?? "";
+}
+
+function readAdminSessionCookie(cookieHeader: string) {
+  const cookies = cookieHeader
+    .split(";")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const match = cookies.find((item) => item.startsWith(`${adminSessionCookieName}=`));
+  return match?.slice(adminSessionCookieName.length + 1).trim() ?? "";
 }
 
 function safeEqual(left: string, right: string) {
