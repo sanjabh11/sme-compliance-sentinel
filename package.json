@@ -24,6 +24,7 @@
     "verify:gemini-model": "node scripts/verify-gemini-model-readiness.mjs",
     "verify:vercel-deployment": "node scripts/verify-vercel-deployment.mjs",
     "verify:hosted-copy": "node scripts/verify-hosted-copy-smoke.mjs",
+    "verify:hosted-lockdown": "node scripts/verify-hosted-lockdown.mjs",
     "prepare:local-submission-bundle": "node scripts/verify-local-submission.mjs --bundle-dir",
     "prepare:submission-summary": "node scripts/verify-local-submission.mjs --markdown-out",
     "prepare:manual-intervention": "node scripts/verify-local-submission.mjs --manual-packets-dir",
