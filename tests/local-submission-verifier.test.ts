@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn, type ChildProcessByStdio } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
 type LocalSubmissionReport = {
@@ -270,6 +271,8 @@ const localSubmissionEnv = {
   XPRIZE_THIRD_PARTY_REVIEW_APPROVED: "false",
   XPRIZE_IP_OWNERSHIP_REVIEW_APPROVED: "false",
   XPRIZE_DEMO_VIDEO_ASSET_CLEARANCE_CONFIRMED: "false",
+  NEXT_PUBLIC_PRODUCT_URL: "",
+  VERCEL_PROJECT_PRODUCTION_URL: "",
   VERCEL_PROJECT_ID: "prj_test",
   VERCEL_ORG_ID: "team_test"
 };
@@ -289,6 +292,7 @@ describe("local XPRIZE submission verifier", () => {
         "project-provenance",
         "license-ip-review",
         "customer-demo-deployment-lineage",
+        "hosted-public-surface-lockdown",
         "cloudrun-deployment-template",
         "judge-access-readiness",
         "business-evidence-readiness"
@@ -319,6 +323,12 @@ describe("local XPRIZE submission verifier", () => {
       externalRequired: true
     });
     expect(gatesById["customer-demo-deployment-lineage"].evidence).toContain("Product URL");
+    expect(gatesById["hosted-public-surface-lockdown"]).toMatchObject({
+      rawStatus: "unreadable",
+      status: "blocked",
+      externalRequired: false
+    });
+    expect(gatesById["hosted-public-surface-lockdown"].evidence).toContain("requires a URL");
     expect(gatesById["judge-access-readiness"]).toMatchObject({
       rawStatus: "blocked",
       status: "blocked",
@@ -1182,12 +1192,14 @@ describe("local XPRIZE submission verifier", () => {
     }
   });
 
-  it("marks customer demo deployment phase passed when Vercel lineage matches expected source", () => {
+  it("marks customer demo deployment phase passed when Vercel lineage and hosted lockdown both pass", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-local-submission-vercel-current-"));
     const deploymentsPath = join(tempDir, "vercel-deployments.json");
     const expectedCommit = "3333333333333333333333333333333333333333";
+    let fixture: Awaited<ReturnType<typeof startHostedLockdownFixture>> | undefined;
 
     try {
+      fixture = await startHostedLockdownFixture();
       writeFileSync(deploymentsPath, JSON.stringify(buildVercelDeploymentExport({ sha: expectedCommit }), null, 2), "utf8");
       const report = runVerifier([
         "--vercel-deployments-json",
@@ -1195,7 +1207,9 @@ describe("local XPRIZE submission verifier", () => {
         "--vercel-url",
         "https://sme-workspace-sentinel.vercel.app",
         "--vercel-expected-commit",
-        expectedCommit
+        expectedCommit,
+        "--hosted-lockdown-url",
+        fixture.url
       ]);
       const gatesById = Object.fromEntries(report.gates.map((gate) => [gate.id, gate]));
       const phase = report.phasePlan.phases.find((item) => item.id === "customer-demo-deployment");
@@ -1205,11 +1219,17 @@ describe("local XPRIZE submission verifier", () => {
         status: "passed",
         externalRequired: false
       });
+      expect(gatesById["hosted-public-surface-lockdown"]).toMatchObject({
+        rawStatus: "verified",
+        status: "passed",
+        externalRequired: false
+      });
       expect(phase?.status).toBe("passed");
       expect(report.manualInterventionPlan.actionRows.some((row) => row.phaseId === "customer-demo-deployment")).toBe(
         false
       );
     } finally {
+      await fixture?.close();
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
@@ -1860,6 +1880,132 @@ function buildVercelDeploymentExport({ sha }: { sha: string }) {
       ]
     }
   };
+}
+
+async function startHostedLockdownFixture() {
+  const child = spawn(process.execPath, ["-e", hostedLockdownFixtureScript()], {
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  const port = await waitForFixturePort(child);
+
+  return {
+    url: `http://127.0.0.1:${port}`,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+          resolve();
+          return;
+        }
+
+        child.once("exit", () => resolve());
+        child.once("error", reject);
+        child.kill();
+
+        setTimeout(() => {
+          if (child.exitCode === null && child.signalCode === null) {
+            child.kill("SIGKILL");
+          }
+          resolve();
+        }, 1000).unref();
+      })
+  };
+}
+
+function waitForFixturePort(child: ChildProcessByStdio<null, Readable, Readable>) {
+  return new Promise<number>((resolve, reject) => {
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Hosted lockdown fixture did not start. stderr=${stderr}`));
+    }, 5000);
+
+    function cleanup() {
+      clearTimeout(timer);
+      child.stdout.off("data", onStdout);
+      child.stderr.off("data", onStderr);
+      child.off("exit", onExit);
+      child.off("error", onError);
+    }
+
+    function onStdout(chunk: Buffer) {
+      stdout += chunk.toString("utf8");
+      const match = /PORT=(\d+)/u.exec(stdout);
+      if (match) {
+        cleanup();
+        resolve(Number(match[1]));
+      }
+    }
+
+    function onStderr(chunk: Buffer) {
+      stderr += chunk.toString("utf8");
+    }
+
+    function onExit(code: number | null, signal: NodeJS.Signals | null) {
+      cleanup();
+      reject(new Error(`Hosted lockdown fixture exited before ready. code=${code ?? "null"} signal=${signal ?? "null"} stderr=${stderr}`));
+    }
+
+    function onError(error: Error) {
+      cleanup();
+      reject(error);
+    }
+
+    child.stdout.on("data", onStdout);
+    child.stderr.on("data", onStderr);
+    child.once("exit", onExit);
+    child.once("error", onError);
+  });
+}
+
+function hostedLockdownFixtureScript() {
+  return `
+    const { createServer } = require("node:http");
+    const server = createServer((request, response) => {
+      const url = new URL(request.url || "/", "http://127.0.0.1");
+      const html = (status, body, headers = {}) => {
+        response.writeHead(status, { "content-type": "text/html; charset=utf-8", ...headers });
+        response.end(body);
+      };
+      const json = (status, body, headers = {}) => {
+        response.writeHead(status, { "content-type": "application/json", ...headers });
+        response.end(JSON.stringify(body));
+      };
+
+      if (url.pathname === "/" || url.pathname === "/demo/customer") {
+        html(200, "<main>Customer demo</main>");
+        return;
+      }
+
+      if (
+        url.pathname === "/api/xprize/judge-access-pack" ||
+        url.pathname === "/api/xprize/submission-gate" ||
+        url.pathname === "/api/compliance/claims"
+      ) {
+        json(200, { ok: true });
+        return;
+      }
+
+      if (url.pathname === "/admin") {
+        html(200, '<main class="admin-unlock-shell">Admin console locked</main>', {
+          "cache-control": "private, no-cache, no-store"
+        });
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/")) {
+        json(401, { ok: false, error: "Missing operator access." }, { "cache-control": "no-store" });
+        return;
+      }
+
+      html(404, "missing");
+    });
+
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      process.stdout.write("PORT=" + address.port + "\\n");
+    });
+  `;
 }
 
 function renderProductionCandidateManifest() {

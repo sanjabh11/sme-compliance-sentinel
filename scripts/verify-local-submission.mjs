@@ -90,6 +90,14 @@ const gates = [
     summarize: summarizeVercelDeployment
   },
   {
+    id: "hosted-public-surface-lockdown",
+    label: "Hosted public surface lockdown",
+    command: "npm run verify:hosted-lockdown",
+    script: "scripts/verify-hosted-lockdown.mjs",
+    priority: 5,
+    summarize: summarizeHostedLockdown
+  },
+  {
     id: "cloudrun-deployment-template",
     label: "Cloud Run deployment evidence template",
     command: "npm run verify:cloudrun-deployment",
@@ -130,6 +138,8 @@ function parseArgs(argv) {
     vercelDeploymentsJsonPath: "",
     vercelProductUrl: "",
     vercelExpectedCommit: "",
+    hostedLockdownProductUrl: "",
+    hostedLockdownOperatorFilePath: "",
     cloudRunManifestPath: "",
     cloudRunDeploymentProofPath: "",
     productionProofPath: ""
@@ -220,6 +230,34 @@ function parseArgs(argv) {
       args.vercelExpectedCommit = normalizeCommit(arg.slice("--vercel-expected-commit=".length));
       if (!args.vercelExpectedCommit) {
         throw new Error("--vercel-expected-commit requires a Git commit SHA.");
+      }
+      continue;
+    }
+
+    if (arg === "--hosted-lockdown-url") {
+      args.hostedLockdownProductUrl = normalizeHostedLockdownUrl(argv[index + 1] ?? "", arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--hosted-lockdown-url=")) {
+      args.hostedLockdownProductUrl = normalizeHostedLockdownUrl(arg.slice("--hosted-lockdown-url=".length), "--hosted-lockdown-url");
+      continue;
+    }
+
+    if (arg === "--hosted-lockdown-operator-file") {
+      args.hostedLockdownOperatorFilePath = argv[index + 1] ?? "";
+      if (!args.hostedLockdownOperatorFilePath) {
+        throw new Error("--hosted-lockdown-operator-file requires a private operator token file path.");
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--hosted-lockdown-operator-file=")) {
+      args.hostedLockdownOperatorFilePath = arg.slice("--hosted-lockdown-operator-file=".length);
+      if (!args.hostedLockdownOperatorFilePath) {
+        throw new Error("--hosted-lockdown-operator-file requires a private operator token file path.");
       }
       continue;
     }
@@ -917,6 +955,7 @@ function checklistForManualRow(phase, action) {
       "Trigger a Vercel production redeploy only after the intended source commit is pushed.",
       "Export the fresh Vercel deployment metadata to a private JSON file; do not commit Vercel dashboard exports or tokens.",
       "Rerun `npm run verify:vercel-deployment` with the customer URL and private deployments JSON, then retain the readiness packet outside Git.",
+      "Rerun `npm run verify:hosted-lockdown` from a signed-out context and keep the operator token in a private file if operator access is checked.",
       "Keep Vercel customer-demo freshness separate from Cloud Run, Gemini, Workspace OAuth, revenue, judge-access, or organizer proof."
     ];
   }
@@ -986,6 +1025,7 @@ function privateArtifactPathsForGate(gateId) {
       "/secure/local/vercel-deployments.json",
       "/secure/local/vercel-deployment-readiness.json"
     ],
+    "hosted-public-surface-lockdown": ["/secure/local/hosted-lockdown-proof.json"],
     "judge-access-readiness": ["/secure/local/judge-access-readiness.json", "artifacts/hosted-proof/$SENTINEL_RELEASE_ID/judge-access-pack.json"],
     "business-evidence-readiness": ["/secure/local/business-evidence-template.json", "/secure/local/business-evidence.json"]
   };
@@ -1020,7 +1060,8 @@ function privateArtifactPathsForPhase(phaseId) {
     ],
     "customer-demo-deployment": [
       "/secure/local/vercel-deployments.json",
-      "/secure/local/vercel-deployment-readiness.json"
+      "/secure/local/vercel-deployment-readiness.json",
+      "/secure/local/hosted-lockdown-proof.json"
     ],
     "business-traction-proof": ["/secure/local/business-evidence-template.json", "/secure/local/business-evidence.json"]
   };
@@ -1668,10 +1709,12 @@ function buildPhasePlan(gateReports, externalEvidenceState = buildExternalEviden
   const cloudRunGate = gatesById.get("cloudrun-deployment-template");
   const geminiGate = gatesById.get("gemini-model-readiness");
   const vercelDeploymentGate = gatesById.get("customer-demo-deployment-lineage");
+  const hostedLockdownGate = gatesById.get("hosted-public-surface-lockdown");
   const humanReviewPassed = provenanceGate?.status === "passed" && licenseGate?.status === "passed";
   const geminiModelReady = geminiGate?.status === "passed";
   const cloudRunReady = cloudRunGate?.rawStatus === "ready-to-dry-run" && geminiModelReady;
   const customerDemoReady = vercelDeploymentGate?.status === "passed";
+  const hostedPublicSurfaceLocked = hostedLockdownGate?.status === "passed";
 
   const phases = [
     {
@@ -1764,20 +1807,25 @@ function buildPhasePlan(gateReports, externalEvidenceState = buildExternalEviden
       bucket: "external-proof",
       priority: 5,
       owner: "engineering",
-      status: customerDemoReady ? "passed" : "external-required",
-      relatedGateIds: ["customer-demo-deployment-lineage"],
+      status: customerDemoReady && hostedPublicSurfaceLocked ? "passed" : "external-required",
+      relatedGateIds: ["customer-demo-deployment-lineage", "hosted-public-surface-lockdown"],
       commands: [
         "npm run verify:vercel-deployment -- --deployments-json /secure/local/vercel-deployments.json --url https://sme-workspace-sentinel.vercel.app --strict",
+        "npm run verify:hosted-lockdown -- --url https://sme-workspace-sentinel.vercel.app --out /secure/local/hosted-lockdown-proof.json --strict",
         "npx vercel deploy --prod --yes",
-        "npm run verify:vercel-deployment -- --deployments-json /secure/local/vercel-deployments.json --url https://sme-workspace-sentinel.vercel.app --strict --out /secure/local/vercel-deployment-readiness.json"
+        "npm run verify:vercel-deployment -- --deployments-json /secure/local/vercel-deployments.json --url https://sme-workspace-sentinel.vercel.app --strict --out /secure/local/vercel-deployment-readiness.json",
+        "npm run verify:hosted-lockdown -- --url https://sme-workspace-sentinel.vercel.app --operator-file /secure/local/admin-token.txt --out /secure/local/hosted-lockdown-proof.json --strict"
       ],
       evidenceNeeded: [
         "Vercel production deployment is READY for the customer-facing demo URL",
         "Vercel production deployment commit matches the pushed source commit",
-        "private Vercel deployment export and lineage readiness packet retained outside Git"
+        "public customer and signed-out judge smoke routes remain reachable",
+        "admin/internal proof APIs are blocked signed out with no-store responses",
+        "private Vercel deployment export, lineage packet, and hosted lockdown packet retained outside Git"
       ],
       stopConditions: [
         "Do not send the customer-facing demo link as current-source proof until Vercel production lineage matches the pushed commit.",
+        "Do not expose internal proof APIs publicly; signed-out internal API checks must return 401/403 before customer outreach.",
         "Do not treat Vercel customer-demo deployment as Cloud Run, Gemini, GCP, Workspace OAuth, revenue, judge-access, or organizer proof."
       ]
     },
@@ -1952,6 +2000,15 @@ function childArgsForGate(definition, args) {
     ];
   }
 
+  if (definition.id === "hosted-public-surface-lockdown") {
+    const url = args.hostedLockdownProductUrl || args.vercelProductUrl || args.productUrl;
+
+    return [
+      ...(url ? ["--url", url] : []),
+      ...(args.hostedLockdownOperatorFilePath ? ["--operator-file", args.hostedLockdownOperatorFilePath] : [])
+    ];
+  }
+
   if (definition.id === "cloudrun-deployment-template") {
     return [...(args.cloudRunManifestPath ? [`--manifest=${args.cloudRunManifestPath}`] : [])];
   }
@@ -2091,6 +2148,28 @@ function summarizeVercelDeployment(report) {
         ? report.nextActions
         : [
             "Trigger a Vercel production redeploy, export current deployment metadata privately, and rerun Vercel deployment lineage verification."
+      ]
+  };
+}
+
+function summarizeHostedLockdown(report) {
+  const status = report.overallStatus === "verified" ? "passed" : "blocked";
+  const sections = Array.isArray(report.sections) ? report.sections : [];
+  const readySections = sections.filter((section) => section.status === "ready").length;
+  const blockedSections = sections.filter((section) => section.status === "blocked").length;
+  const operatorSection = sections.find((section) => section.id === "operator-readiness");
+
+  return {
+    rawStatus: report.overallStatus ?? "unknown",
+    status,
+    externalRequired: status !== "passed",
+    evidence: `${readySections}/${sections.length} hosted section(s) ready; ${blockedSections} blocked section(s); operator check ${operatorSection?.status ?? "missing"}.`,
+    blockers: report.blockers ?? [],
+    nextActions:
+      report.nextActions?.length > 0
+        ? report.nextActions
+        : [
+            "Rerun hosted lockdown verification after every Vercel or Cloud Run public deploy and preserve the private proof packet."
           ]
   };
 }
@@ -2188,6 +2267,35 @@ function normalizeProductUrl(value, source) {
   }
 
   return normalized;
+}
+
+function normalizeHostedLockdownUrl(value, source) {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) {
+    throw new Error(`${source} requires a URL.`);
+  }
+
+  const candidate = trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
+
+  try {
+    const url = new URL(candidate);
+    const isLocal = ["localhost", "127.0.0.1"].includes(url.hostname);
+    if (url.protocol !== "https:" && !(isLocal && url.protocol === "http:")) {
+      throw new Error(`${source} must use HTTPS unless targeting localhost.`);
+    }
+
+    if (url.username || url.password || url.search || url.hash) {
+      throw new Error(`${source} must not include credentials, query strings, or fragments.`);
+    }
+
+    return `${url.origin}${url.pathname.replace(/\/+$/u, "")}`;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+
+    throw new Error(`${source} must be a valid URL.`);
+  }
 }
 
 function normalizeCommit(value) {
