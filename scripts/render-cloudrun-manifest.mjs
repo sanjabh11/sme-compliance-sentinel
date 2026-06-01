@@ -113,6 +113,7 @@ const releaseMetadataValueKeys = [
 ];
 
 const renderValuesTemplate = {
+  SENTINEL_PUBLIC_SURFACE_LOCKDOWN: "true",
   GOOGLE_CLOUD_PROJECT: "PROJECT_ID",
   GOOGLE_CLOUD_PROJECT_NUMBER: "PROJECT_NUMBER",
   SENTINEL_CLOUD_RUN_REGION: "us-central1",

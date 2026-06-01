@@ -39,6 +39,8 @@ spec:
               value: "production"
             - name: SENTINEL_CLOUD_COST_CONTROLS_MODE
               value: "production"
+            - name: SENTINEL_PUBLIC_SURFACE_LOCKDOWN
+              value: "true"
             - name: SENTINEL_CLOUD_RUN_SERVICE_NAME
               value: "sme-workspace-sentinel"
             - name: SENTINEL_CLOUD_RUN_REGION
