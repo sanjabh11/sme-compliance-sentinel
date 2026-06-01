@@ -10,11 +10,15 @@ import {
 } from "@/lib/admin-session";
 
 export const config = {
-  matcher: ["/api/:path*"]
+  matcher: ["/api/:path*", "/admin"]
 };
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+  if (pathname === "/admin" && isPublicSurfaceLockdownEnabled()) {
+    return noStoreNext();
+  }
+
   if (!isPublicSurfaceLockdownEnabled() || isPublicApiPath(pathname)) {
     return NextResponse.next();
   }

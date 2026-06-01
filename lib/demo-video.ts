@@ -216,7 +216,8 @@ function buildChecks(
   const publicUrlStatus = sentinelConfig.demoVideoUrl ? "passed" : "blocked";
   const platformStatus = sentinelConfig.demoVideoUrl ? (isAllowedPlatform(sentinelConfig.demoVideoUrl) ? "passed" : "blocked") : "blocked";
   const hasFunctionalLocalDemo = snapshot.agentRuns.length > 0 && snapshot.findings.length > 0;
-  const hasLiveGeminiProof = snapshot.agentRuns.some((run) => run.provider === "gemini-api");
+  const hasLiveGeminiProviderRun = snapshot.agentRuns.some((run) => run.provider === "gemini-api");
+  const hasLiveGeminiProof = hasLiveGeminiProviderRun && sentinelConfig.xprizeGeminiApiCallEvidenceConfigured;
   const claimViolations = scanClaimText({
     artifact: "demo-video-script",
     text: scenes.map((scene) => [scene.scene, scene.voiceover, scene.proofShown, scene.riskToAvoid].join("\n")).join("\n\n")
@@ -301,8 +302,10 @@ function buildChecks(
       label: "Live Gemini API proof is available for the video",
       status: hasLiveGeminiProof ? "passed" : "blocked",
       evidence: hasLiveGeminiProof
-        ? "At least one current agent run uses provider=gemini-api."
-        : "Current agent runs do not yet prove provider=gemini-api.",
+        ? "At least one current agent run uses provider=gemini-api and the hosted proof flag is confirmed."
+        : hasLiveGeminiProviderRun
+          ? "Current agent runs include provider=gemini-api, but hosted proof is not confirmed."
+          : "Current agent runs do not yet prove provider=gemini-api.",
       fix: "Run the hosted production Gemini smoke check and record the provider/model proof in the video.",
       requiredBeforeSubmit: true
     },

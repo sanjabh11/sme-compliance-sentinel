@@ -42,6 +42,17 @@ describe("public surface admin lockdown", () => {
     }
   });
 
+  it("keeps the admin page dynamic and uncached during public lockdown", async () => {
+    vi.stubEnv("SENTINEL_PUBLIC_SURFACE_LOCKDOWN", "true");
+    vi.stubEnv("SENTINEL_ADMIN_ACTION_TOKEN", "private-admin-token");
+
+    const response = await proxy(request("/admin"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
   it("allows internal APIs with the admin header, Bearer token, or hashed admin session cookie", async () => {
     vi.stubEnv("SENTINEL_PUBLIC_SURFACE_LOCKDOWN", "true");
     vi.stubEnv("SENTINEL_ADMIN_ACTION_TOKEN", "private-admin-token");

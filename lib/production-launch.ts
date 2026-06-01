@@ -87,7 +87,8 @@ function buildWorkstreams(snapshot: ProductionLaunchSnapshot): ProductionLaunchW
   const persistence = buildPersistenceReadiness();
   const costControls = buildCloudCostControlCenter({ agentRuns: snapshot.agentRuns });
   const manifest = buildThirdPartyManifest();
-  const hasGeminiRun = snapshot.agentRuns.some((run) => run.provider === "gemini-api");
+  const hasGeminiProviderRun = snapshot.agentRuns.some((run) => run.provider === "gemini-api");
+  const hasVerifiedGeminiRun = hasGeminiProviderRun && sentinelConfig.xprizeGeminiApiCallEvidenceConfigured;
   const hasMockGeminiRun = snapshot.agentRuns.some((run) => run.provider === "mock-gemini");
   const hasLiveWorkspaceConnection = snapshot.connections.some((connection) => connection.mode !== "mock");
   const hasLiveSync = hasLiveWorkspaceSyncEvidence(snapshot.syncState);
@@ -127,10 +128,12 @@ function buildWorkstreams(snapshot: ProductionLaunchSnapshot): ProductionLaunchW
       id: "live-gemini-operation",
       label: "Live Gemini semantic audit",
       criterion: "AI-Native Operations",
-      status: hasGeminiRun ? "ready" : hasMockGeminiRun ? "needs-review" : "blocked",
+      status: hasVerifiedGeminiRun ? "ready" : hasGeminiProviderRun || hasMockGeminiRun ? "needs-review" : "blocked",
       ownerRole: "engineering",
-      currentEvidence: hasGeminiRun
+      currentEvidence: hasVerifiedGeminiRun
         ? `${snapshot.agentRuns.filter((run) => run.provider === "gemini-api").length} live Gemini API run(s) recorded.`
+        : hasGeminiProviderRun
+          ? "Gemini API provider metadata is present, but hosted XPRIZE proof has not been confirmed."
         : hasMockGeminiRun
           ? "Only mock Gemini run evidence is available."
           : "No semantic agent run is recorded in current state.",
@@ -764,6 +767,7 @@ function buildVerificationCommands(): ProductionLaunchCommand[] {
 
 function buildProofArtifacts(snapshot: ProductionLaunchSnapshot): ProductionLaunchProofArtifact[] {
   const hasGeminiRun = snapshot.agentRuns.some((run) => run.provider === "gemini-api");
+  const hasVerifiedGeminiRun = hasGeminiRun && sentinelConfig.xprizeGeminiApiCallEvidenceConfigured;
   const hasLiveWorkspaceConnection = snapshot.connections.some((connection) => connection.mode !== "mock");
   const productionEvidence = sentinelConfig.evidenceMode === "production";
   const manifest = buildThirdPartyManifest();
@@ -777,7 +781,7 @@ function buildProofArtifacts(snapshot: ProductionLaunchSnapshot): ProductionLaun
     proofArtifact("bigquery-audit", "BigQuery audit evidence row", buildPersistenceReadiness().configured, "engineering", "/api/production/persistence", "Production operation proof.", "Share row metadata, not private finding content.", "Run write-through and capture BigQuery row proof."),
     proofArtifact("bigquery-agent-run", "BigQuery agent-run evidence row", buildPersistenceReadiness().configured && snapshot.agentRuns.length > 0, "engineering", "/api/production/persistence", "Durable AI-native operations proof.", "Share provider/model/fallback/cost metadata only; redact prompt, output, and customer content.", "Run a production high-risk scan, then verify the agent-run insert/read path."),
     proofArtifact("secret-manager-token", "Secret Manager OAuth token path", buildPersistenceReadiness().configured && hasLiveWorkspaceConnection, "security", "/api/oauth/google/callback", "Workspace OAuth credential safety.", "Never expose token values; show secret path and IAM only.", "Complete OAuth callback and verify token storage."),
-    proofArtifact("live-gemini-log", "Live Gemini API semantic run", hasGeminiRun && sentinelConfig.xprizeGeminiApiCallEvidenceConfigured, "engineering", "/api/production/gemini-smoke", "Required deployed LLM functionality proof.", "Share model/cost metadata only; redact prompt and customer content.", "Run the hosted synthetic Gemini smoke after configuring GEMINI_API_KEY and set XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED only after proof exists."),
+    proofArtifact("live-gemini-log", "Live Gemini API semantic run", hasVerifiedGeminiRun, "engineering", "/api/production/gemini-smoke", "Required deployed LLM functionality proof.", "Share model/cost metadata only; redact prompt and customer content.", "Run the hosted synthetic Gemini smoke after configuring GEMINI_API_KEY and set XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED only after proof exists."),
     proofArtifact("workspace-sync-log", "Workspace sync reconciliation log", hasLiveWorkspaceConnection && hasLiveWorkspaceSyncEvidence(snapshot.syncState), "security", "/api/workspace/sync/reconcile", "AI-native operations continuity.", "Redact email addresses, domains, and file names.", "Run reconciliation after OAuth install."),
     proofArtifact("workspace-watch-renewal", "Workspace watch renewal log", hasLiveWorkspaceConnection && hasLiveWorkspaceSyncEvidence(snapshot.syncState), "security", "/api/workspace/sync/renew", "AI-native operations continuity.", "Redact OAuth tokens, channel tokens, file names, and mailbox details.", "Run watch renewal before Drive/Gmail expiration and register the redacted output."),
     proofArtifact("financial-records", "Revenue, cost, CAC, and invoice proof", paidProofReady, "founder", "/api/financial-evidence/ledger", "Business Viability.", "Keep invoices/payment exports private and redacted.", "Attach real paid customer records and costs."),

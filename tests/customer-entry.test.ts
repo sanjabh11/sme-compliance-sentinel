@@ -13,6 +13,10 @@ describe("customer entry route", () => {
     expect(adminPage).toContain("DashboardClient");
     expect(adminPage).toContain("AdminUnlockClient");
     expect(adminPage).toContain("getDashboardSnapshot");
+    expect(adminPage).toContain('dynamic = "force-dynamic"');
+    expect(adminPage).toContain('fetchCache = "force-no-store"');
+    expect(adminPage).toContain("requiresAdminProtection");
+    expect(adminPage).toContain("noStore()");
   });
 
   it("keeps root customer copy free of internal submission and fake-traction terms", async () => {

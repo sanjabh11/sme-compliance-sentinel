@@ -137,7 +137,7 @@ function buildChecks(snapshot: GateSnapshot): XPrizeGateCheck[] {
         geminiRuns > 0 && sentinelConfig.xprizeGeminiApiCallEvidenceConfigured
           ? `${geminiRuns} Gemini API run(s) recorded and deployment evidence flag is confirmed.`
           : geminiRuns > 0
-            ? `${geminiRuns} Gemini API run(s) recorded, but XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED is not confirmed.`
+            ? `${geminiRuns} Gemini API run(s) recorded, but XPRIZE_GEMINI_API_CALL_EVIDENCE_CONFIGURED is not confirmed, so this remains mock-only for submission evidence.`
           : mockGeminiRuns > 0
             ? `${mockGeminiRuns} mock Gemini run(s) recorded; no live Gemini API proof yet.`
             : "No semantic agent run has been recorded yet.",

@@ -260,7 +260,9 @@ function buildPrivateEvidenceQueue(snapshot: BinderSnapshot): SubmissionPrivateE
   const userProofReady = productionEvidence && snapshot.tenant.evidence.activeUsers > 0;
   const consentedFeedbackReady =
     productionEvidence && snapshot.pilotRecords.some((pilot) => pilot.consentStatus === "consented" && pilot.testimonialQuote);
-  const geminiProofReady = snapshot.agentRuns.some((run) => run.provider === "gemini-api");
+  const geminiProofReady =
+    snapshot.agentRuns.some((run) => run.provider === "gemini-api") &&
+    sentinelConfig.xprizeGeminiApiCallEvidenceConfigured;
   const cloudProofReady = sentinelConfig.storageMode === "gcp-rest" && Boolean(sentinelConfig.googleCloudProject);
   const workspaceProofReady =
     snapshot.connections.some((connection) => connection.mode === "oauth" || connection.mode === "domain-wide-delegation") &&
