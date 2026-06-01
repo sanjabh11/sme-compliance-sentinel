@@ -456,7 +456,7 @@ async function runCheck(baseUrl, check, timeoutMs, adminToken) {
   const url = `${baseUrl}${check.path}`;
   const headers = {
     accept: "application/json",
-    ...(check.method === "POST" && adminToken ? { [adminTokenHeader]: adminToken } : {})
+    ...(adminToken ? { [adminTokenHeader]: adminToken } : {})
   };
 
   try {

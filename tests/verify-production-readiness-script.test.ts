@@ -97,7 +97,7 @@ describe("verify-production readiness script auth", () => {
     });
     expect(postCalls.length).toBeGreaterThan(0);
     expect(postCalls.every(([, init]) => headerValue(init, "x-sentinel-admin-token") === "private-admin-token")).toBe(true);
-    expect(getCalls.every(([, init]) => !headerValue(init, "x-sentinel-admin-token"))).toBe(true);
+    expect(getCalls.every(([, init]) => headerValue(init, "x-sentinel-admin-token") === "private-admin-token")).toBe(true);
     expect(JSON.stringify(report)).not.toContain("private-admin-token");
   });
 

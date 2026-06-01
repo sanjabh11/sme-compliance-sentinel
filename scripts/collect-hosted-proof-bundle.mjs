@@ -209,7 +209,7 @@ export async function collectHostedProofBundle(options) {
 
   const endpointPayloads = new Map();
   for (const endpoint of bundleEndpoints) {
-    const payload = await fetchEndpoint(baseUrl, endpoint, options.timeoutMs ?? defaultTimeoutMs);
+    const payload = await fetchEndpoint(baseUrl, endpoint, options.timeoutMs ?? defaultTimeoutMs, options.adminToken ?? "");
     endpointPayloads.set(endpoint.id, payload);
     artifacts.push(
       await writeJsonArtifact(outputDirectory, {
@@ -284,7 +284,7 @@ export async function collectHostedProofBundle(options) {
   };
 }
 
-async function fetchEndpoint(baseUrl, endpoint, timeoutMs) {
+async function fetchEndpoint(baseUrl, endpoint, timeoutMs, adminToken = "") {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const url = `${baseUrl}${endpoint.path}`;
@@ -292,7 +292,7 @@ async function fetchEndpoint(baseUrl, endpoint, timeoutMs) {
   try {
     const response = await fetch(url, {
       method: "GET",
-      headers: { accept: "application/json" },
+      headers: { accept: "application/json", ...(adminToken ? { [adminTokenHeader]: adminToken } : {}) },
       signal: controller.signal
     });
     const text = await response.text();

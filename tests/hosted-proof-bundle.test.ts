@@ -196,7 +196,7 @@ describe("hosted proof bundle collector", () => {
       expect(releaseEvidence.slots.find((slot) => slot.id === "cloud-run-deployment")?.status).not.toBe("verified");
       expect(postCalls.length).toBeGreaterThan(0);
       expect(postCalls.every(([, init]) => headerValue(init, "x-sentinel-admin-token") === "private-admin-token")).toBe(true);
-      expect(getCalls.every(([, init]) => !headerValue(init, "x-sentinel-admin-token"))).toBe(true);
+      expect(getCalls.every(([, init]) => headerValue(init, "x-sentinel-admin-token") === "private-admin-token")).toBe(true);
       expect(`${manifestJson}${judgeAccessJson}${releaseEvidenceJson}${verifyJson}${readme}`).not.toContain("private-admin-token");
       expect(judgeAccessJson).not.toContain("leaked-secret");
       expect(judgeAccessJson).toContain("[REDACTED]");
