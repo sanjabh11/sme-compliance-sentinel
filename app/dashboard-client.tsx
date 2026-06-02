@@ -97,6 +97,77 @@ const adminTabs = [
   { href: "#admin-submission", label: "Submission" }
 ];
 
+const operatorProofPlaceholders = [
+  {
+    label: "Source release",
+    command: "npm run verify:source-release",
+    destination: "Public repo access and private source-release report"
+  },
+  {
+    label: "Judge access",
+    command: "npm run verify:judge-access",
+    destination: "Product URL, testing instructions, public demo video URL"
+  },
+  {
+    label: "Business evidence",
+    command: "npm run verify:business-evidence -- --evidence PRIVATE_JSON",
+    destination: "Invoices, payment proof, active users, costs, CAC, consented testimonial"
+  },
+  {
+    label: "Provenance/IP",
+    command: "npm run verify:provenance && npm run verify:license-manifest",
+    destination: "Human attestation, license review, third-party/API disclosure"
+  }
+];
+
+const evidenceLandingSlots = [
+  {
+    label: "Paid pilot invoice",
+    destination: "Private business evidence JSON",
+    placeholder: "invoiceReference"
+  },
+  {
+    label: "Payment receipt",
+    destination: "Private business evidence JSON",
+    placeholder: "paymentRecords[]"
+  },
+  {
+    label: "Active-user proof",
+    destination: "Private business evidence JSON",
+    placeholder: "activeUserLogs[]"
+  },
+  {
+    label: "Consented testimonial",
+    destination: "Pilot evidence record",
+    placeholder: "testimonialQuote + consentStatus"
+  },
+  {
+    label: "Demo video proof",
+    destination: "Judge access proof bundle",
+    placeholder: "publicDemoVideoUrl"
+  },
+  {
+    label: "Workspace OAuth proof",
+    destination: "Secret Manager + persistence report",
+    placeholder: "secret version ID, no token value"
+  }
+];
+
+const demoAnalyticsPlaceholders = [
+  "customer_demo_started",
+  "sample_trust_packet_downloaded",
+  "questionnaire_answer_drafted",
+  "consent_packet_downloaded",
+  "pilot_scope_requested"
+];
+
+const accessibilityReviewChecklist = [
+  "Keyboard path across nav, demo tabs, forms, downloads, and admin unlock.",
+  "Mobile viewport check for long labels, CTA wrapping, and non-overlap.",
+  "Contrast review for warning, blocked, ready, and disabled states.",
+  "Screen-reader labels for status cards, proof slots, and uploaded text areas."
+];
+
 export function DashboardClient({ initialSnapshot }: { initialSnapshot: DashboardSnapshot }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [actionState, setActionState] = useState<ActionState>("idle");
@@ -175,7 +246,10 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
     proofStatus: "invoice-needed",
     consentStatus: "pending",
     armsLength: true,
-    relatedParty: false
+    relatedParty: false,
+    invoiceReference: "",
+    testimonialQuote: "",
+    notes: ""
   });
   const [playbookForm, setPlaybookForm] = useState<{
     id: string;
@@ -1896,6 +1970,24 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
           </div>
           <Sparkles size={24} aria-hidden="true" />
         </div>
+        <div className="operator-placeholder-panel" aria-label="Private evidence landing zone">
+          <div>
+            <strong>Evidence landing zone</strong>
+            <p>
+              Use these slots when real documents arrive. Keep filled artifacts outside Git and import only redacted,
+              checksummed summaries into the Evidence Vault.
+            </p>
+          </div>
+          <div className="operator-placeholder-grid">
+            {evidenceLandingSlots.map((slot) => (
+              <article key={slot.label}>
+                <b>{slot.label}</b>
+                <span>{slot.placeholder}</span>
+                <small>{slot.destination}</small>
+              </article>
+            ))}
+          </div>
+        </div>
         <div className="pilot-conversion-grid">
           <article>
             <b>RAG Search</b>
@@ -2350,6 +2442,15 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               <Target size={16} aria-hidden="true" />
               Capture score
             </button>
+          </div>
+          <div className="operator-proof-grid" aria-label="Operator proof dashboard placeholders">
+            {operatorProofPlaceholders.map((proof) => (
+              <article key={proof.label}>
+                <strong>{proof.label}</strong>
+                <code>{proof.command}</code>
+                <small>{proof.destination}</small>
+              </article>
+            ))}
           </div>
           <div className="readiness-columns">
             <ReadinessBlock
@@ -3599,6 +3700,32 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               />
               Related-party revenue
             </label>
+            <label>
+              Invoice reference
+              <input
+                value={pilotForm.invoiceReference}
+                onChange={(event) => setPilotForm({ ...pilotForm, invoiceReference: event.target.value })}
+                placeholder="Private invoice ID or payment receipt reference"
+              />
+            </label>
+            <label>
+              Consented testimonial quote
+              <textarea
+                value={pilotForm.testimonialQuote}
+                onChange={(event) => setPilotForm({ ...pilotForm, testimonialQuote: event.target.value })}
+                placeholder="Paste only customer-approved quote text after written consent."
+                rows={3}
+              />
+            </label>
+            <label>
+              Evidence notes
+              <textarea
+                value={pilotForm.notes}
+                onChange={(event) => setPilotForm({ ...pilotForm, notes: event.target.value })}
+                placeholder="Private artifact path, reviewer, redaction status, and next action. Do not paste secrets."
+                rows={3}
+              />
+            </label>
             <button type="submit" className="wide" disabled={actionState === "running"}>
               <UserPlus size={16} aria-hidden="true" />
               Record pilot evidence
@@ -3953,6 +4080,24 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               <span key={focus}>{focus}</span>
             ))}
           </div>
+          <div className="submission-placeholder-grid" aria-label="Submission proof placeholders">
+            <article>
+              <strong>Public demo video</strong>
+              <span>https://REPLACE_WITH_PUBLIC_DEMO_VIDEO_URL</span>
+            </article>
+            <article>
+              <strong>Support contact</strong>
+              <span>SUPPORT_EMAIL_PLACEHOLDER - replace with owner email before submission</span>
+            </article>
+            <article>
+              <strong>Access valid through</strong>
+              <span>September 15, 2026 at 5:00pm PDT - official Devpost judging end</span>
+            </article>
+            <article>
+              <strong>Admin credentials</strong>
+              <span>Private Devpost field only if needed; never Git, source, or public UI</span>
+            </article>
+          </div>
           <button type="button" className="secondary" onClick={checkMarketPositioning} disabled={actionState === "running"}>
             <Target size={16} aria-hidden="true" />
             Market battlecard
@@ -4065,6 +4210,42 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
               </article>
             ))}
           </div>
+        </aside>
+      </section>
+
+      <section className="content-grid" aria-label="Demo analytics and accessibility placeholders">
+        <div className="panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Demo Analytics Placeholder</h2>
+              <p>These event names are already emitted from the public demo and can be wired to analytics later.</p>
+            </div>
+            <Database size={24} aria-hidden="true" />
+          </div>
+          <div className="operator-placeholder-grid">
+            {demoAnalyticsPlaceholders.map((eventName) => (
+              <article key={eventName}>
+                <b>{eventName}</b>
+                <span>analytics event</span>
+                <small>Capture route, timestamp, anonymous session, and source element after analytics is configured.</small>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        <aside className="panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Accessibility Review Queue</h2>
+              <p>Use this as the final visual QA checklist before recording the demo video.</p>
+            </div>
+            <CheckCircle2 size={24} aria-hidden="true" />
+          </div>
+          <ul className="check-list">
+            {accessibilityReviewChecklist.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </aside>
       </section>
 

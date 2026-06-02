@@ -38,6 +38,59 @@ const initialLeadForm: LeadFormState = {
   pilotGoal: "Prepare for an enterprise security review"
 };
 
+const reviewerWalkthrough = [
+  {
+    label: "Start the sample scan",
+    detail: "Click Get my sample risk scan and review the preloaded Workspace exposure."
+  },
+  {
+    label: "Inspect the risk explanation",
+    detail: "Confirm deterministic signals, AI explanation, blast-radius note, and human approval boundary."
+  },
+  {
+    label: "Open the Trust Packet",
+    detail: "Download the redacted sample packet and confirm the evidence sections are prospect-safe."
+  },
+  {
+    label: "Draft a questionnaire answer",
+    detail: "Paste or edit a buyer question, then generate the sample answer with cited source placeholders."
+  },
+  {
+    label: "Prepare consent and pilot scope",
+    detail: "Download the consent template and request a pilot scope without payment or live Workspace access."
+  }
+];
+
+const connectionPlaceholders = [
+  {
+    label: "Scope review",
+    status: "template ready",
+    detail: "Approved Drive/Gmail metadata scopes are documented before OAuth starts."
+  },
+  {
+    label: "Signed consent",
+    status: "awaiting evidence",
+    detail: "A signed customer consent artifact must be stored privately before any live Workspace install."
+  },
+  {
+    label: "OAuth launch",
+    status: "operator gated",
+    detail: "The live authorization URL is generated from the admin console after the consent gate passes."
+  }
+];
+
+const trustAccessStates = [
+  "Public summary: sample risk scan boundary, AI-use boundary, redacted packet sections.",
+  "Requestable docs: policy summary, scan scope, approval log, questionnaire pack.",
+  "Private only: invoices, payment proof, raw Workspace content, OAuth tokens, customer names."
+];
+
+const evidenceSourcePlaceholders = [
+  "Redacted Trust Packet preview",
+  "Sample scan scope",
+  "Human approval record"
+];
+
 function trackCustomerEvent(eventName: string, detail: Record<string, string>) {
   if (typeof window === "undefined") {
     return;
@@ -84,6 +137,7 @@ export function CustomerDemoClient({
   const [consentPacket, setConsentPacket] = useState<CustomerConsentPacket | null>(null);
   const [consentError, setConsentError] = useState("");
   const [questionnaireQuestion, setQuestionnaireQuestion] = useState(demo.scenario.questionnairePreview.question);
+  const [questionnaireSourceName, setQuestionnaireSourceName] = useState("security-questionnaire.txt");
   const [questionnaireDraftVisible, setQuestionnaireDraftVisible] = useState(false);
   const active = demo.steps.find((step) => step.id === activeStep) ?? demo.steps[0];
   const started = stage === "running";
@@ -149,6 +203,7 @@ export function CustomerDemoClient({
           SME Workspace Sentinel
         </Link>
         <div className="customer-nav-links">
+          <a href="#reviewer-walkthrough">Demo path</a>
           <a href="#customer-flow">How it works</a>
           <a href="#trust-packet">Trust packet</a>
           <a href="#scan-consent">Consent</a>
@@ -229,6 +284,31 @@ export function CustomerDemoClient({
       <a className="customer-mobile-sticky-cta" href="#pilot-lead-form">
         Book my one-day scan
       </a>
+
+      <section id="reviewer-walkthrough" className="customer-reviewer-panel" aria-label="Demo walkthrough">
+        <div className="customer-section-heading">
+          <p className="eyebrow">Demo walkthrough</p>
+          <h2>Five-step review path with video placeholder</h2>
+        </div>
+        <div className="customer-walkthrough-grid">
+          <article className="customer-video-placeholder">
+            <span>Video URL placeholder</span>
+            <strong>https://REPLACE_WITH_PUBLIC_DEMO_VIDEO_URL</strong>
+            <p>
+              Record the hosted demo after final proof review. Keep it under three minutes and avoid private customer
+              names, tokens, invoices, raw Workspace content, or unsupported certification claims.
+            </p>
+          </article>
+          <ol className="customer-walkthrough-list">
+            {reviewerWalkthrough.map((step) => (
+              <li key={step.label}>
+                <strong>{step.label}</strong>
+                <span>{step.detail}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
 
       <section id="customer-flow" className="customer-stage-tabs" aria-label="Customer demo sequence">
         {demo.steps.map((step) => (
@@ -340,6 +420,22 @@ export function CustomerDemoClient({
             <Download size={16} aria-hidden="true" />
             Download sample packet
           </a>
+          <div className="customer-trust-request">
+            <strong>Trust Center request placeholder</strong>
+            <ul className="customer-compact-list">
+              {trustAccessStates.map((state) => (
+                <li key={state}>{state}</li>
+              ))}
+            </ul>
+            <a
+              className="customer-download-link"
+              href="#pilot-lead-form"
+              onClick={() => trackCustomerEvent("trust_document_request_started", { source: "trust_packet_card" })}
+            >
+              <Mail size={16} aria-hidden="true" />
+              Request private docs
+            </a>
+          </div>
         </article>
 
         <article>
@@ -353,6 +449,14 @@ export function CustomerDemoClient({
               value={questionnaireQuestion}
               onChange={(event) => setQuestionnaireQuestion(event.target.value)}
               rows={3}
+            />
+          </label>
+          <label className="customer-field">
+            <span>Source file placeholder</span>
+            <input
+              value={questionnaireSourceName}
+              onChange={(event) => setQuestionnaireSourceName(event.target.value)}
+              placeholder="security-questionnaire.txt"
             />
           </label>
           <button
@@ -370,7 +474,14 @@ export function CustomerDemoClient({
             <div className="customer-answer-preview">
               <strong>{questionnaireQuestion}</strong>
               <p>{demo.scenario.questionnairePreview.answer}</p>
-              <small>{demo.scenario.questionnairePreview.reviewNote}</small>
+              <small>
+                {demo.scenario.questionnairePreview.reviewNote} Source placeholder: {questionnaireSourceName}.
+              </small>
+              <div className="customer-citation-stack" aria-label="Questionnaire source placeholders">
+                {evidenceSourcePlaceholders.map((source) => (
+                  <span key={source}>{source}</span>
+                ))}
+              </div>
             </div>
           ) : null}
         </article>
@@ -424,6 +535,22 @@ export function CustomerDemoClient({
               </div>
             ) : null}
           </div>
+          <div className="customer-connection-placeholder">
+            <strong>Live Workspace connection placeholder</strong>
+            <div className="customer-status-grid">
+              {connectionPlaceholders.map((item) => (
+                <article key={item.label}>
+                  <span>{item.status}</span>
+                  <b>{item.label}</b>
+                  <p>{item.detail}</p>
+                </article>
+              ))}
+            </div>
+            <button type="button" className="customer-inline-button" disabled>
+              <ShieldCheck size={16} aria-hidden="true" />
+              Start OAuth after signed consent
+            </button>
+          </div>
         </article>
 
         <article id="pilot-lead-form" className="customer-lead-panel">
@@ -437,6 +564,14 @@ export function CustomerDemoClient({
           <p>{demo.scenario.leadCapture.description}</p>
           <form className="customer-lead-form" onSubmit={submitLead}>
             <label className="customer-field">
+              <span>Name</span>
+              <input
+                value={leadForm.name}
+                onChange={(event) => setLeadForm({ ...leadForm, name: event.target.value })}
+                placeholder="Your name"
+              />
+            </label>
+            <label className="customer-field">
               <span>Work email</span>
               <input
                 required
@@ -444,6 +579,14 @@ export function CustomerDemoClient({
                 value={leadForm.workEmail}
                 onChange={(event) => setLeadForm({ ...leadForm, workEmail: event.target.value })}
                 placeholder="name@company.com"
+              />
+            </label>
+            <label className="customer-field">
+              <span>Company</span>
+              <input
+                value={leadForm.company}
+                onChange={(event) => setLeadForm({ ...leadForm, company: event.target.value })}
+                placeholder="Company"
               />
             </label>
             <label className="customer-field">
@@ -458,12 +601,33 @@ export function CustomerDemoClient({
                 <option>No deadline yet</option>
               </select>
             </label>
+            <label className="customer-field customer-field-wide">
+              <span>Pilot goal</span>
+              <input
+                value={leadForm.pilotGoal}
+                onChange={(event) => setLeadForm({ ...leadForm, pilotGoal: event.target.value })}
+              />
+            </label>
             <button type="submit">
               <CalendarCheck2 size={18} aria-hidden="true" />
               Request my pilot scope
             </button>
           </form>
           <small>{demo.scenario.leadCapture.privacyNote}</small>
+          <div className="customer-booking-placeholder" aria-label="Pilot booking and payment placeholders">
+            <article>
+              <strong>Booking</strong>
+              <span>Manual calendar link placeholder</span>
+            </article>
+            <article>
+              <strong>Invoice</strong>
+              <span>Private invoice/payment proof slot</span>
+            </article>
+            <article>
+              <strong>Testimonial consent</strong>
+              <span>Optional quote approval after paid pilot</span>
+            </article>
+          </div>
           {leadError ? <p className="customer-form-error">{leadError}</p> : null}
           {leadReceipt ? (
             <div className="customer-lead-success" role="status">
