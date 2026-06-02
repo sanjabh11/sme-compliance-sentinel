@@ -6,9 +6,11 @@ import { buildProductionGeminiProofStatus, buildProductionGeminiSmokeResult } fr
 import { getDashboardSnapshot, ingestResourceEvent, resetState } from "@/lib/store";
 
 vi.mock("@google/genai", () => ({
-  GoogleGenAI: vi.fn().mockImplementation(() => ({
+  GoogleGenAI: vi.fn(function GoogleGenAIMock() {
+    return {
     models: {
-      generateContent: vi.fn().mockResolvedValue({
+      generateContent: vi.fn(async function generateContentMock() {
+        return {
         text: JSON.stringify({
           severity: "high",
           confidence: 0.91,
@@ -18,9 +20,11 @@ vi.mock("@google/genai", () => ({
           blastRadius: "Synthetic public-link exposure used only for deployment proof.",
           summary: "Synthetic Gemini smoke completed with no customer data."
         })
+        };
       })
     }
-  }))
+    };
+  })
 }));
 
 describe("Gemini SDK selection", () => {
