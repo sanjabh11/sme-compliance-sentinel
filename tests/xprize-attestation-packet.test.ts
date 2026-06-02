@@ -84,9 +84,10 @@ describe("XPRIZE human attestation packet CLI", () => {
 
   it("writes JSON and Markdown review artifacts to a private output directory", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-xprize-attestation-"));
+    const reportPath = writeReviewedLocalSubmissionReport(tempDir);
 
     try {
-      const packet = runPacket(["--out-dir", tempDir]);
+      const packet = runPacket(["--out-dir", tempDir, "--local-submission-report", reportPath]);
 
       expect(packet.outputFiles?.jsonPath).toBe(join(tempDir, "xprize-human-attestation-packet.json"));
       expect(packet.outputFiles?.markdownPath).toBe(join(tempDir, "xprize-human-attestation-packet.md"));
@@ -142,12 +143,13 @@ describe("XPRIZE human attestation packet CLI", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "sentinel-xprize-attestation-existing-output-"));
     const jsonPath = join(tempDir, "xprize-human-attestation-packet.json");
     const markdownPath = join(tempDir, "xprize-human-attestation-packet.md");
+    const reportPath = writeReviewedLocalSubmissionReport(tempDir);
 
     try {
       writeFileSync(jsonPath, `{"overallStatus":"stale","padding":"${"x".repeat(1000)}"}\n`, "utf8");
       writeFileSync(markdownPath, `# Stale\n\n${"y".repeat(1000)}\n`, "utf8");
 
-      const packet = runPacket(["--out-dir", tempDir]);
+      const packet = runPacket(["--out-dir", tempDir, "--local-submission-report", reportPath]);
       const jsonText = readFileSync(jsonPath, "utf8");
       const markdownText = readFileSync(markdownPath, "utf8");
 
@@ -169,9 +171,10 @@ describe("XPRIZE human attestation packet CLI", () => {
     }
 
     const tempDir = mkdtempSync("/tmp/sentinel-xprize-attestation-tmp-alias-");
+    const reportPath = writeReviewedLocalSubmissionReport(tempDir);
 
     try {
-      const packet = runPacket(["--out-dir", tempDir]);
+      const packet = runPacket(["--out-dir", tempDir, "--local-submission-report", reportPath]);
 
       expect(packet.outputFiles?.jsonPath).toBe(join(tempDir, "xprize-human-attestation-packet.json"));
       expect(readFileSync(packet.outputFiles?.jsonPath ?? "", "utf8")).toContain('"flagDecisionRegister"');
@@ -240,4 +243,20 @@ function runPacket(args: string[] = []) {
   });
 
   return JSON.parse(output) as AttestationPacket;
+}
+
+function writeReviewedLocalSubmissionReport(tempDir: string) {
+  const reportPath = join(tempDir, "reviewed-local-submission-readiness.json");
+
+  writeFileSync(
+    reportPath,
+    `${JSON.stringify({
+      overallStatus: "blocked",
+      summary: { passed: 3, warning: 2, blocked: 3, externalRequired: 5 },
+      remainingBlockers: ["human attestation still required"]
+    })}\n`,
+    "utf8"
+  );
+
+  return reportPath;
 }

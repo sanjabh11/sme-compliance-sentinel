@@ -21,6 +21,7 @@
     "verify:cloudrun-deployment": "node scripts/verify-cloudrun-deployment.mjs",
     "verify:judge-access": "node scripts/verify-judge-access-pack.mjs",
     "verify:business-evidence": "node scripts/verify-business-evidence.mjs",
+    "verify:ui-proof-surfaces": "node scripts/verify-ui-proof-surfaces.mjs",
     "verify:gemini-model": "node scripts/verify-gemini-model-readiness.mjs",
     "verify:vercel-deployment": "node scripts/verify-vercel-deployment.mjs",
     "verify:hosted-copy": "node scripts/verify-hosted-copy-smoke.mjs",

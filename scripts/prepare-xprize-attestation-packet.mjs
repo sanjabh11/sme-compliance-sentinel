@@ -729,6 +729,9 @@ function toText(value) {
 
 try {
   const args = parseArgs(process.argv.slice(2));
+  if (args.outDir) {
+    assertDirectoryPathSafe(resolve(args.outDir), "XPRIZE human attestation output directory");
+  }
   const packet = buildPacket(args);
   const outputFiles = args.outDir ? writePacket(args.outDir, packet) : undefined;
   const output = outputFiles ? { ...packet, outputFiles } : packet;
