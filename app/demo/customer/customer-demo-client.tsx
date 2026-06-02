@@ -570,6 +570,14 @@ export function CustomerDemoClient({
           </div>
         </div>
       </section>
+
+      <footer className="customer-legal-footer" aria-label="Customer legal links">
+        <span>Customer policies</span>
+        <Link href={"/support" as Route}>Support</Link>
+        <Link href={"/privacy" as Route}>Privacy</Link>
+        <Link href={"/terms-of-service" as Route}>Terms</Link>
+        <Link href={"/cancellation-refund-policy" as Route}>Cancellation and refunds</Link>
+      </footer>
     </main>
   );
 }
