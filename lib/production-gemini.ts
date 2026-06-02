@@ -1,7 +1,18 @@
 import { sentinelConfig } from "@/lib/config";
+import { fetchCloudRunAccessToken } from "@/lib/persistence";
 import type { DashboardSnapshot, ProductionGeminiProofResult, ResourceEvent, ScanDecision } from "@/lib/types";
 
 type GeminiProofSnapshot = Pick<DashboardSnapshot, "agentRuns" | "auditEvents" | "findings">;
+type DurableGeminiAgentRun = {
+  id: string;
+  eventId?: string;
+  findingId?: string;
+  purpose: string;
+  model: string;
+  provider: "gemini-api";
+  estimatedCostUsd?: number;
+  completedAt?: string;
+};
 
 export function buildProductionGeminiProofStatus(snapshot: GeminiProofSnapshot): ProductionGeminiProofResult {
   const latestLiveRun = snapshot.agentRuns.find((run) => run.provider === "gemini-api");
@@ -45,6 +56,40 @@ export function buildProductionGeminiProofStatus(snapshot: GeminiProofSnapshot):
     proofSummary:
       "This does not satisfy deployed Gemini API proof. A real production run must record provider=gemini-api with model, timestamp, token estimate, cost estimate, and staged recommendation metadata.",
     nextAction: "Configure GEMINI_API_KEY in Secret Manager, deploy Cloud Run, then POST /api/production/gemini-smoke using the synthetic fixture.",
+    privateHandling: privateHandlingRules()
+  };
+}
+
+export async function buildProductionGeminiProofStatusWithDurableEvidence(
+  snapshot: GeminiProofSnapshot,
+  fetchImpl: typeof fetch = fetch
+): Promise<ProductionGeminiProofResult> {
+  const inMemoryStatus = buildProductionGeminiProofStatus(snapshot);
+
+  if (inMemoryStatus.status === "passed" || !hasDurableGeminiEvidenceConfig()) {
+    return inMemoryStatus;
+  }
+
+  const durableRun = await fetchLatestDurableGeminiAgentRun(fetchImpl);
+
+  if (!durableRun) {
+    return inMemoryStatus;
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    status: "passed",
+    provider: durableRun.provider,
+    model: durableRun.model,
+    eventId: durableRun.eventId,
+    findingId: durableRun.findingId,
+    agentRunId: durableRun.id,
+    estimatedCostUsd: durableRun.estimatedCostUsd,
+    decisionSummary: `Durable BigQuery Gemini API run recorded for ${durableRun.purpose}.`,
+    proofSummary:
+      "BigQuery agent_runs contains provider=gemini-api metadata from the hosted Cloud Run service. Attach the verifier output and the redacted BigQuery row to the private evidence binder.",
+    nextAction:
+      "Complete the remaining manual evidence gates: Workspace OAuth consent, quota evidence, judge access, demo video, and business proof.",
     privateHandling: privateHandlingRules()
   };
 }
@@ -107,4 +152,84 @@ function privateHandlingRules() {
     "Do not publish raw prompts, API keys, customer file names, tenant emails, or unredacted findings.",
     "Final XPRIZE proof still needs hosted Cloud Run output and a durable BigQuery agent-run row with provider=gemini-api."
   ];
+}
+
+function hasDurableGeminiEvidenceConfig() {
+  return (
+    sentinelConfig.storageMode === "gcp-rest" &&
+    Boolean(sentinelConfig.googleCloudProject) &&
+    Boolean(sentinelConfig.bigQueryDataset) &&
+    Boolean(sentinelConfig.bigQueryAgentRunsTable)
+  );
+}
+
+async function fetchLatestDurableGeminiAgentRun(fetchImpl: typeof fetch): Promise<DurableGeminiAgentRun | undefined> {
+  try {
+    const accessToken = await fetchCloudRunAccessToken(fetchImpl);
+    const response = await fetchImpl(
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${sentinelConfig.googleCloudProject}/queries`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          query: [
+            "SELECT run_id, event_id, finding_id, purpose, model, provider, estimated_cost_usd, completed_at",
+            `FROM \`${sentinelConfig.googleCloudProject}.${sentinelConfig.bigQueryDataset}.${sentinelConfig.bigQueryAgentRunsTable}\``,
+            "WHERE tenant_id = @tenantId AND provider = 'gemini-api'",
+            "ORDER BY completed_at DESC",
+            "LIMIT 1"
+          ].join(" "),
+          useLegacySql: false,
+          parameterMode: "NAMED",
+          queryParameters: [
+            {
+              name: "tenantId",
+              parameterType: { type: "STRING" },
+              parameterValue: { value: sentinelConfig.tenantId }
+            }
+          ]
+        })
+      }
+    );
+
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const body = (await response.json()) as { rows?: Array<{ f?: Array<{ v?: string | number | null }> }> };
+    const row = body.rows?.[0]?.f;
+
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      id: readBigQueryString(row, 0) ?? "",
+      eventId: readBigQueryString(row, 1),
+      findingId: readBigQueryString(row, 2),
+      purpose: readBigQueryString(row, 3) ?? "durable Gemini proof",
+      model: readBigQueryString(row, 4) ?? sentinelConfig.geminiModel,
+      provider: "gemini-api",
+      estimatedCostUsd: readBigQueryNumber(row, 6),
+      completedAt: readBigQueryString(row, 7)
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function readBigQueryString(row: Array<{ v?: string | number | null }>, index: number) {
+  const value = row[index]?.v;
+
+  return typeof value === "string" ? value : typeof value === "number" ? String(value) : undefined;
+}
+
+function readBigQueryNumber(row: Array<{ v?: string | number | null }>, index: number) {
+  const value = row[index]?.v;
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+
+  return Number.isFinite(parsed) ? parsed : undefined;
 }

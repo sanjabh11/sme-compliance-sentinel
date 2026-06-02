@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { authorizeAdminAction } from "@/lib/admin-action-auth";
 import { makeSyntheticGeminiSmokeEvent } from "@/lib/mock-events";
-import { buildProductionGeminiProofStatus, buildProductionGeminiSmokeResult } from "@/lib/production-gemini";
+import {
+  buildProductionGeminiProofStatusWithDurableEvidence,
+  buildProductionGeminiSmokeResult
+} from "@/lib/production-gemini";
 import { getDashboardSnapshot, ingestResourceEvent } from "@/lib/store";
 
 export async function GET() {
-  return NextResponse.json(buildProductionGeminiProofStatus(getDashboardSnapshot()));
+  return NextResponse.json(await buildProductionGeminiProofStatusWithDurableEvidence(getDashboardSnapshot()));
 }
 
 export async function POST(request: Request) {

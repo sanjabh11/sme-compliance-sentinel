@@ -77,4 +77,58 @@ describe("production Gemini proof smoke", () => {
     expect(status.provider).toBe("gemini-api");
     expect(getDashboardSnapshot().agentRuns[0].promptSummary).toContain("Synthetic Gemini smoke fixture");
   });
+
+  it("uses durable BigQuery Gemini evidence when Cloud Run memory has reset", async () => {
+    vi.resetModules();
+    vi.stubEnv("SENTINEL_STORAGE_MODE", "gcp-rest");
+    vi.stubEnv("SENTINEL_TENANT_ID", "tenant_fresh_cloudrun_proof");
+    vi.stubEnv("GOOGLE_CLOUD_PROJECT", "sme-sentinel-xp-06021149");
+    vi.stubEnv("BIGQUERY_DATASET", "sentinel_evidence");
+    vi.stubEnv("BIGQUERY_AGENT_RUNS_TABLE", "agent_runs");
+    vi.stubEnv("GEMINI_MODEL", "gemini-2.5-flash");
+
+    const { buildProductionGeminiProofStatusWithDurableEvidence } = await import("@/lib/production-gemini");
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const target = String(url);
+
+      if (target.includes("metadata.google.internal")) {
+        return new Response(JSON.stringify({ access_token: "test-access-token" }), { status: 200 });
+      }
+
+      if (target.includes("bigquery.googleapis.com")) {
+        expect(String(init?.body)).toContain("provider = 'gemini-api'");
+        return new Response(
+          JSON.stringify({
+            rows: [
+              {
+                f: [
+                  { v: "agent_durable_1" },
+                  { v: "evt_gemini_smoke_1" },
+                  { v: "finding_1" },
+                  { v: "semantic_risk_audit" },
+                  { v: "gemini-2.5-flash" },
+                  { v: "gemini-api" },
+                  { v: "0.000151" },
+                  { v: "2026-06-02T06:44:35.000Z" }
+                ]
+              }
+            ]
+          }),
+          { status: 200 }
+        );
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+
+    const status = await buildProductionGeminiProofStatusWithDurableEvidence(
+      { agentRuns: [], auditEvents: [], findings: [] },
+      fetchImpl as unknown as typeof fetch
+    );
+
+    expect(status.status).toBe("passed");
+    expect(status.provider).toBe("gemini-api");
+    expect(status.agentRunId).toBe("agent_durable_1");
+    expect(status.proofSummary).toContain("BigQuery agent_runs");
+  });
 });
