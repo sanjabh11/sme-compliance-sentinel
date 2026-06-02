@@ -17,7 +17,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useMemo, useState, type FormEvent } from "react";
 import type { CustomerConsentPacket } from "@/lib/customer-consent";
-import type { CustomerDemoScenario, CustomerDemoStep } from "@/lib/customer-demo";
+import type { CustomerDemoScenario, CustomerDemoStep, CustomerPilotFunnelEvent } from "@/lib/customer-demo";
 import type { CustomerLeadReceipt } from "@/lib/customer-leads";
 
 type DemoStage = "ready" | "running";
@@ -73,6 +73,7 @@ export function CustomerDemoClient({
   demo: {
     steps: CustomerDemoStep[];
     scenario: CustomerDemoScenario;
+    funnelEvents: CustomerPilotFunnelEvent[];
   };
 }) {
   const [stage, setStage] = useState<DemoStage>("ready");
@@ -526,6 +527,29 @@ export function CustomerDemoClient({
         <div className="customer-citation-card">
           <span>Example citations</span>
           <strong>Scan scope · Redacted finding · Approval record · Trust Packet preview</strong>
+        </div>
+      </section>
+
+      <section className="customer-funnel-panel" aria-label="Pilot funnel analytics">
+        <div className="customer-section-heading">
+          <p className="eyebrow">Pilot funnel analytics</p>
+          <h2>What the demo can measure today</h2>
+          <p>
+            These events support product learning only. Signed consent, customer acceptance, payment, and scan delivery
+            stay owner-held until a durable lead destination is configured.
+          </p>
+        </div>
+        <div className="customer-funnel-grid">
+          {demo.funnelEvents.map((event) => (
+            <article key={event.eventName}>
+              <div className="customer-funnel-row-heading">
+                <strong>{event.visibleTrigger}</strong>
+                <span>{event.currentStorage.replaceAll("_", " ")}</span>
+              </div>
+              <code>{event.eventName}</code>
+              <p>{event.proofBoundary}</p>
+            </article>
+          ))}
         </div>
       </section>
 

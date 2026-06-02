@@ -73,6 +73,8 @@ describe("customer entry route", () => {
     expect(text).toContain("Common buyer questions");
     expect(text).toContain("Five moments customers should see");
     expect(text).toContain("customer-highlight-list");
+    expect(text).toContain("Pilot funnel analytics");
+    expect(text).toContain("customer-funnel-grid");
     expect(text).toContain("sentinel:");
     expect(text).not.toContain("Top 20 points to show in order");
   });

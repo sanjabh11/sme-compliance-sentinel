@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { buildBusinessVerificationChecklist, getBusinessVerificationSummary } from "@/lib/business-verification";
 import { getPublicBusinessContact } from "@/lib/public-business";
 
 export const metadata: Metadata = {
@@ -9,6 +10,8 @@ export const metadata: Metadata = {
 
 export default function SupportPage() {
   const contact = getPublicBusinessContact();
+  const verificationChecklist = buildBusinessVerificationChecklist(contact);
+  const verificationSummary = getBusinessVerificationSummary(verificationChecklist);
   const supportEmail = contact.supportEmail.includes("@") ? (
     <a href={`mailto:${contact.supportEmail}`}>{contact.supportEmail}</a>
   ) : (
@@ -34,6 +37,33 @@ export default function SupportPage() {
       </section>
 
       <section className="legal-grid">
+        <article className="legal-card legal-card-wide business-verification-card">
+          <div className="business-verification-heading">
+            <div>
+              <h2>Stripe business verification status</h2>
+              <p>
+                {verificationSummary.ready}/{verificationSummary.total} items ready. Public contact details remain
+                blocked until owner-approved address, phone, and support email are configured.
+              </p>
+            </div>
+            <span data-status={verificationSummary.complete ? "ready" : "blocked"}>
+              {verificationSummary.complete ? "Ready for Stripe" : "Blocked"}
+            </span>
+          </div>
+          <div className="business-verification-grid" role="list">
+            {verificationChecklist.map((item) => (
+              <div key={item.id} role="listitem" className="business-verification-row">
+                <div>
+                  <strong>{item.label}</strong>
+                  <p>{item.requiredForStripe}</p>
+                  <small>{item.ownerAction}</small>
+                </div>
+                <span data-status={item.status}>{item.status.replace("-", " ")}</span>
+              </div>
+            ))}
+          </div>
+        </article>
+
         <article className="legal-card legal-card-wide">
           <h2>Business contact details</h2>
           <dl className="legal-definition-list">

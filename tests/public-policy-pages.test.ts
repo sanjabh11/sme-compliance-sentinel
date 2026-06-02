@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import { buildBusinessVerificationChecklist, getBusinessVerificationSummary } from "@/lib/business-verification";
 import { getPublicBusinessContact } from "@/lib/public-business";
 
 const policyRoutes = [
@@ -45,6 +46,27 @@ describe("public policy pages", () => {
 
     expect(complete.detailsComplete).toBe(true);
     expect(complete.legalName).toBe("Sanjay Bhargava");
+  });
+
+  it("surfaces Stripe business verification checklist without faking owner-held details", () => {
+    const missing = getPublicBusinessContact({
+      NEXT_PUBLIC_APP_NAME: "SME Workspace Sentinel",
+      NEXT_PUBLIC_PRODUCT_URL: "https://sme-workspace-sentinel.vercel.app"
+    });
+    const checklist = buildBusinessVerificationChecklist(missing);
+    const summary = getBusinessVerificationSummary(checklist);
+    const rowsById = Object.fromEntries(checklist.map((item) => [item.id, item]));
+
+    expect(summary.complete).toBe(false);
+    expect(rowsById["support-url"].status).toBe("ready");
+    expect(rowsById["terms-url"].status).toBe("ready");
+    expect(rowsById["privacy-url"].status).toBe("ready");
+    expect(rowsById["refund-url"].status).toBe("ready");
+    expect(rowsById["registered-address"].status).toBe("blocked");
+    expect(rowsById["domestic-phone"].status).toBe("blocked");
+    expect(rowsById["support-email"].status).toBe("blocked");
+    expect(rowsById["payment-methods"].evidence).toContain("Website");
+    expect(rowsById["payment-methods"].evidence).toContain("Offline");
   });
 
   it("keeps terms and refund pages distinct for Stripe review", async () => {

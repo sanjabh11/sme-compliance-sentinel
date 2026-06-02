@@ -15,6 +15,14 @@ export interface CustomerDemoStep {
   proofPoints: string[];
 }
 
+export interface CustomerPilotFunnelEvent {
+  eventName: string;
+  stage: "awareness" | "engagement" | "consent" | "lead_request" | "handoff";
+  visibleTrigger: string;
+  currentStorage: "browser_event" | "local_receipt" | "download_only";
+  proofBoundary: string;
+}
+
 export interface CustomerDemoScenario {
   customerSegment: string;
   offer: string;
@@ -245,6 +253,51 @@ export const customerDemoSteps: CustomerDemoStep[] = [
   }
 ];
 
+export const customerPilotFunnelEvents: CustomerPilotFunnelEvent[] = [
+  {
+    eventName: "customer_demo_started",
+    stage: "engagement",
+    visibleTrigger: "Get my sample risk scan",
+    currentStorage: "browser_event",
+    proofBoundary: "Shows sample-demo engagement only; it does not prove live Workspace access or buyer commitment."
+  },
+  {
+    eventName: "booking_cta_clicked",
+    stage: "lead_request",
+    visibleTrigger: "Book my one-day scan",
+    currentStorage: "browser_event",
+    proofBoundary: "CTA interest must be reconciled with a real lead destination and consent before it becomes pipeline evidence."
+  },
+  {
+    eventName: "sample_trust_packet_downloaded",
+    stage: "engagement",
+    visibleTrigger: "Download sample packet",
+    currentStorage: "download_only",
+    proofBoundary: "A sample download is not a live scan, customer outcome, or payment proof."
+  },
+  {
+    eventName: "consent_packet_requested",
+    stage: "consent",
+    visibleTrigger: "Prepare my consent packet",
+    currentStorage: "local_receipt",
+    proofBoundary: "Template generation does not prove signed consent or approved Workspace access."
+  },
+  {
+    eventName: "pilot_scope_requested",
+    stage: "lead_request",
+    visibleTrigger: "Request my pilot scope",
+    currentStorage: "local_receipt",
+    proofBoundary: "The local receipt is an operator handoff until an approved lead destination and payment record exist."
+  },
+  {
+    eventName: "lead_scope_packet_downloaded",
+    stage: "handoff",
+    visibleTrigger: "Download scope packet",
+    currentStorage: "download_only",
+    proofBoundary: "A downloaded handoff packet does not prove customer acceptance, payment, or scan delivery."
+  }
+];
+
 export const customerDemoScenario: CustomerDemoScenario = {
   customerSegment: "seed-stage B2B SaaS teams facing enterprise security review",
   offer: "$199 one-day Google Workspace risk scan plus SOC2 readiness evidence packet.",
@@ -359,13 +412,15 @@ export function buildCustomerDemoCopyBundle() {
   return {
     features: customerDemoFeatures,
     steps: customerDemoSteps,
-    scenario: customerDemoScenario
+    scenario: customerDemoScenario,
+    funnelEvents: customerPilotFunnelEvents
   };
 }
 
 export function buildCustomerDemoPageBundle() {
   return {
     steps: customerDemoSteps,
-    scenario: customerDemoScenario
+    scenario: customerDemoScenario,
+    funnelEvents: customerPilotFunnelEvents
   };
 }

@@ -1759,6 +1759,82 @@ dd {
   padding: 12px 14px;
 }
 
+.business-verification-card {
+  align-content: start;
+}
+
+.business-verification-heading {
+  align-items: start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.business-verification-heading > span,
+.business-verification-row > span {
+  border: 1px solid #d7e2e7;
+  border-radius: 999px;
+  color: var(--muted);
+  flex: none;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+  padding: 7px 9px;
+  text-transform: uppercase;
+}
+
+.business-verification-heading > span[data-status="ready"],
+.business-verification-row > span[data-status="ready"] {
+  background: #e8f8ee;
+  border-color: #b8e3c4;
+  color: #166534;
+}
+
+.business-verification-heading > span[data-status="blocked"],
+.business-verification-row > span[data-status="blocked"] {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #9f1239;
+}
+
+.business-verification-row > span[data-status="manual"] {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
+}
+
+.business-verification-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.business-verification-row {
+  align-items: start;
+  background: #f8fafb;
+  border: 1px solid #e5ecef;
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 94px;
+  padding: 12px;
+}
+
+.business-verification-row strong {
+  color: var(--ink);
+  display: block;
+  margin-bottom: 5px;
+}
+
+.business-verification-row p,
+.business-verification-row small {
+  color: var(--muted);
+  display: block;
+  line-height: 1.4;
+  margin: 0;
+}
+
 .legal-definition-list {
   display: grid;
   gap: 12px;
@@ -1953,6 +2029,7 @@ dd {
 .customer-scenario-panel,
 .customer-outcome-grid article,
 .customer-copilot-band,
+.customer-funnel-panel,
 .customer-feature-sequence,
 .customer-pilot-panel {
   background: #ffffff;
@@ -1987,6 +2064,7 @@ dd {
 .customer-scenario-panel p,
 .customer-outcome-grid p,
 .customer-copilot-band p,
+.customer-funnel-panel p,
 .customer-pilot-panel p {
   color: var(--muted);
   line-height: 1.55;
@@ -2485,6 +2563,63 @@ dd {
   margin-bottom: 16px;
 }
 
+.customer-section-heading p {
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 8px 0 0;
+  max-width: 780px;
+}
+
+.customer-funnel-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.customer-funnel-grid article {
+  background: #f8fafb;
+  border: 1px solid #e5ecef;
+  border-radius: 8px;
+  display: grid;
+  gap: 9px;
+  min-height: 166px;
+  padding: 12px;
+}
+
+.customer-funnel-row-heading {
+  align-items: start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.customer-funnel-row-heading strong {
+  color: var(--ink);
+  line-height: 1.25;
+}
+
+.customer-funnel-row-heading span {
+  background: #eef4f1;
+  border-radius: 999px;
+  color: var(--accent-dark);
+  flex: none;
+  font-size: 0.68rem;
+  font-weight: 900;
+  padding: 6px 8px;
+  text-transform: uppercase;
+}
+
+.customer-funnel-grid code {
+  color: #31525c;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.customer-funnel-grid p {
+  font-size: 0.9rem;
+  margin: 0;
+}
+
 .customer-feature-list {
   display: grid;
   gap: 10px;
@@ -2703,6 +2838,7 @@ dd {
   .customer-demo-grid,
   .customer-conversion-grid,
   .customer-copilot-band,
+  .customer-funnel-grid,
   .customer-pilot-panel {
     grid-template-columns: 1fr;
   }
@@ -2714,7 +2850,8 @@ dd {
   .trust-analytics-metrics,
   .customer-outcome-grid,
   .customer-feature-list,
-  .customer-highlight-list {
+  .customer-highlight-list,
+  .business-verification-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -2768,6 +2905,16 @@ dd {
     grid-template-columns: 1fr;
   }
 
+  .business-verification-grid,
+  .business-verification-row {
+    grid-template-columns: 1fr;
+  }
+
+  .business-verification-heading,
+  .business-verification-row {
+    flex-direction: column;
+  }
+
   .customer-mobile-sticky-cta {
     align-items: center;
     background: var(--accent);
@@ -2806,6 +2953,7 @@ dd {
   .customer-outcome-grid,
   .customer-feature-list,
   .customer-highlight-list,
+  .customer-funnel-grid,
   .customer-lead-form,
   .customer-feature-list article,
   .customer-highlight-list article {

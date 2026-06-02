@@ -75,6 +75,7 @@ import type {
   XPrizeSubmissionBinder,
   XPrizeSubmissionGate
 } from "@/lib/types";
+import { buildBusinessVerificationChecklist, getBusinessVerificationSummary } from "@/lib/business-verification";
 
 type ActionState = "idle" | "running" | "error";
 
@@ -1572,6 +1573,11 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
   }
 
   const primaryFinding = snapshot.findings[0];
+  const businessVerificationChecklist = useMemo(() => buildBusinessVerificationChecklist(), []);
+  const businessVerificationSummary = useMemo(
+    () => getBusinessVerificationSummary(businessVerificationChecklist),
+    [businessVerificationChecklist]
+  );
 
   return (
     <main className="admin-shell">
@@ -1605,6 +1611,32 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
         <Metric label="Public exposures closed" value={metrics.remediated.toString()} hint="Approved remediations only" />
         <Metric label="Agent runs" value={metrics.agentRuns.toString()} hint="AI-native operations evidence" />
         <Metric label="Gemini spend" value={`$${metrics.geminiCost.toFixed(4)}`} hint="Cost discipline for SME margin" />
+      </section>
+
+      <section className="panel business-verification-card" aria-label="Stripe business verification status">
+        <div className="panel-heading">
+          <div>
+            <h2>Stripe Business Verification</h2>
+            <p>
+              {businessVerificationSummary.ready}/{businessVerificationSummary.total} public business-detail items
+              ready; owner-held address, phone, and support email stay fail-closed until configured.
+            </p>
+          </div>
+          <span className="state" data-state={businessVerificationSummary.complete ? "implemented" : "blocked"}>
+            {businessVerificationSummary.complete ? "ready" : "blocked"}
+          </span>
+        </div>
+        <div className="business-verification-grid">
+          {businessVerificationChecklist.map((item) => (
+            <article key={item.id} className="business-verification-row">
+              <div>
+                <strong>{item.label}</strong>
+                <p>{item.ownerAction}</p>
+              </div>
+              <span data-status={item.status}>{item.status.replace("-", " ")}</span>
+            </article>
+          ))}
+        </div>
       </section>
 
       <section className="content-grid" aria-label="MVP outreach readiness">

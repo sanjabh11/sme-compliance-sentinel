@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { scanClaimText } from "@/lib/claim-guard";
-import { buildCustomerDemoCopyBundle, customerDemoFeatures } from "@/lib/customer-demo";
+import { buildCustomerDemoCopyBundle, customerDemoFeatures, customerPilotFunnelEvents } from "@/lib/customer-demo";
 
 describe("customer demo mode", () => {
   it("defines a complete 20-feature customer showcase sequence", () => {
@@ -35,5 +35,19 @@ describe("customer demo mode", () => {
     expect(text).toContain("Live scans require signed consent");
     expect(text).toContain("Will AI read every file?");
     expect(text).toContain("Sample risk movement after approval");
+  });
+
+  it("lists customer funnel events without treating clicks as revenue or consent proof", () => {
+    expect(customerPilotFunnelEvents.map((event) => event.eventName)).toEqual(
+      expect.arrayContaining([
+        "customer_demo_started",
+        "booking_cta_clicked",
+        "sample_trust_packet_downloaded",
+        "consent_packet_requested",
+        "pilot_scope_requested"
+      ])
+    );
+    expect(customerPilotFunnelEvents.every((event) => event.proofBoundary.length > 20)).toBe(true);
+    expect(customerPilotFunnelEvents.map((event) => event.proofBoundary).join(" ")).toContain("does not prove");
   });
 });
