@@ -76,6 +76,7 @@ import type {
   XPrizeSubmissionGate
 } from "@/lib/types";
 import { buildBusinessVerificationChecklist, getBusinessVerificationSummary } from "@/lib/business-verification";
+import { buildStripeProofStatusPanel } from "@/lib/stripe-proof-status";
 
 type ActionState = "idle" | "running" | "error";
 
@@ -1578,6 +1579,10 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
     () => getBusinessVerificationSummary(businessVerificationChecklist),
     [businessVerificationChecklist]
   );
+  const stripeProofStatusPanel = useMemo(
+    () => buildStripeProofStatusPanel({ businessVerificationChecklist, financialEvidence }),
+    [businessVerificationChecklist, financialEvidence]
+  );
 
   return (
     <main className="admin-shell">
@@ -1637,6 +1642,36 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
             </article>
           ))}
         </div>
+      </section>
+
+      <section className="panel stripe-proof-status-card" aria-label="Stripe proof status">
+        <div className="panel-heading">
+          <div>
+            <h2>Stripe Proof Status</h2>
+            <p>
+              {stripeProofStatusPanel.summary.ready}/{stripeProofStatusPanel.summary.total} non-secret proof gates
+              ready; test checkout, live MRR, and invoice/payment evidence stay blocked until owner-held Stripe proof passes.
+            </p>
+          </div>
+          <span className="state" data-state={stripeProofStatusPanel.summary.complete ? "implemented" : "blocked"}>
+            {stripeProofStatusPanel.summary.complete ? "ready" : "blocked"}
+          </span>
+        </div>
+        <div className="stripe-proof-grid">
+          {stripeProofStatusPanel.items.map((item) => (
+            <article key={item.id} className="stripe-proof-row">
+              <div>
+                <strong>{item.label}</strong>
+                <p>{item.evidence}</p>
+                <small>
+                  Required: {item.requiredProof} Does not prove: {item.doesNotProve}
+                </small>
+              </div>
+              <span data-status={item.status}>{item.status}</span>
+            </article>
+          ))}
+        </div>
+        <p className="proof-boundary-note">{stripeProofStatusPanel.summary.boundary}</p>
       </section>
 
       <section className="content-grid" aria-label="MVP outreach readiness">

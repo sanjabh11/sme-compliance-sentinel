@@ -47,7 +47,25 @@ const businessVerificationSurfaces = [
       "Stripe Business Verification",
       "Stripe business verification status",
       "businessVerificationSummary",
-      "businessVerificationChecklist"
+      "businessVerificationChecklist",
+      "stripe-proof-status-card",
+      "Stripe Proof Status",
+      "Stripe proof status",
+      "stripeProofStatusPanel",
+      "buildStripeProofStatusPanel",
+      "test checkout, live MRR, and invoice/payment evidence"
+    ]
+  },
+  {
+    file: "lib/stripe-proof-status.ts",
+    snippets: [
+      "stripe-test-checkout",
+      "stripe-live-mrr",
+      "stripe-invoice-payment-proof",
+      "livemode=false",
+      "total MRR greater than zero",
+      "doesNotProve",
+      "does not expose API keys"
     ]
   },
   {
@@ -118,11 +136,14 @@ for (const eventName of customerFunnelEvents) {
 [
   "buildBusinessVerificationChecklist",
   "getBusinessVerificationSummary",
+  "buildStripeProofStatusPanel",
   "getPublicBusinessContact",
   "registered-address",
   "domestic-phone",
   "support-email",
-  "payment-methods"
+  "payment-methods",
+  "stripe-live-mrr",
+  "stripe-test-checkout"
 ].forEach((snippet) => assertContains("tests/public-policy-pages.test.ts", snippet));
 
 [
@@ -166,6 +187,7 @@ console.log(JSON.stringify({
   surfaces: [
     "support business verification card",
     "admin Stripe business verification panel",
+    "admin Stripe proof status card",
     "customer pilot funnel analytics panel",
     "customer event catalog with proof boundaries",
     "tests covering public policy and funnel copy"
