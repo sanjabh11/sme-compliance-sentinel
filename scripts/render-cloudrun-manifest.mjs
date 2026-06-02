@@ -123,6 +123,7 @@ const renderValuesTemplate = {
   SENTINEL_SOURCE_COMMIT: "SOURCE_COMMIT",
   SENTINEL_SOURCE_COMMIT_AT: "SOURCE_COMMIT_AT",
   SENTINEL_SOURCE_BRANCH: "origin/main",
+  SENTINEL_PRIVATE_ROOT: "/secure/local",
   NEXT_PUBLIC_PRODUCT_URL: "https://YOUR-SERVICE-URL",
   XPRIZE_REPOSITORY_URL: "https://github.com/sanjabh11/sme-compliance-sentinel",
   XPRIZE_REPOSITORY_ACCESS_CONFIGURED: "false",

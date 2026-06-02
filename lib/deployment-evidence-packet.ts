@@ -13,14 +13,31 @@ import type {
 const placeholderProductUrl = "https://YOUR-CLOUD-RUN-URL";
 const placeholderReleaseId = "RELEASE_ID";
 const placeholderPrivateBucket = "gs://PROJECT_ID-sentinel-private-evidence";
-const privateRenderValuesPath = "/secure/local/cloudrun-render-values.json";
-const prepareCloudRunRenderHandoffCommand =
-  `npm run prepare:cloudrun-render-handoff -- --values ${privateRenderValuesPath} --out-dir artifacts/deployment --strict`;
+const defaultPrivateRoot = "/secure/local";
 const verifyCloudRunRenderHandoffCommand =
   "npm run verify:cloudrun-render-handoff -- artifacts/deployment/$SENTINEL_RELEASE_ID/cloudrun-render-handoff.json --strict";
-const cloudRunTranscriptDir = "/secure/local/cloudrun/$SENTINEL_RELEASE_ID";
-const collectCloudRunDeploymentTranscriptCommand =
-  `npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log ${cloudRunTranscriptDir}/cloudrun-dry-run.log --deploy-log ${cloudRunTranscriptDir}/cloudrun-deploy.log --describe-json ${cloudRunTranscriptDir}/cloudrun-describe.json --out-dir artifacts/deployment --strict`;
+
+function buildPrivatePaths() {
+  const privateRoot = (process.env.SENTINEL_PRIVATE_ROOT ?? defaultPrivateRoot).trim() || defaultPrivateRoot;
+  const privateRenderValuesPath = `${privateRoot.replace(/\/$/u, "")}/cloudrun-render-values.json`;
+  const cloudRunTranscriptDir = `${privateRoot.replace(/\/$/u, "")}/cloudrun/$SENTINEL_RELEASE_ID`;
+  const hostedProofDir = `${privateRoot.replace(/\/$/u, "")}/hosted-proof/$SENTINEL_RELEASE_ID`;
+  const deploymentCommandResultsPath = `${privateRoot.replace(/\/$/u, "")}/deployment-command-results.json`;
+  const prepareCloudRunRenderHandoffCommand =
+    `npm run prepare:cloudrun-render-handoff -- --values ${privateRenderValuesPath} --out-dir artifacts/deployment --strict`;
+  const collectCloudRunDeploymentTranscriptCommand =
+    `npm run collect:cloudrun-deployment -- --release-id $SENTINEL_RELEASE_ID --dry-run-log ${cloudRunTranscriptDir}/cloudrun-dry-run.log --deploy-log ${cloudRunTranscriptDir}/cloudrun-deploy.log --describe-json ${cloudRunTranscriptDir}/cloudrun-describe.json --out-dir artifacts/deployment --strict`;
+
+  return {
+    privateRoot,
+    privateRenderValuesPath,
+    cloudRunTranscriptDir,
+    hostedProofDir,
+    deploymentCommandResultsPath,
+    prepareCloudRunRenderHandoffCommand,
+    collectCloudRunDeploymentTranscriptCommand
+  };
+}
 
 export function buildDeploymentEvidencePacket(): DeploymentEvidencePacket {
   const generatedAt = new Date().toISOString();
@@ -29,6 +46,7 @@ export function buildDeploymentEvidencePacket(): DeploymentEvidencePacket {
   const productUrl = sentinelConfig.productUrl || placeholderProductUrl;
   const repositoryUrl = sentinelConfig.repositoryUrl || packageJson.repository?.url || "missing";
   const privateEvidenceBucket = sentinelConfig.privateEvidenceBucket || placeholderPrivateBucket;
+  const privatePaths = buildPrivatePaths();
   const configGaps = buildConfigGaps({ releaseId, productUrl, repositoryUrl, privateEvidenceBucket });
   const secretGaps = sentinelConfig.adminActionTokenConfigured
     ? []
@@ -40,12 +58,14 @@ export function buildDeploymentEvidencePacket(): DeploymentEvidencePacket {
     productUrl,
     projectId: sentinelConfig.googleCloudProject || "PROJECT_ID",
     region: sentinelConfig.cloudRunRegion,
-    serviceName: sentinelConfig.cloudRunServiceName
+    serviceName: sentinelConfig.cloudRunServiceName,
+    privatePaths
   });
   const artifactManifest = buildArtifactManifest({
     releaseId,
     privateEvidenceBucket,
-    deploymentStatus: deployment.overallStatus
+    deploymentStatus: deployment.overallStatus,
+    privatePaths
   });
 
   return {
@@ -249,6 +269,7 @@ function buildArtifactManifest(input: {
   releaseId: string;
   privateEvidenceBucket: string;
   deploymentStatus: DeploymentEvidencePacket["deploymentStatus"];
+  privatePaths: ReturnType<typeof buildPrivatePaths>;
 }): DeploymentEvidenceArtifact[] {
   const basePath = `${input.privateEvidenceBucket.replace(/\/$/u, "")}/releases/${input.releaseId}`;
   const localVerifierStatus = input.deploymentStatus === "blocked" ? "missing" : "ready";
@@ -270,8 +291,8 @@ function buildArtifactManifest(input: {
       label: "Release-prefilled private Cloud Run render values",
       ownerRole: "engineering",
       status: localVerifierStatus,
-      sourceCommand: prepareCloudRunRenderHandoffCommand,
-      privateStorePath: privateRenderValuesPath,
+      sourceCommand: input.privatePaths.prepareCloudRunRenderHandoffCommand,
+      privateStorePath: input.privatePaths.privateRenderValuesPath,
       evidenceVaultTarget: "operator-only Cloud Run input",
       redactionRules: [
         "Do not import the filled values file into public evidence or the hosted Evidence Vault.",
@@ -285,7 +306,7 @@ function buildArtifactManifest(input: {
       label: "Cloud Run render handoff packet",
       ownerRole: "engineering",
       status: localVerifierStatus,
-      sourceCommand: prepareCloudRunRenderHandoffCommand,
+      sourceCommand: input.privatePaths.prepareCloudRunRenderHandoffCommand,
       privateStorePath: `${basePath}/cloudrun-render-handoff.json`,
       evidenceVaultTarget: "cloud-run-proof",
       redactionRules: [
@@ -316,7 +337,7 @@ function buildArtifactManifest(input: {
       ownerRole: "engineering",
       status: localVerifierStatus,
       sourceCommand:
-        "npm run audit:cloudrun-values -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
+        `npm run audit:cloudrun-values -- --values ${input.privatePaths.privateRenderValuesPath} --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict`,
       privateStorePath: `${basePath}/cloudrun-render-values-audit.json`,
       evidenceVaultTarget: "cloud-run-proof",
       redactionRules: [
@@ -331,7 +352,7 @@ function buildArtifactManifest(input: {
       ownerRole: "engineering",
       status: localVerifierStatus,
       sourceCommand:
-        "npm run audit:cloudrun-values -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
+        `npm run audit:cloudrun-values -- --values ${input.privatePaths.privateRenderValuesPath} --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict`,
       privateStorePath: `${basePath}/cloudrun-render-evidence-packet.json`,
       evidenceVaultTarget: "cloud-run-proof",
       redactionRules: [
@@ -363,7 +384,7 @@ function buildArtifactManifest(input: {
       ownerRole: "engineering",
       status: localVerifierStatus,
       sourceCommand:
-        "npm run render:cloudrun-manifest -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
+        `npm run render:cloudrun-manifest -- --values ${input.privatePaths.privateRenderValuesPath} --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict`,
       privateStorePath: `${basePath}/cloudrun-render-summary.json`,
       evidenceVaultTarget: "cloud-run-proof",
       redactionRules: ["Use non-secret render values only; keep rendered manifest and command files private."],
@@ -386,7 +407,7 @@ function buildArtifactManifest(input: {
       ownerRole: "engineering",
       status: localVerifierStatus,
       sourceCommand:
-        "npm run prepare:cloudrun-dry-run -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
+        `npm run prepare:cloudrun-dry-run -- --values ${input.privatePaths.privateRenderValuesPath} --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict`,
       privateStorePath: `${basePath}/cloudrun-dry-run-preflight-packet.json`,
       evidenceVaultTarget: "cloud-run-proof",
       redactionRules: ["Keep the filled values file private; share only the packet after human redaction review."],
@@ -445,7 +466,7 @@ function buildArtifactManifest(input: {
       label: "Redacted Cloud Run deployment transcript packet",
       ownerRole: "engineering",
       status: "external-required",
-      sourceCommand: collectCloudRunDeploymentTranscriptCommand,
+      sourceCommand: input.privatePaths.collectCloudRunDeploymentTranscriptCommand,
       privateStorePath: `${basePath}/cloudrun-deployment-transcript-packet.json`,
       evidenceVaultTarget: "cloud-run-proof",
       redactionRules: [
@@ -460,7 +481,7 @@ function buildArtifactManifest(input: {
       ownerRole: "engineering",
       status: "external-required",
       sourceCommand:
-        "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json",
+        `npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --strict --out ${input.privatePaths.hostedProofDir}/verify-production-readonly.json`,
       privateStorePath: `${basePath}/verify-production-readonly.json`,
       evidenceVaultTarget: "production-readiness-report",
       redactionRules: ["Keep route names and statuses; redact internal ids if present."],
@@ -472,7 +493,7 @@ function buildArtifactManifest(input: {
       ownerRole: "engineering",
       status: "external-required",
       sourceCommand:
-        "npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json",
+        `npm run verify:production -- --url https://YOUR-CLOUD-RUN-URL --release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out ${input.privatePaths.hostedProofDir}/verify-production-write.json`,
       privateStorePath: `${basePath}/verify-production-write.json`,
       evidenceVaultTarget: "production-readiness-report",
       redactionRules: ["Redact tokens, raw Workspace content, customer ids, and raw cloud responses before importing."],
@@ -537,7 +558,7 @@ function buildArtifactManifest(input: {
       ownerRole: "engineering",
       status: "external-required",
       sourceCommand:
-        "npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --write-results-template /secure/local/deployment-command-results.json",
+        `npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --write-results-template ${input.privatePaths.deploymentCommandResultsPath}`,
       privateStorePath: `${basePath}/hosted-proof-bundle/deployment-command-results.json`,
       evidenceVaultTarget: "operator command-result template lineage",
       redactionRules: [
@@ -552,7 +573,7 @@ function buildArtifactManifest(input: {
       ownerRole: "engineering",
       status: "external-required",
       sourceCommand:
-        "npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --write-results-template /secure/local/deployment-command-results.json, then fill the private template and run npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --results /secure/local/deployment-command-results.json --strict",
+        `npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --write-results-template ${input.privatePaths.deploymentCommandResultsPath}, then fill the private template and run npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --results ${input.privatePaths.deploymentCommandResultsPath} --strict`,
       privateStorePath: `${basePath}/hosted-proof-bundle/deployment-execution-checklist.json`,
       evidenceVaultTarget: "operator command-result ledger",
       redactionRules: [
@@ -603,6 +624,7 @@ function buildCommandSequence(input: {
   projectId: string;
   region: string;
   serviceName: string;
+  privatePaths: ReturnType<typeof buildPrivatePaths>;
 }): DeploymentEvidenceCommand[] {
   return [
     command("lint", "Lint", "npm run lint", false, false, "local-quality-gates-log", "Safe local quality gate."),
@@ -630,7 +652,7 @@ function buildCommandSequence(input: {
     command(
       "cloudrun-release-values",
       "Prepare Cloud Run render handoff",
-      prepareCloudRunRenderHandoffCommand,
+      input.privatePaths.prepareCloudRunRenderHandoffCommand,
       false,
       false,
       "cloudrun-render-handoff-json",
@@ -648,7 +670,7 @@ function buildCommandSequence(input: {
     command(
       "cloudrun-render-values-audit",
       "Audit private Cloud Run render values",
-      "npm run audit:cloudrun-values -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
+      `npm run audit:cloudrun-values -- --values ${input.privatePaths.privateRenderValuesPath} --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict`,
       false,
       false,
       "cloudrun-render-values-audit-json",
@@ -666,7 +688,7 @@ function buildCommandSequence(input: {
     command(
       "cloudrun-render-manifest",
       "Render private Cloud Run manifest",
-      "npm run render:cloudrun-manifest -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
+      `npm run render:cloudrun-manifest -- --values ${input.privatePaths.privateRenderValuesPath} --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict`,
       false,
       false,
       "cloudrun-render-summary-json",
@@ -684,7 +706,7 @@ function buildCommandSequence(input: {
     command(
       "cloudrun-dry-run-preflight",
       "Prepare Cloud Run dry-run preflight packet",
-      "npm run prepare:cloudrun-dry-run -- --values /secure/local/cloudrun-render-values.json --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict",
+      `npm run prepare:cloudrun-dry-run -- --values ${input.privatePaths.privateRenderValuesPath} --out-dir artifacts/deployment --release-id $SENTINEL_RELEASE_ID --strict`,
       false,
       false,
       "cloudrun-dry-run-preflight-json",
@@ -729,7 +751,7 @@ function buildCommandSequence(input: {
     command(
       "cloudrun-deployment-transcript-collect",
       "Collect redacted Cloud Run deployment transcript packet",
-      collectCloudRunDeploymentTranscriptCommand,
+      input.privatePaths.collectCloudRunDeploymentTranscriptCommand,
       false,
       false,
       "cloudrun-deployment-transcript-packet-json",
@@ -738,7 +760,7 @@ function buildCommandSequence(input: {
     command(
       "hosted-readonly",
       "Hosted read-only verification",
-      `npm run verify:production -- --url ${input.productUrl} --release-id $SENTINEL_RELEASE_ID --strict --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json`,
+      `npm run verify:production -- --url ${input.productUrl} --release-id $SENTINEL_RELEASE_ID --strict --out ${input.privatePaths.hostedProofDir}/verify-production-readonly.json`,
       false,
       false,
       "verify-production-readonly-json",
@@ -747,7 +769,7 @@ function buildCommandSequence(input: {
     command(
       "hosted-write-through",
       "Hosted write-through verification",
-      `npm run verify:production -- --url ${input.productUrl} --release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out /secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-write.json`,
+      `npm run verify:production -- --url ${input.productUrl} --release-id $SENTINEL_RELEASE_ID --strict --include-write-checks --out ${input.privatePaths.hostedProofDir}/verify-production-write.json`,
       true,
       true,
       "verify-production-write-json",
@@ -783,7 +805,7 @@ function buildCommandSequence(input: {
     command(
       "deployment-execution-checklist",
       "Prepare deployment execution checklist",
-      "npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --write-results-template /secure/local/deployment-command-results.json && npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --results /secure/local/deployment-command-results.json --strict",
+      `npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --write-results-template ${input.privatePaths.deploymentCommandResultsPath} && npm run prepare:deployment-execution-checklist -- --bundle-dir artifacts/hosted-proof/$SENTINEL_RELEASE_ID --results ${input.privatePaths.deploymentCommandResultsPath} --strict`,
       false,
       false,
       "deployment-execution-checklist-json",

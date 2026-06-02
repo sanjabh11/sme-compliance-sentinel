@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { scanClaimText } from "@/lib/claim-guard";
 import { buildDeploymentEvidencePacket } from "@/lib/deployment-evidence-packet";
 import { GET } from "@/app/api/production/deployment-packet/route";
 
 describe("deployment evidence packet", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("keeps the checked-in template in setup-needed status without claiming hosted proof", () => {
     const packet = buildDeploymentEvidencePacket();
 
@@ -188,6 +192,28 @@ describe("deployment evidence packet", () => {
       "x-sentinel-admin-token"
     );
     expect(packet.redactionChecklist.join(" ")).toContain("OAuth client secrets");
+  });
+
+  it("routes operator private evidence paths through SENTINEL_PRIVATE_ROOT", () => {
+    vi.stubEnv("SENTINEL_PRIVATE_ROOT", "/private/tmp/sentinel-secure/local");
+
+    const packet = buildDeploymentEvidencePacket();
+    const packetText = JSON.stringify(packet);
+
+    expect(packet.artifactManifest.find((artifact) => artifact.id === "cloudrun-release-values-json")?.privateStorePath).toBe(
+      "/private/tmp/sentinel-secure/local/cloudrun-render-values.json"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "cloudrun-render-values-audit")?.command).toContain(
+      "/private/tmp/sentinel-secure/local/cloudrun-render-values.json"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "hosted-readonly")?.command).toContain(
+      "/private/tmp/sentinel-secure/local/hosted-proof/$SENTINEL_RELEASE_ID/verify-production-readonly.json"
+    );
+    expect(packet.commandSequence.find((command) => command.id === "deployment-execution-checklist")?.command).toContain(
+      "/private/tmp/sentinel-secure/local/deployment-command-results.json"
+    );
+    expect(packet.runbook[1].proofFiles).toContain("/private/tmp/sentinel-secure/local/cloudrun-render-values.json");
+    expect(packetText).not.toContain("/secure/local");
   });
 
   it("turns commands and artifacts into a stop-gated private deployment runbook", () => {

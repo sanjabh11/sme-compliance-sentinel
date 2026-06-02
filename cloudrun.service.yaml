@@ -59,6 +59,8 @@ spec:
               value: "origin/main"
             - name: SENTINEL_PRIVATE_EVIDENCE_BUCKET
               value: "gs://PROJECT_ID-sentinel-private-evidence"
+            - name: SENTINEL_PRIVATE_ROOT
+              value: "/secure/local"
             - name: NEXT_PUBLIC_PRODUCT_URL
               value: "https://YOUR-SERVICE-URL"
             - name: XPRIZE_REPOSITORY_URL
