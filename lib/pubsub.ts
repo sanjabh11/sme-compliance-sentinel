@@ -1,8 +1,25 @@
-import type { ResourceEvent } from "@/lib/types";
-import { createDemoEvent } from "@/lib/store";
 import { sentinelConfig } from "@/lib/config";
+import { createDemoEvent } from "@/lib/store";
+import type { ResourceEvent } from "@/lib/types";
 
-const tokenInfoEndpoint = "https://oauth2.googleapis.com/tokeninfo";
+const googleOidcJwksEndpoint = "https://www.googleapis.com/oauth2/v3/certs";
+const googleTokenIssuers = new Set(["https://accounts.google.com", "accounts.google.com"]);
+
+type GoogleOidcJwk = JsonWebKey & {
+  kid?: string;
+  alg?: string;
+  use?: string;
+};
+
+type GoogleOidcClaims = {
+  iss?: string;
+  aud?: string | string[];
+  exp?: number;
+  email?: string;
+  email_verified?: string | boolean;
+};
+
+let jwksCache: { keys: GoogleOidcJwk[]; expiresAtMs: number } | undefined;
 
 export class WebhookRequestError extends Error {
   constructor(
@@ -143,16 +160,16 @@ async function validateAuthenticatedPubSubPush(
     throw new WebhookRequestError(401, "Authenticated Pub/Sub push did not include a bearer OIDC token.", "pubsub-token-missing");
   }
 
-  const tokenInfo = await fetchTokenInfo(token, fetchImpl);
-  if (tokenInfo.aud !== sentinelConfig.workspacePubSubPushAudience) {
+  const tokenClaims = await verifyGoogleOidcToken(token, fetchImpl);
+  if (!audienceMatches(tokenClaims.aud, sentinelConfig.workspacePubSubPushAudience)) {
     throw new WebhookRequestError(403, "Authenticated Pub/Sub push token audience did not match this webhook.", "pubsub-audience-invalid");
   }
 
-  if (tokenInfo.email !== sentinelConfig.workspacePubSubServiceAccountEmail) {
+  if (tokenClaims.email !== sentinelConfig.workspacePubSubServiceAccountEmail) {
     throw new WebhookRequestError(403, "Authenticated Pub/Sub push token email did not match the configured service account.", "pubsub-email-invalid");
   }
 
-  if (typeof tokenInfo.email_verified !== "undefined" && tokenInfo.email_verified !== "true" && tokenInfo.email_verified !== true) {
+  if (tokenClaims.email_verified !== "true" && tokenClaims.email_verified !== true) {
     throw new WebhookRequestError(403, "Authenticated Pub/Sub push token email is not verified.", "pubsub-email-unverified");
   }
 
@@ -164,27 +181,99 @@ async function validateAuthenticatedPubSubPush(
   }
 }
 
-async function fetchTokenInfo(token: string, fetchImpl: typeof fetch) {
-  const url = new URL(tokenInfoEndpoint);
-  url.searchParams.set("id_token", token);
-  const response = await fetchImpl(url.toString());
-  const payload = (await response.json().catch(() => ({}))) as {
-    aud?: string;
-    email?: string;
-    email_verified?: string | boolean;
-    error?: string;
-    error_description?: string;
-  };
-
-  if (!response.ok) {
-    throw new WebhookRequestError(
-      401,
-      `Unable to verify Pub/Sub push token: ${payload.error_description ?? payload.error ?? response.status}.`,
-      "pubsub-token-invalid"
-    );
+async function verifyGoogleOidcToken(token: string, fetchImpl: typeof fetch): Promise<GoogleOidcClaims> {
+  const [encodedHeader, encodedPayload, encodedSignature] = token.split(".");
+  if (!encodedHeader || !encodedPayload || !encodedSignature) {
+    throw new WebhookRequestError(401, "Authenticated Pub/Sub push token is not a signed OIDC JWT.", "pubsub-token-invalid");
   }
 
-  return payload;
+  const header = parseJwtPart<{ alg?: string; kid?: string }>(encodedHeader, "header");
+  if (header.alg !== "RS256" || !header.kid) {
+    throw new WebhookRequestError(401, "Authenticated Pub/Sub push token header is not a Google RS256 JWT.", "pubsub-token-invalid");
+  }
+
+  const jwk = await findGoogleOidcJwk(header.kid, fetchImpl);
+  const publicKey = await importGoogleOidcPublicKey(jwk);
+  const signingInput = new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`);
+  const signature = decodeBase64UrlToBytes(encodedSignature);
+  const verified = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", publicKey, signature, signingInput);
+
+  if (!verified) {
+    throw new WebhookRequestError(401, "Authenticated Pub/Sub push token signature could not be verified.", "pubsub-token-invalid");
+  }
+
+  const claims = parseJwtPart<GoogleOidcClaims>(encodedPayload, "payload");
+  validateGoogleOidcClaims(claims);
+  return claims;
+}
+
+function parseJwtPart<T>(encoded: string, label: string): T {
+  try {
+    return JSON.parse(decodeBase64Url(encoded)) as T;
+  } catch {
+    throw new WebhookRequestError(401, `Authenticated Pub/Sub push token ${label} is not valid JSON.`, "pubsub-token-invalid");
+  }
+}
+
+async function findGoogleOidcJwk(kid: string, fetchImpl: typeof fetch) {
+  const keys = await fetchGoogleOidcJwks(fetchImpl);
+  const jwk = keys.find((candidate) => candidate.kid === kid && candidate.kty === "RSA");
+  if (!jwk) {
+    throw new WebhookRequestError(401, "Authenticated Pub/Sub push token key id is not in Google's OIDC key set.", "pubsub-token-invalid");
+  }
+
+  return jwk;
+}
+
+async function fetchGoogleOidcJwks(fetchImpl: typeof fetch) {
+  const now = Date.now();
+  if (fetchImpl === fetch && jwksCache && jwksCache.expiresAtMs > now) {
+    return jwksCache.keys;
+  }
+
+  const response = await fetchImpl(googleOidcJwksEndpoint);
+  const payload = (await response.json().catch(() => ({}))) as { keys?: GoogleOidcJwk[] };
+  if (!response.ok || !Array.isArray(payload.keys)) {
+    throw new WebhookRequestError(401, `Unable to fetch Google's OIDC key set: ${response.status}.`, "pubsub-token-invalid");
+  }
+
+  if (fetchImpl === fetch) {
+    jwksCache = {
+      keys: payload.keys,
+      expiresAtMs: now + parseCacheMaxAgeMs(response.headers.get("cache-control"))
+    };
+  }
+
+  return payload.keys;
+}
+
+async function importGoogleOidcPublicKey(jwk: GoogleOidcJwk) {
+  return crypto.subtle.importKey(
+    "jwk",
+    { ...jwk, ext: true },
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["verify"]
+  );
+}
+
+function validateGoogleOidcClaims(claims: GoogleOidcClaims) {
+  if (!claims.iss || !googleTokenIssuers.has(claims.iss)) {
+    throw new WebhookRequestError(401, "Authenticated Pub/Sub push token issuer is not Google.", "pubsub-token-invalid");
+  }
+
+  if (!claims.exp || claims.exp * 1000 <= Date.now()) {
+    throw new WebhookRequestError(401, "Authenticated Pub/Sub push token is expired.", "pubsub-token-invalid");
+  }
+}
+
+function audienceMatches(actual: string | string[] | undefined, expected: string) {
+  return Array.isArray(actual) ? actual.includes(expected) : actual === expected;
+}
+
+function parseCacheMaxAgeMs(cacheControl: string | null) {
+  const seconds = Number(cacheControl?.match(/max-age=(\d+)/iu)?.[1] ?? "300");
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 300000;
 }
 
 function normalizeDemoKind(value: string, fallbackKind: "public-secret" | "gmail-pii") {
@@ -198,6 +287,11 @@ function normalizeDemoKind(value: string, fallbackKind: "public-secret" | "gmail
 function decodeBase64Url(value: string) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   return Buffer.from(normalized, "base64").toString("utf8");
+}
+
+function decodeBase64UrlToBytes(value: string) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  return Buffer.from(normalized, "base64");
 }
 
 function summarizePubSubData(data?: string) {

@@ -38,6 +38,62 @@ function pubSubBody(event: ResourceEvent, subscription = "projects/project-123/s
   };
 }
 
+async function signedGoogleOidcToken(claims: {
+  aud: string;
+  email: string;
+  email_verified?: boolean | string;
+}) {
+  const kid = `test-key-${Math.random().toString(36).slice(2)}`;
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256"
+    },
+    true,
+    ["sign", "verify"]
+  );
+  const publicJwk = (await crypto.subtle.exportKey("jwk", keyPair.publicKey)) as JsonWebKey & {
+    kid?: string;
+    alg?: string;
+    use?: string;
+  };
+  publicJwk.kid = kid;
+  publicJwk.alg = "RS256";
+  publicJwk.use = "sig";
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const signingInput = [
+    encodeJwtPart({ alg: "RS256", kid, typ: "JWT" }),
+    encodeJwtPart({
+      iss: "https://accounts.google.com",
+      iat: nowSeconds - 60,
+      exp: nowSeconds + 3600,
+      email_verified: true,
+      ...claims
+    })
+  ].join(".");
+  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", keyPair.privateKey, new TextEncoder().encode(signingInput));
+
+  return {
+    token: `${signingInput}.${base64Url(signature)}`,
+    jwks: { keys: [publicJwk] }
+  };
+}
+
+function encodeJwtPart(payload: unknown) {
+  return base64Url(new TextEncoder().encode(JSON.stringify(payload)));
+}
+
+function base64Url(input: ArrayBuffer | Uint8Array) {
+  return Buffer.from(input instanceof ArrayBuffer ? new Uint8Array(input) : input)
+    .toString("base64")
+    .replace(/\+/gu, "-")
+    .replace(/\//gu, "_")
+    .replace(/=+$/u, "");
+}
+
 describe("Workspace webhook authentication", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -87,18 +143,17 @@ describe("Workspace webhook authentication", () => {
     vi.stubEnv("WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL", "pubsub-push@example.iam.gserviceaccount.com");
     vi.stubEnv("WORKSPACE_GMAIL_SUBSCRIPTION", "projects/project-123/subscriptions/workspace-gmail-push");
     vi.resetModules();
-    const fetchImpl = vi.fn(async () =>
-      Response.json({
+    const { token, jwks } = await signedGoogleOidcToken({
         aud: "https://sentinel.example.com/api/webhooks/pubsub/gmail",
         email: "pubsub-push@example.iam.gserviceaccount.com",
-        email_verified: "true"
-      })
-    );
+        email_verified: true
+    });
+    const fetchImpl = vi.fn(async () => Response.json(jwks, { headers: { "cache-control": "public, max-age=300" } }));
     const { parsePubSubOrDemoRequest } = await import("@/lib/pubsub");
     const parsed = await parsePubSubOrDemoRequest(
       new Request("https://sentinel.example.com/api/webhooks/pubsub/gmail", {
         method: "POST",
-        headers: { authorization: "Bearer id_token_123" },
+        headers: { authorization: `Bearer ${token}` },
         body: JSON.stringify(pubSubBody(sampleEvent("gmail")))
       }),
       "gmail-pii",
@@ -109,7 +164,7 @@ describe("Workspace webhook authentication", () => {
     expect(parsed.kind === "notification" ? parsed.source : undefined).toBe("gmail");
     expect(parsed.kind === "notification" ? parsed.messageId : undefined).toBe("message_123");
     expect(parsed.kind === "notification" ? parsed.payloadSummary : undefined).toContain("id");
-    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining("https://oauth2.googleapis.com/tokeninfo?id_token=id_token_123"));
+    expect(fetchImpl).toHaveBeenCalledWith("https://www.googleapis.com/oauth2/v3/certs");
   }, webhookTestTimeoutMs);
 
   it("rejects authenticated Pub/Sub pushes with the wrong audience", async () => {
@@ -117,26 +172,52 @@ describe("Workspace webhook authentication", () => {
     vi.stubEnv("WORKSPACE_PUBSUB_PUSH_AUDIENCE", "https://sentinel.example.com/api/webhooks/pubsub/gmail");
     vi.stubEnv("WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL", "pubsub-push@example.iam.gserviceaccount.com");
     vi.resetModules();
-    const fetchImpl = vi.fn(async () =>
-      Response.json({
+    const { token, jwks } = await signedGoogleOidcToken({
         aud: "https://attacker.example.com/webhook",
         email: "pubsub-push@example.iam.gserviceaccount.com",
-        email_verified: "true"
-      })
-    );
+        email_verified: true
+    });
+    const fetchImpl = vi.fn(async () => Response.json(jwks));
     const { parsePubSubOrDemoRequest } = await import("@/lib/pubsub");
 
     await expect(
       parsePubSubOrDemoRequest(
         new Request("https://sentinel.example.com/api/webhooks/pubsub/gmail", {
           method: "POST",
-          headers: { authorization: "Bearer id_token_123" },
+          headers: { authorization: `Bearer ${token}` },
           body: JSON.stringify(pubSubBody(sampleEvent("gmail")))
         }),
         "gmail-pii",
         { source: "gmail", fetchImpl: fetchImpl as unknown as typeof fetch }
       )
     ).rejects.toMatchObject({ status: 403, code: "pubsub-audience-invalid" });
+  }, webhookTestTimeoutMs);
+
+  it("rejects Pub/Sub pushes when the OIDC JWT signature is invalid", async () => {
+    vi.stubEnv("SENTINEL_MOCK_MODE", "false");
+    vi.stubEnv("WORKSPACE_PUBSUB_PUSH_AUDIENCE", "https://sentinel.example.com/api/webhooks/pubsub/gmail");
+    vi.stubEnv("WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL", "pubsub-push@example.iam.gserviceaccount.com");
+    vi.resetModules();
+    const { token, jwks } = await signedGoogleOidcToken({
+      aud: "https://sentinel.example.com/api/webhooks/pubsub/gmail",
+      email: "pubsub-push@example.iam.gserviceaccount.com",
+      email_verified: true
+    });
+    const tamperedToken = token.replace(/\.[^.]+$/u, ".invalid-signature");
+    const fetchImpl = vi.fn(async () => Response.json(jwks));
+    const { parsePubSubOrDemoRequest } = await import("@/lib/pubsub");
+
+    await expect(
+      parsePubSubOrDemoRequest(
+        new Request("https://sentinel.example.com/api/webhooks/pubsub/gmail", {
+          method: "POST",
+          headers: { authorization: `Bearer ${tamperedToken}` },
+          body: JSON.stringify(pubSubBody(sampleEvent("gmail")))
+        }),
+        "gmail-pii",
+        { source: "gmail", fetchImpl: fetchImpl as unknown as typeof fetch }
+      )
+    ).rejects.toMatchObject({ status: 401, code: "pubsub-token-invalid" });
   }, webhookTestTimeoutMs);
 
   it("accepts Drive channel notifications only when the channel token matches", async () => {
@@ -287,13 +368,14 @@ describe("Workspace webhook authentication", () => {
     vi.stubEnv("WORKSPACE_GMAIL_SUBSCRIPTION", "projects/project-123/subscriptions/workspace-gmail-push");
     vi.resetModules();
 
+    const { token, jwks } = await signedGoogleOidcToken({
+      aud: "https://sentinel.example.com/api/webhooks/pubsub/gmail",
+      email: "pubsub-push@example.iam.gserviceaccount.com",
+      email_verified: true
+    });
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
-      if (url.startsWith("https://oauth2.googleapis.com/tokeninfo")) {
-        return Response.json({
-          aud: "https://sentinel.example.com/api/webhooks/pubsub/gmail",
-          email: "pubsub-push@example.iam.gserviceaccount.com",
-          email_verified: "true"
-        });
+      if (url === "https://www.googleapis.com/oauth2/v3/certs") {
+        return Response.json(jwks);
       }
 
       if (url.includes("/documents:commit") && init?.method === "POST") {
@@ -314,7 +396,7 @@ describe("Workspace webhook authentication", () => {
     const response = await POST(
       new Request("https://sentinel.example.com/api/webhooks/pubsub/gmail", {
         method: "POST",
-        headers: { authorization: "Bearer id_token_123" },
+        headers: { authorization: `Bearer ${token}` },
         body: JSON.stringify(pubSubBody(sampleEvent("gmail")))
       })
     );
