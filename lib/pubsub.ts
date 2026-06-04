@@ -182,7 +182,12 @@ async function validateAuthenticatedPubSubPush(
 }
 
 async function verifyGoogleOidcToken(token: string, fetchImpl: typeof fetch): Promise<GoogleOidcClaims> {
-  const [encodedHeader, encodedPayload, encodedSignature] = token.split(".");
+  const tokenParts = token.split(".");
+  if (tokenParts.length !== 3) {
+    throw new WebhookRequestError(401, "Authenticated Pub/Sub push token is not a signed OIDC JWT.", "pubsub-token-invalid");
+  }
+
+  const [encodedHeader, encodedPayload, encodedSignature] = tokenParts;
   if (!encodedHeader || !encodedPayload || !encodedSignature) {
     throw new WebhookRequestError(401, "Authenticated Pub/Sub push token is not a signed OIDC JWT.", "pubsub-token-invalid");
   }
@@ -217,7 +222,13 @@ function parseJwtPart<T>(encoded: string, label: string): T {
 
 async function findGoogleOidcJwk(kid: string, fetchImpl: typeof fetch) {
   const keys = await fetchGoogleOidcJwks(fetchImpl);
-  const jwk = keys.find((candidate) => candidate.kid === kid && candidate.kty === "RSA");
+  const jwk = keys.find(
+    (candidate) =>
+      candidate.kid === kid &&
+      candidate.kty === "RSA" &&
+      (!candidate.alg || candidate.alg === "RS256") &&
+      (!candidate.use || candidate.use === "sig")
+  );
   if (!jwk) {
     throw new WebhookRequestError(401, "Authenticated Pub/Sub push token key id is not in Google's OIDC key set.", "pubsub-token-invalid");
   }

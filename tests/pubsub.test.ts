@@ -144,9 +144,9 @@ describe("Workspace webhook authentication", () => {
     vi.stubEnv("WORKSPACE_GMAIL_SUBSCRIPTION", "projects/project-123/subscriptions/workspace-gmail-push");
     vi.resetModules();
     const { token, jwks } = await signedGoogleOidcToken({
-        aud: "https://sentinel.example.com/api/webhooks/pubsub/gmail",
-        email: "pubsub-push@example.iam.gserviceaccount.com",
-        email_verified: true
+      aud: "https://sentinel.example.com/api/webhooks/pubsub/gmail",
+      email: "pubsub-push@example.iam.gserviceaccount.com",
+      email_verified: true
     });
     const fetchImpl = vi.fn(async () => Response.json(jwks, { headers: { "cache-control": "public, max-age=300" } }));
     const { parsePubSubOrDemoRequest } = await import("@/lib/pubsub");
@@ -173,9 +173,9 @@ describe("Workspace webhook authentication", () => {
     vi.stubEnv("WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL", "pubsub-push@example.iam.gserviceaccount.com");
     vi.resetModules();
     const { token, jwks } = await signedGoogleOidcToken({
-        aud: "https://attacker.example.com/webhook",
-        email: "pubsub-push@example.iam.gserviceaccount.com",
-        email_verified: true
+      aud: "https://attacker.example.com/webhook",
+      email: "pubsub-push@example.iam.gserviceaccount.com",
+      email_verified: true
     });
     const fetchImpl = vi.fn(async () => Response.json(jwks));
     const { parsePubSubOrDemoRequest } = await import("@/lib/pubsub");
@@ -218,6 +218,28 @@ describe("Workspace webhook authentication", () => {
         { source: "gmail", fetchImpl: fetchImpl as unknown as typeof fetch }
       )
     ).rejects.toMatchObject({ status: 401, code: "pubsub-token-invalid" });
+  }, webhookTestTimeoutMs);
+
+  it("rejects malformed OIDC JWTs before claims are trusted", async () => {
+    vi.stubEnv("SENTINEL_MOCK_MODE", "false");
+    vi.stubEnv("WORKSPACE_PUBSUB_PUSH_AUDIENCE", "https://sentinel.example.com/api/webhooks/pubsub/gmail");
+    vi.stubEnv("WORKSPACE_PUBSUB_SERVICE_ACCOUNT_EMAIL", "pubsub-push@example.iam.gserviceaccount.com");
+    vi.resetModules();
+    const fetchImpl = vi.fn(async () => Response.json({ keys: [] }));
+    const { parsePubSubOrDemoRequest } = await import("@/lib/pubsub");
+
+    await expect(
+      parsePubSubOrDemoRequest(
+        new Request("https://sentinel.example.com/api/webhooks/pubsub/gmail", {
+          method: "POST",
+          headers: { authorization: "Bearer header.payload.signature.extra" },
+          body: JSON.stringify(pubSubBody(sampleEvent("gmail")))
+        }),
+        "gmail-pii",
+        { source: "gmail", fetchImpl: fetchImpl as unknown as typeof fetch }
+      )
+    ).rejects.toMatchObject({ status: 401, code: "pubsub-token-invalid" });
+    expect(fetchImpl).not.toHaveBeenCalled();
   }, webhookTestTimeoutMs);
 
   it("accepts Drive channel notifications only when the channel token matches", async () => {
