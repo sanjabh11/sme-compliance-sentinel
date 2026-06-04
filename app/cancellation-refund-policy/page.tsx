@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { Route } from "next";
 import Link from "next/link";
 import { getPublicBusinessContact } from "@/lib/public-business";
 
@@ -68,7 +69,7 @@ export default function CancellationRefundPolicyPage() {
         <article className="legal-card legal-card-wide">
           <h2>Relationship to terms</h2>
           <p>
-            This policy is part of the <Link href="/terms-of-service">Terms of Service</Link>. It does not waive any
+            This policy is part of the <Link href={"/terms-of-service" as Route}>Terms of Service</Link>. It does not waive any
             separate written terms agreed for a specific pilot, enterprise engagement, or invoice.
           </p>
         </article>
@@ -80,11 +81,11 @@ export default function CancellationRefundPolicyPage() {
 function LegalNav() {
   return (
     <nav className="legal-nav" aria-label="Legal pages">
-      <Link href="/">SME Workspace Sentinel</Link>
+      <Link href={"/" as Route}>SME Workspace Sentinel</Link>
       <div>
-        <Link href="/support">Support</Link>
-        <Link href="/privacy">Privacy</Link>
-        <Link href="/terms-of-service">Terms</Link>
+        <Link href={"/support" as Route}>Support</Link>
+        <Link href={"/privacy" as Route}>Privacy</Link>
+        <Link href={"/terms-of-service" as Route}>Terms</Link>
       </div>
     </nav>
   );

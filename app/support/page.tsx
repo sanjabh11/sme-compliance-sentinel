@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { Route } from "next";
 import Link from "next/link";
 import { buildBusinessVerificationChecklist, getBusinessVerificationSummary } from "@/lib/business-verification";
 import { getPublicBusinessContact } from "@/lib/public-business";
@@ -115,11 +116,11 @@ export default function SupportPage() {
 function LegalNav() {
   return (
     <nav className="legal-nav" aria-label="Legal pages">
-      <Link href="/">SME Workspace Sentinel</Link>
+      <Link href={"/" as Route}>SME Workspace Sentinel</Link>
       <div>
-        <Link href="/privacy">Privacy</Link>
-        <Link href="/terms-of-service">Terms</Link>
-        <Link href="/cancellation-refund-policy">Refunds</Link>
+        <Link href={"/privacy" as Route}>Privacy</Link>
+        <Link href={"/terms-of-service" as Route}>Terms</Link>
+        <Link href={"/cancellation-refund-policy" as Route}>Refunds</Link>
       </div>
     </nav>
   );
