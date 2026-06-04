@@ -6,11 +6,13 @@ const packageJson = JSON.parse(readFileSync(join(process.cwd(), "package.json"),
   scripts: Record<string, string>;
 };
 const runVitestScript = readFileSync(join(process.cwd(), "scripts/run-vitest.mjs"), "utf8");
+const runNextBuildScript = readFileSync(join(process.cwd(), "scripts/run-next-build.mjs"), "utf8");
 
 describe("package verification scripts", () => {
   it("keeps standard verification commands on stable local runner paths", () => {
     expect(packageJson.scripts.test).toBe("node scripts/run-vitest.mjs");
     expect(packageJson.scripts.build).toBe("node scripts/run-next-build.mjs");
+    expect(packageJson.scripts.typecheck).toBe("tsc --noEmit --incremental false --pretty false");
     expect(packageJson.scripts["verify:local-submission"]).toBe("node scripts/verify-local-submission.mjs");
     expect(packageJson.scripts["verify:source-release"]).toBe("node scripts/verify-source-release.mjs");
     expect(packageJson.scripts["verify:provenance"]).toBe("node scripts/verify-project-provenance.mjs");
@@ -36,5 +38,11 @@ describe("package verification scripts", () => {
     expect(runVitestScript).toContain("--testTimeout=90000");
     expect(runVitestScript).toContain("--hookTimeout=90000");
     expect(readFileSync(join(process.cwd(), ".gitignore"), "utf8")).toContain(".tmp/");
+  });
+
+  it("clears stale ignored Next build locks before production builds", () => {
+    expect(runNextBuildScript).toContain('existsSync(".next/lock")');
+    expect(runNextBuildScript).toContain('unlinkSync(".next/lock")');
+    expect(runNextBuildScript).toContain('runWithStableNode("node_modules/next/dist/bin/next", ["build", "--webpack"])');
   });
 });
