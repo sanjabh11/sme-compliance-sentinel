@@ -4,11 +4,9 @@ import {
   AlertTriangle,
   Database,
   Download,
-  EyeOff,
   FileSearch,
   Play,
   RefreshCw,
-  RotateCcw,
   ShieldCheck,
   ShieldAlert,
   Sparkles,
@@ -91,6 +89,7 @@ import { EvidencePanel } from "./dashboard-panels/evidence-panel";
 import { TrustCenterPanel } from "./dashboard-panels/trust-center-panel";
 import { QuestionnairePanel } from "./dashboard-panels/questionnaire-panel";
 import { EvidenceCopilotPanel } from "./dashboard-panels/evidence-copilot-panel";
+import { WorkspaceFlowPanel } from "./dashboard-panels/workspace-flow-panel";
 
 type ActionState = "idle" | "running" | "error";
 const playbookActionOptions: RecommendationAction[] = [
@@ -1766,51 +1765,11 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
         </aside>
       </section>
 
-      <section id="admin-workspace-scan" className="workspace-band">
-        <div className="panel command-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Mock Workspace Flow</h2>
-              <p>Drive and Gmail events run through Tier 0, deterministic detection, and Gemini only when justified.</p>
-            </div>
-            <ShieldCheck size={24} aria-hidden="true" />
-          </div>
-          <div className="button-row">
-            <button type="button" onClick={() => injectEvent("public-secret")} disabled={actionState === "running"}>
-              <Play size={16} aria-hidden="true" />
-              High-risk Drive event
-            </button>
-            <button type="button" onClick={() => injectEvent("gmail-pii")} disabled={actionState === "running"}>
-              <FileSearch size={16} aria-hidden="true" />
-              Gmail PII event
-            </button>
-            <button type="button" onClick={() => injectEvent("low-risk")} disabled={actionState === "running"}>
-              <EyeOff size={16} aria-hidden="true" />
-              Low-risk skip
-            </button>
-            <button type="button" className="secondary" onClick={() => callSnapshotAction("/api/demo/reset")} disabled={actionState === "running"}>
-              <RotateCcw size={16} aria-hidden="true" />
-              Reset demo
-            </button>
-          </div>
-        </div>
-
-        <div className="panel compliance-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Rule Boundaries</h2>
-              <p>Antigravity is optional development tooling, not an app dependency or claimed requirement.</p>
-            </div>
-            <AlertTriangle size={24} aria-hidden="true" />
-          </div>
-          <ul className="check-list">
-            <li>Uses “SOC2 readiness evidence,” not certification language.</li>
-            <li>Requires Gemini API for deployed LLM workflow through `GEMINI_MODEL`.</li>
-            <li>Uses Google Cloud deployment/services in production path.</li>
-            <li>Exports redacted judge evidence; private findings stay private.</li>
-          </ul>
-        </div>
-      </section>
+      <WorkspaceFlowPanel
+        busy={actionState === "running"}
+        onInjectEvent={injectEvent}
+        onReset={() => callSnapshotAction("/api/demo/reset")}
+      />
 
       <section className="content-grid">
         <FindingsPanel
