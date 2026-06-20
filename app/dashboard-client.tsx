@@ -77,7 +77,6 @@ import { buildBusinessVerificationChecklist, getBusinessVerificationSummary } fr
 import { buildStripeProofStatusPanel } from "@/lib/stripe-proof-status";
 import {
   Confidence,
-  FindingCard,
   ReadinessBlock,
   Score,
   SeverityLegend,
@@ -88,6 +87,7 @@ import {
   formatUtcDateTime,
   formatUtcTime
 } from "./dashboard-ui";
+import { FindingsPanel } from "./dashboard-panels/findings-panel";
 
 type ActionState = "idle" | "running" | "error";
 const playbookActionOptions: RecommendationAction[] = [
@@ -1810,42 +1810,21 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
       </section>
 
       <section className="content-grid">
-        <div className="panel findings-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Staged Recommendations</h2>
-              <p>Human-in-the-loop actions are mandatory unless a tenant explicitly enables a safe auto-action.</p>
-            </div>
-            <ShieldAlert size={24} aria-hidden="true" />
-          </div>
-
-          {snapshot.findings.length === 0 ? (
-            <div className="empty-state">No findings yet. Inject a high-risk mock event to start the demo flow.</div>
-          ) : (
-            <div className="finding-stack">
-              {snapshot.findings.map((finding) => (
-                <FindingCard
-                  key={finding.id}
-                  finding={finding}
-                  busy={actionState === "running"}
-                  onApprove={() => callSnapshotAction(`/api/findings/${finding.id}/approve`, undefined, "Approving staged recommendation.")}
-                  onRemediate={() =>
-                    callSnapshotAction(
-                      `/api/findings/${finding.id}/remediate`,
-                      { body: JSON.stringify({ action: finding.recommendation.action }) },
-                      "Executing simulated safe remediation."
-                    )
-                  }
-                  onDismiss={() => callSnapshotAction(`/api/findings/${finding.id}/dismiss`, undefined, "Dismissing finding.")}
-                  onFalsePositive={() =>
-                    callSnapshotAction(`/api/findings/${finding.id}/false-positive`, undefined, "Marking false positive.")
-                  }
-                  onRescan={() => callSnapshotAction(`/api/findings/${finding.id}/rescan`, undefined, "Requesting re-scan.")}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        <FindingsPanel
+          findings={snapshot.findings}
+          busy={actionState === "running"}
+          onApprove={(id) => callSnapshotAction(`/api/findings/${id}/approve`, undefined, "Approving staged recommendation.")}
+          onRemediate={(id, action) =>
+            callSnapshotAction(
+              `/api/findings/${id}/remediate`,
+              { body: JSON.stringify({ action }) },
+              "Executing simulated safe remediation."
+            )
+          }
+          onDismiss={(id) => callSnapshotAction(`/api/findings/${id}/dismiss`, undefined, "Dismissing finding.")}
+          onFalsePositive={(id) => callSnapshotAction(`/api/findings/${id}/false-positive`, undefined, "Marking false positive.")}
+          onRescan={(id) => callSnapshotAction(`/api/findings/${id}/rescan`, undefined, "Requesting re-scan.")}
+        />
 
         <aside className="panel evidence-panel">
           <div className="panel-heading">
