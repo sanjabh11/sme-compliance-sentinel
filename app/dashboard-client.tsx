@@ -88,6 +88,7 @@ import {
   formatUtcTime
 } from "./dashboard-ui";
 import { FindingsPanel } from "./dashboard-panels/findings-panel";
+import { EvidencePanel } from "./dashboard-panels/evidence-panel";
 
 type ActionState = "idle" | "running" | "error";
 const playbookActionOptions: RecommendationAction[] = [
@@ -1826,54 +1827,14 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
           onRescan={(id) => callSnapshotAction(`/api/findings/${id}/rescan`, undefined, "Requesting re-scan.")}
         />
 
-        <aside className="panel evidence-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Private Evidence Room</h2>
-              <p>Judge packets are redacted by default and only include consented testimonials.</p>
-            </div>
-            <Download size={24} aria-hidden="true" />
-          </div>
-          <dl className="evidence-list">
-            <div>
-              <dt>Files inspected</dt>
-              <dd>{formatNumber(snapshot.aggregateCounters.filesInspected)}</dd>
-            </div>
-            <div>
-              <dt>Bytes extracted</dt>
-              <dd>{formatNumber(snapshot.aggregateCounters.bytesExtracted)}</dd>
-            </div>
-            <div>
-              <dt>Bytes scanned by DLP</dt>
-              <dd>{formatNumber(snapshot.aggregateCounters.bytesScannedByDlp)}</dd>
-            </div>
-            <div>
-              <dt>Bytes routed to Gemini</dt>
-              <dd>{formatNumber(snapshot.aggregateCounters.bytesRoutedToGemini)}</dd>
-            </div>
-          </dl>
-          <button type="button" className="wide" onClick={exportEvidence} disabled={actionState === "running"}>
-            <Download size={16} aria-hidden="true" />
-            Generate judge export
-          </button>
-          <div className="button-row">
-            <button type="button" className="secondary" onClick={() => exportEvidenceFormat("markdown")} disabled={actionState === "running"}>
-              <Download size={16} aria-hidden="true" />
-              Markdown packet
-            </button>
-            <button type="button" className="secondary" onClick={() => exportEvidenceFormat("csv")} disabled={actionState === "running"}>
-              <Download size={16} aria-hidden="true" />
-              CSV packet
-            </button>
-            <button type="button" className="secondary" onClick={exportSignedEvidencePacket} disabled={actionState === "running"}>
-              <ShieldCheck size={16} aria-hidden="true" />
-              Sealed packet
-            </button>
-          </div>
-          {exportPreview ? (
-            <pre className="export-preview">{JSON.stringify(exportPreview, null, 2).slice(0, 1600)}</pre>
-          ) : null}
-        </aside>
+        <EvidencePanel
+          counters={snapshot.aggregateCounters}
+          busy={actionState === "running"}
+          exportPreview={exportPreview}
+          onExport={exportEvidence}
+          onExportFormat={exportEvidenceFormat}
+          onExportSigned={exportSignedEvidencePacket}
+        />
       </section>
 
       <section id="admin-evidence" className="panel evidence-copilot-panel">
