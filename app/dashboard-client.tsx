@@ -89,6 +89,7 @@ import {
 } from "./dashboard-ui";
 import { FindingsPanel } from "./dashboard-panels/findings-panel";
 import { EvidencePanel } from "./dashboard-panels/evidence-panel";
+import { TrustCenterPanel } from "./dashboard-panels/trust-center-panel";
 
 type ActionState = "idle" | "running" | "error";
 const playbookActionOptions: RecommendationAction[] = [
@@ -1965,136 +1966,18 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
       </section>
 
       <section id="admin-trust" className="content-grid">
-        <div className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Trust Center Lite</h2>
-              <p>A redacted, prospect-safe trust profile turns evidence into a sales asset.</p>
-            </div>
-            <ShieldCheck size={24} aria-hidden="true" />
-          </div>
-          <button type="button" onClick={generateTrustProfile} disabled={actionState === "running"}>
-            <Sparkles size={16} aria-hidden="true" />
-            Generate trust profile
-          </button>
-          <button type="button" className="secondary" onClick={createProspectTrustPacket} disabled={actionState === "running"}>
-            <ShieldCheck size={16} aria-hidden="true" />
-            Create Trust Packet
-          </button>
-          <button type="button" className="secondary" onClick={requestTrustDocuments} disabled={actionState === "running"}>
-            <FileSearch size={16} aria-hidden="true" />
-            Request docs
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={approveTrustDocuments}
-            disabled={actionState === "running" || !snapshot.trustAccessRequests.some((request) => request.status === "pending")}
-          >
-            <CheckCircle2 size={16} aria-hidden="true" />
-            Approve docs
-          </button>
-          <div className="verification-list">
-            <span data-status={readiness.trustAccess.pendingRequests ? "warning" : "passed"}>document access</span>
-            <article>
-              <strong>Trust documents</strong>
-              <p>
-                {readiness.trustAccess.publicDocuments} public · {readiness.trustAccess.requestableDocuments} requestable ·{" "}
-                {readiness.trustAccess.privateDocuments} private
-              </p>
-            </article>
-            <article>
-              <strong>Requests</strong>
-              <p>
-                {readiness.trustAccess.pendingRequests} pending · {readiness.trustAccess.approvedRequests} approved ·{" "}
-                {readiness.trustAccess.ndaRequiredDocuments} NDA-gated document(s)
-              </p>
-            </article>
-            <article>
-              <strong>Engagement</strong>
-              <p>
-                {readiness.trustAnalytics.packetsCreated} packet(s) · {readiness.trustAnalytics.totalPacketAccesses} access(es) ·{" "}
-                {readiness.trustAnalytics.followUpQueue.length} follow-up(s)
-              </p>
-            </article>
-          </div>
-          {readiness.trustAnalytics.packetsCreated ? (
-            <div className="trust-analytics-panel" aria-label="Trust Center analytics">
-              <div className="trust-analytics-metrics">
-                <span>{readiness.trustAnalytics.activePackets} active</span>
-                <span>{readiness.trustAnalytics.accessedPackets} accessed</span>
-                <span>{readiness.trustAnalytics.averageAccessesPerPacket} avg views</span>
-              </div>
-              <div className="trust-followups">
-                <strong>Prospect follow-up</strong>
-                {(readiness.trustAnalytics.followUpQueue.length
-                  ? readiness.trustAnalytics.followUpQueue
-                  : readiness.trustAnalytics.topProspects
-                )
-                  .slice(0, 3)
-                  .map((prospect) => (
-                    <article key={`${prospect.prospectAlias}-${prospect.prospectDomain ?? "domain"}`}>
-                      <span data-stage={prospect.stage}>{prospect.stage}</span>
-                      <b>{prospect.prospectAlias}</b>
-                      <small>
-                        {prospect.accessCount} access(es) · {prospect.approvedDocumentCount} approved doc(s)
-                      </small>
-                      <p>{prospect.nextAction}</p>
-                    </article>
-                  ))}
-              </div>
-              <small>{readiness.trustAnalytics.productionGaps[0]}</small>
-            </div>
-          ) : null}
-          {trustProfile ? (
-            <div className="trust-profile">
-              <div>
-                <span>Readiness posture</span>
-                <strong>{trustProfile.readinessPostureScore}%</strong>
-              </div>
-              <h3>{trustProfile.headline}</h3>
-              <ul>
-                {trustProfile.approvedClaims.map((claim) => (
-                  <li key={claim}>{claim}</li>
-                ))}
-              </ul>
-              <p>{trustProfile.disclaimer}</p>
-            </div>
-          ) : null}
-          {trustPacket ? (
-            <div className="verification-list">
-              <span data-status={trustPacket.status}>{trustPacket.status}</span>
-              <article>
-                <strong>Prospect access</strong>
-                <p>
-                  {trustPacket.accessUrl} · expires {formatUtcDate(trustPacket.expiresAt)}
-                </p>
-              </article>
-              <article>
-                <strong>Packet contents</strong>
-                <p>
-                  {trustPacket.sections.join(" · ")} · {trustPacket.approvedDocuments.length} approved document(s)
-                </p>
-              </article>
-              {trustPacket.approvedDocuments.length ? (
-                <article>
-                  <strong>Approved documents</strong>
-                  <p>{trustPacket.approvedDocuments.map((document) => document.title).join(" · ")}</p>
-                </article>
-              ) : null}
-              {trustPacket.accessRequestId ? (
-                <article>
-                  <strong>Access approval</strong>
-                  <p>{trustPacket.accessRequestId}</p>
-                </article>
-              ) : null}
-              <article>
-                <strong>Redaction boundary</strong>
-                <p>{trustPacket.disclaimer}</p>
-              </article>
-            </div>
-          ) : null}
-        </div>
+        <TrustCenterPanel
+          busy={actionState === "running"}
+          hasPendingTrustRequests={snapshot.trustAccessRequests.some((request) => request.status === "pending")}
+          trustProfile={trustProfile}
+          trustPacket={trustPacket}
+          trustAccess={readiness.trustAccess}
+          trustAnalytics={readiness.trustAnalytics}
+          onGenerateProfile={generateTrustProfile}
+          onCreatePacket={createProspectTrustPacket}
+          onRequestDocuments={requestTrustDocuments}
+          onApproveDocuments={approveTrustDocuments}
+        />
 
         <aside className="panel">
           <div className="panel-heading">
