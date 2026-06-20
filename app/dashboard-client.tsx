@@ -2,7 +2,6 @@
 
 import {
   AlertTriangle,
-  CheckCircle2,
   Database,
   Download,
   EyeOff,
@@ -90,6 +89,7 @@ import {
 import { FindingsPanel } from "./dashboard-panels/findings-panel";
 import { EvidencePanel } from "./dashboard-panels/evidence-panel";
 import { TrustCenterPanel } from "./dashboard-panels/trust-center-panel";
+import { QuestionnairePanel } from "./dashboard-panels/questionnaire-panel";
 
 type ActionState = "idle" | "running" | "error";
 const playbookActionOptions: RecommendationAction[] = [
@@ -1979,165 +1979,21 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
           onApproveDocuments={approveTrustDocuments}
         />
 
-        <aside className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Questionnaire Assistant</h2>
-              <p>Drafts customer security-review answers from approved evidence with human approval required.</p>
-            </div>
-            <FileSearch size={24} aria-hidden="true" />
-          </div>
-          <button type="button" className="wide" onClick={generateQuestionnaireDraft} disabled={actionState === "running"}>
-            <Sparkles size={16} aria-hidden="true" />
-            Draft answers
-          </button>
-          <label className="stacked-input">
-            Prospect
-            <input
-              value={questionnaireForm.customerAlias}
-              onChange={(event) => setQuestionnaireForm({ ...questionnaireForm, customerAlias: event.target.value })}
-            />
-          </label>
-          <div className="form-row">
-            <label className="stacked-input">
-              Segment
-              <input
-                value={questionnaireForm.customerSegment}
-                onChange={(event) => setQuestionnaireForm({ ...questionnaireForm, customerSegment: event.target.value })}
-              />
-            </label>
-            <label className="stacked-input">
-              Source
-              <select
-                value={questionnaireForm.source}
-                onChange={(event) =>
-                  setQuestionnaireForm({ ...questionnaireForm, source: event.target.value as QuestionnaireInputSource })
-                }
-              >
-                <option value="uploaded-text">Text</option>
-                <option value="csv">CSV</option>
-                <option value="tsv">TSV</option>
-                <option value="spreadsheet-text">Spreadsheet text</option>
-                <option value="pdf-text">PDF extracted text</option>
-              </select>
-            </label>
-          </div>
-          <label className="stacked-input">
-            Source filename
-            <input
-              value={questionnaireForm.originalFileName}
-              onChange={(event) => setQuestionnaireForm({ ...questionnaireForm, originalFileName: event.target.value })}
-            />
-          </label>
-          <label className="stacked-input">
-            Questionnaire text
-            <textarea
-              rows={6}
-              value={questionnaireForm.questionnaireText}
-              onChange={(event) => setQuestionnaireForm({ ...questionnaireForm, questionnaireText: event.target.value })}
-            />
-          </label>
-          <button type="button" className="wide secondary" onClick={createQuestionnairePack} disabled={actionState === "running"}>
-            <FileSearch size={16} aria-hidden="true" />
-            Build response pack
-          </button>
-          <div className="verification-list">
-            <span data-status={snapshot.answerLibrary.length ? "passed" : "warning"}>answer library</span>
-            <article>
-              <strong>Reusable approved answers</strong>
-              <p>
-                {snapshot.answerLibrary.length} approved · {readiness.answerLibrary.totalUsage} reuse(s) ·{" "}
-                {readiness.answerLibrary.libraryHitRate}% hit rate
-              </p>
-            </article>
-            <article>
-              <strong>Review cadence</strong>
-              <p>
-                {readiness.answerLibrary.reviewDue} due · next{" "}
-                {readiness.answerLibrary.nextReviewAt
-                  ? formatUtcDate(readiness.answerLibrary.nextReviewAt)
-                  : "none"}
-              </p>
-            </article>
-            {readiness.answerLibrary.segmentHistory[0] ? (
-              <article>
-                <strong>Segment history</strong>
-                <p>
-                  {readiness.answerLibrary.segmentHistory
-                    .slice(0, 3)
-                    .map((segment) => `${segment.segment}: ${segment.packCount} pack(s), ${segment.libraryHits} hit(s)`)
-                    .join(" · ")}
-                </p>
-              </article>
-            ) : null}
-            <button
-              type="button"
-              className="secondary"
-              onClick={verifyFirstAnswerLibraryItem}
-              disabled={actionState === "running" || snapshot.answerLibrary.length === 0}
-            >
-              <CheckCircle2 size={16} aria-hidden="true" />
-              Verify library item
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={bulkVerifyAnswerLibrary}
-              disabled={actionState === "running" || snapshot.answerLibrary.length === 0}
-            >
-              <CheckCircle2 size={16} aria-hidden="true" />
-              Bulk verify segment
-            </button>
-          </div>
-          {questionnaireDraft ? (
-            <div className="question-list">
-              {questionnaireDraft.questions.slice(0, 3).map((item) => (
-                <article key={item.id}>
-                  <h3>{item.question}</h3>
-                  <p>{item.draftAnswer}</p>
-                  <small>{item.citations.join(" · ")}</small>
-                </article>
-              ))}
-            </div>
-          ) : null}
-          {questionnairePack ? (
-            <div className="question-list">
-              <article>
-                <h3>{questionnairePack.customerAlias}</h3>
-                <p>
-                  {questionnairePack.status} · {questionnairePack.approvedCount}/{questionnairePack.questionsCount} approved ·{" "}
-                  {questionnairePack.needsReviewCount} needs review · {questionnairePack.libraryHitCount} library hit(s)
-                </p>
-                <p>
-                  {questionnairePack.customerSegment} · {questionnairePack.source} ·{" "}
-                  {questionnairePack.importSummary.questionsDetected} imported question(s)
-                </p>
-                <small>{questionnairePack.disclaimer}</small>
-              </article>
-              {questionnairePack.answers.slice(0, 3).map((answer) => (
-                <article key={answer.id}>
-                  <h3>{answer.question}</h3>
-                  <p>{answer.draftAnswer}</p>
-                  <small>
-                    {answer.status} · {answer.ownerRole} · {answer.answerSource} · {Math.round(answer.confidence * 100)}% ·{" "}
-                    {answer.citations.join(" · ")}
-                  </small>
-                </article>
-              ))}
-              <div className="button-row">
-                <button type="button" onClick={approveFirstQuestionnaireAnswer} disabled={actionState === "running"}>
-                  <CheckCircle2 size={16} aria-hidden="true" />
-                  Approve next
-                </button>
-                <button type="button" className="secondary" onClick={exportQuestionnairePack} disabled={actionState === "running"}>
-                  <Download size={16} aria-hidden="true" />
-                  Export pack
-                </button>
-              </div>
-              {questionnairePack.exportText ? <pre className="export-preview">{questionnairePack.exportText.slice(0, 1200)}</pre> : null}
-            </div>
-          ) : null}
-        </aside>
+        <QuestionnairePanel
+          busy={actionState === "running"}
+          form={questionnaireForm}
+          onFormChange={setQuestionnaireForm}
+          draft={questionnaireDraft}
+          pack={questionnairePack}
+          answerLibrary={snapshot.answerLibrary}
+          answerLibrarySummary={readiness.answerLibrary}
+          onGenerateDraft={generateQuestionnaireDraft}
+          onCreatePack={createQuestionnairePack}
+          onVerifyItem={verifyFirstAnswerLibraryItem}
+          onBulkVerify={bulkVerifyAnswerLibrary}
+          onApproveAnswer={approveFirstQuestionnaireAnswer}
+          onExportPack={exportQuestionnairePack}
+        />
       </section>
 
       {readiness ? (
