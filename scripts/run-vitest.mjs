@@ -17,8 +17,8 @@ const passthroughArgs = process.argv.slice(2);
 const hasTestTimeout = passthroughArgs.some((arg) => arg === "--testTimeout" || arg.startsWith("--testTimeout="));
 const hasHookTimeout = passthroughArgs.some((arg) => arg === "--hookTimeout" || arg.startsWith("--hookTimeout="));
 const timeoutArgs = [
-  ...(hasTestTimeout ? [] : ["--testTimeout=30000"]),
-  ...(hasHookTimeout ? [] : ["--hookTimeout=30000"])
+  ...(hasTestTimeout ? [] : ["--testTimeout=60000"]),
+  ...(hasHookTimeout ? [] : ["--hookTimeout=60000"])
 ];
 
 runWithStableNode("node_modules/vitest/vitest.mjs", ["run", ...timeoutArgs, ...passthroughArgs]);

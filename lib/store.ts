@@ -39,6 +39,7 @@ import type {
   EvidenceVaultImportResult,
   Finding,
   FindingStatus,
+  ReadinessCommandCenter,
   RecommendationAction,
   RemediationActionRecord,
   RemediationPlaybook,
@@ -46,6 +47,7 @@ import type {
   RiskScoreSnapshot,
   RiskScoreSnapshotReason,
   Severity,
+  StrategySnapshot,
   Tenant,
   WorkspaceConnection,
   PilotCustomerRecord,
@@ -88,9 +90,14 @@ interface SentinelState {
   processedEventIds: Set<string>;
   processedWebhookNotificationIds: Set<string>;
   aggregateCounters: EvidenceCounters;
+  version: number;
 }
 
 const workspaceOauthLaunchTtlMs = 15 * 60 * 1000;
+
+let cachedSnapshotVersion = -1;
+let cachedReadiness: ReadinessCommandCenter | undefined;
+let cachedStrategy: StrategySnapshot | undefined;
 
 const globalState = globalThis as typeof globalThis & { __sentinelState?: SentinelState };
 
@@ -145,7 +152,8 @@ function createInitialState(): SentinelState {
     scoreHistory: [],
     processedEventIds: new Set(),
     processedWebhookNotificationIds: new Set(),
-    aggregateCounters: { filesInspected: 0, bytesExtracted: 0, bytesScannedByDlp: 0, bytesRoutedToGemini: 0 }
+    aggregateCounters: { filesInspected: 0, bytesExtracted: 0, bytesScannedByDlp: 0, bytesRoutedToGemini: 0 },
+    version: 0
   };
 
   appendAuditEvent(
@@ -1067,6 +1075,32 @@ export function getDashboardSnapshot(): DashboardSnapshot {
   const state = getState();
   refreshApprovalStatuses(state);
 
+  const shouldRebuildDerived = state.version !== cachedSnapshotVersion;
+  if (shouldRebuildDerived) {
+    cachedSnapshotVersion = state.version;
+    cachedStrategy = buildStrategySnapshot(state);
+    cachedReadiness = buildReadinessCommandCenter({
+      tenant: state.tenant,
+      connections: state.connections,
+      findings: state.findings,
+      agentRuns: state.agentRuns,
+      auditEvents: state.auditEvents,
+      remediations: state.remediations,
+      pilotRecords: state.pilotRecords,
+      pilotProspects: state.pilotProspects,
+      evidenceVaultArtifacts: state.evidenceVaultArtifacts,
+      trustDocuments: state.trustDocuments,
+      trustAccessRequests: state.trustAccessRequests,
+      trustPackets: state.trustPackets,
+      questionnairePacks: state.questionnairePacks,
+      answerLibrary: state.answerLibrary,
+      playbooks: state.playbooks,
+      scoreHistory: state.scoreHistory,
+      aggregateCounters: state.aggregateCounters,
+      syncState: state.syncState
+    });
+  }
+
   return {
     tenant: state.tenant,
     connections: state.connections,
@@ -1087,27 +1121,8 @@ export function getDashboardSnapshot(): DashboardSnapshot {
     playbooks: [...state.playbooks],
     scoreHistory: [...state.scoreHistory],
     aggregateCounters: { ...state.aggregateCounters },
-    strategy: buildStrategySnapshot(state),
-    readiness: buildReadinessCommandCenter({
-      tenant: state.tenant,
-      connections: state.connections,
-      findings: state.findings,
-      agentRuns: state.agentRuns,
-      auditEvents: state.auditEvents,
-      remediations: state.remediations,
-      pilotRecords: state.pilotRecords,
-      pilotProspects: state.pilotProspects,
-      evidenceVaultArtifacts: state.evidenceVaultArtifacts,
-      trustDocuments: state.trustDocuments,
-      trustAccessRequests: state.trustAccessRequests,
-      trustPackets: state.trustPackets,
-      questionnairePacks: state.questionnairePacks,
-      answerLibrary: state.answerLibrary,
-      playbooks: state.playbooks,
-      scoreHistory: state.scoreHistory,
-      aggregateCounters: state.aggregateCounters,
-      syncState: state.syncState
-    })
+    strategy: cachedStrategy!,
+    readiness: cachedReadiness!
   };
 }
 
@@ -1445,6 +1460,7 @@ function appendAuditEvent(
   );
 
   state.auditEvents.unshift(event);
+  state.version += 1;
 }
 
 function appendRiskScoreSnapshot(
@@ -1470,6 +1486,8 @@ function appendRiskScoreSnapshot(
       dealImpactScore: scoreSnapshot.dealImpactScore,
       evidenceMaturity: scoreSnapshot.evidenceMaturity
     });
+  } else {
+    state.version += 1;
   }
 
   return scoreSnapshot;

@@ -1,4 +1,4 @@
-import { GoogleGenAI, type GoogleGenAIOptions } from "@google/genai";
+import type { GoogleGenAIOptions } from "@google/genai";
 import { sentinelConfig } from "@/lib/config";
 import type { DetectorFinding, GeminiRiskClassification, RecommendationAction, ResourceEvent, Severity } from "@/lib/types";
 
@@ -19,6 +19,7 @@ export async function classifyRiskWithGemini(
   let parsed: Record<string, unknown>;
 
   try {
+    const { GoogleGenAI } = await import("@google/genai");
     const genAI = new GoogleGenAI(clientBuild.config);
     const result = await genAI.models.generateContent({
       model,
