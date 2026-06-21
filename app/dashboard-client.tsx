@@ -3,11 +3,8 @@
 import {
   AlertTriangle,
   Database,
-  FileSearch,
   RefreshCw,
-  ShieldAlert,
-  Sparkles,
-  Target
+  Sparkles
 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import type {
@@ -68,7 +65,6 @@ import type {
 import { buildBusinessVerificationChecklist, getBusinessVerificationSummary } from "@/lib/business-verification";
 import { buildStripeProofStatusPanel } from "@/lib/stripe-proof-status";
 import {
-  Confidence,
   SeverityLegend,
   formatNumber,
   formatUtcTime
@@ -83,6 +79,8 @@ import { MvpOutreachPanel } from "./dashboard-panels/mvp-outreach-panel";
 import { PilotCrmPanel } from "./dashboard-panels/pilot-crm-panel";
 import { ReadinessCommandPanel } from "./dashboard-panels/readiness-command-panel";
 import { PlaybooksPanel } from "./dashboard-panels/playbooks-panel";
+import { StrategyPanel } from "./dashboard-panels/strategy-panel";
+import { GapsPanel } from "./dashboard-panels/gaps-panel";
 
 type ActionState = "idle" | "running" | "error";
 const playbookActionOptions: RecommendationAction[] = [
@@ -2014,141 +2012,14 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
         </section>
       ) : null}
 
-      <section id="admin-submission" className="strategy-grid">
-        <div className="panel strategy-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Winning Strategy Room</h2>
-              <p>{snapshot.strategy.confidence.confidenceNote}</p>
-            </div>
-            <Target size={24} aria-hidden="true" />
-          </div>
-          <div className="confidence-grid">
-            <Confidence label="Rule readiness" value={snapshot.strategy.confidence.ruleCompliance} />
-            <Confidence label="Marketability" value={snapshot.strategy.confidence.marketability} />
-            <Confidence label="Technical edge" value={snapshot.strategy.confidence.technicalDifferentiation} />
-            <Confidence label="Business proof" value={snapshot.strategy.confidence.businessEvidence} />
-            <Confidence label="Win confidence" value={snapshot.strategy.confidence.winConfidence} />
-          </div>
-          <div className="focus-strip">
-            {snapshot.strategy.implementationFocus.map((focus) => (
-              <span key={focus}>{focus}</span>
-            ))}
-          </div>
-          <button type="button" className="secondary" onClick={checkMarketPositioning} disabled={actionState === "running"}>
-            <Target size={16} aria-hidden="true" />
-            Market battlecard
-          </button>
-          {marketPositioning ? (
-            <div className="verification-list">
-              <span data-status={marketPositioning.overallStatus}>{marketPositioning.overallStatus}</span>
-              <article>
-                <strong>USP wedge</strong>
-                <p>
-                  {marketPositioning.wedgeScore}% · {marketPositioning.usp}
-                </p>
-              </article>
-              <article>
-                <strong>Competitor frame</strong>
-                <p>
-                  {marketPositioning.competitorComparisons
-                    .map((item) => `${item.name}: ${item.wedgeScore}%`)
-                    .join(" · ")}
-                </p>
-              </article>
-              <article>
-                <strong>Proof action</strong>
-                <p>{marketPositioning.proofActions[0]}</p>
-              </article>
-              <article>
-                <strong>Parity gap</strong>
-                <p>{marketPositioning.parityGaps.find((gap) => gap.status !== "implemented")?.nextProof}</p>
-              </article>
-            </div>
-          ) : null}
-        </div>
+      <StrategyPanel
+        busy={actionState === "running"}
+        snapshot={snapshot}
+        marketPositioning={marketPositioning}
+        onCheckMarketPositioning={checkMarketPositioning}
+      />
 
-        <div className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Top 15 Feature Bets</h2>
-              <p>{snapshot.strategy.completionSummary}</p>
-            </div>
-            <FileSearch size={24} aria-hidden="true" />
-          </div>
-          <div className="feature-table" role="table" aria-label="Top feature bets">
-            {snapshot.strategy.topFeatures.map((feature) => (
-              <div className="feature-row" role="row" key={feature.rank}>
-                <span className="rank">{feature.rank}</span>
-                <div>
-                  <strong>{feature.name}</strong>
-                  <small>{feature.winSignal}</small>
-                  <small className="feature-score">
-                    Market {feature.marketabilityScore}/5 · win {feature.winningLeverageScore}/5 · sell {feature.sellabilityScore}/5 ·
-                    proof {feature.proofStatus.replaceAll("-", " ")}
-                  </small>
-                </div>
-                <div className="feature-status">
-                  <span className="score-pill">{feature.totalScore}/15</span>
-                  <span className="state" data-state={feature.currentState}>
-                    {feature.currentState}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="content-grid">
-        <div className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Top 10 Gaps</h2>
-              <p>What we have now versus what is needed for a top-tier worldwide product.</p>
-            </div>
-            <AlertTriangle size={24} aria-hidden="true" />
-          </div>
-          <div className="gap-list">
-            {snapshot.strategy.topGaps.map((gap) => (
-              <article key={gap.priority}>
-                <span>{gap.priority}</span>
-                <div>
-                  <h3>{gap.capability}</h3>
-                  <p>
-                    <strong>Have:</strong> {gap.currentlyHave}
-                  </p>
-                  <p>
-                    <strong>Need:</strong> {gap.neededForTopTier}
-                  </p>
-                  <p>
-                    <strong>Plan:</strong> {gap.implementationPlan}
-                  </p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
-
-        <aside className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Loophole Register</h2>
-              <p>Adversarial checks that keep the strategy honest.</p>
-            </div>
-            <ShieldAlert size={24} aria-hidden="true" />
-          </div>
-          <div className="loophole-list">
-            {snapshot.strategy.loopholes.slice(0, 6).map((loophole) => (
-              <article key={loophole.risk} data-severity={loophole.severity}>
-                <span>{loophole.severity}</span>
-                <h3>{loophole.risk}</h3>
-                <p>{loophole.fix}</p>
-              </article>
-            ))}
-          </div>
-        </aside>
-      </section>
+      <GapsPanel snapshot={snapshot} />
 
       <section className="panel audit-panel">
         <div className="panel-heading">
