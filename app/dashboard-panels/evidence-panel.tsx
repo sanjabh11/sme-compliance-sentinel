@@ -50,20 +50,20 @@ export function EvidencePanel({
       </dl>
       <button type="button" className="wide" onClick={onExport} disabled={busy}>
         <Download size={16} aria-hidden="true" />
-        Generate judge export
+        {busy ? "Generating…" : "Generate judge export"}
       </button>
       <div className="button-row">
         <button type="button" className="secondary" onClick={() => onExportFormat("markdown")} disabled={busy}>
           <Download size={16} aria-hidden="true" />
-          Markdown packet
+          {busy ? "Generating…" : "Markdown packet"}
         </button>
         <button type="button" className="secondary" onClick={() => onExportFormat("csv")} disabled={busy}>
           <Download size={16} aria-hidden="true" />
-          CSV packet
+          {busy ? "Generating…" : "CSV packet"}
         </button>
         <button type="button" className="secondary" onClick={onExportSigned} disabled={busy}>
           <ShieldCheck size={16} aria-hidden="true" />
-          Sealed packet
+          {busy ? "Generating…" : "Sealed packet"}
         </button>
       </div>
       {exportPreview ? (

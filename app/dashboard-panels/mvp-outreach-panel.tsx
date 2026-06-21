@@ -29,11 +29,11 @@ export function MvpOutreachPanel({
         <div className="button-row">
           <button type="button" className="secondary" onClick={onBuildOutreachPlan} disabled={busy}>
             <Target size={16} aria-hidden="true" />
-            Build outreach plan
+            {busy ? "Building…" : "Build outreach plan"}
           </button>
           <button type="button" className="secondary" onClick={onConversionKit} disabled={busy}>
             <UserPlus size={16} aria-hidden="true" />
-            Conversion kit
+            {busy ? "Building…" : "Conversion kit"}
           </button>
         </div>
         {mvpOutreachPlan ? (

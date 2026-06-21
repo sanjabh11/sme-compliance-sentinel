@@ -272,7 +272,7 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
       }
 
       setActionState("idle");
-      setLastMessage(message ?? "Workflow completed.");
+      setLastMessage(`${message ?? "Workflow"} completed.`);
     } catch (error) {
       setActionState("error");
       setLastMessage(error instanceof Error ? error.message : "Action failed.");
@@ -298,12 +298,21 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
   async function exportEvidence() {
     setActionState("running");
     setLastMessage("Generating redacted judge evidence packet...");
-    const response = await fetch("/api/evidence/export?redacted=true");
-    const payload = (await response.json()) as EvidenceExport;
-    setExportPreview(payload);
-    await refreshState();
-    setActionState("idle");
-    setLastMessage("Redacted judge evidence packet generated.");
+
+    try {
+      const response = await fetch("/api/evidence/export?redacted=true");
+      if (!response.ok) {
+        throw new Error("Unable to generate judge evidence packet.");
+      }
+      const payload = (await response.json()) as EvidenceExport;
+      setExportPreview(payload);
+      await refreshState();
+      setActionState("idle");
+      setLastMessage("Redacted judge evidence packet generated.");
+    } catch (error) {
+      setActionState("error");
+      setLastMessage(error instanceof Error ? error.message : "Unable to generate judge evidence packet.");
+    }
   }
 
   async function exportEvidenceFormat(format: "markdown" | "csv") {
@@ -312,7 +321,11 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
 
     try {
       const response = await fetch(`/api/evidence/export?redacted=true&format=${format}`);
+      if (!response.ok) {
+        throw new Error(`Unable to generate ${format} evidence packet.`);
+      }
       const body = await response.text();
+      setExportPreview({ format, content: body.slice(0, 1600) } as unknown as EvidenceExport);
       await refreshState();
       setActionState("idle");
       setLastMessage(`${format.toUpperCase()} evidence packet generated (${body.length} characters).`);
@@ -328,6 +341,9 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
 
     try {
       const response = await fetch("/api/evidence/signed-packet?redacted=true");
+      if (!response.ok) {
+        throw new Error("Unable to generate sealed evidence packet.");
+      }
       const body = await response.text();
       await refreshState();
       setActionState("idle");
@@ -1246,6 +1262,9 @@ export function DashboardClient({ initialSnapshot }: { initialSnapshot: Dashboar
 
     try {
       const response = await fetch("/api/mvp/outreach-plan");
+      if (!response.ok) {
+        throw new Error("Unable to build MVP outreach plan.");
+      }
       const payload = (await response.json()) as MvpOutreachPlan;
       setMvpOutreachPlan(payload);
       setActionState(payload.status === "blocked" ? "error" : "idle");

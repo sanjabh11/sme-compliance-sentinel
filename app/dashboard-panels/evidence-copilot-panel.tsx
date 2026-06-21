@@ -73,7 +73,7 @@ export function EvidenceCopilotPanel({
           />
           <button type="button" className="secondary wide" onClick={onRunCopilotQuery} disabled={busy}>
             <FileSearch size={16} aria-hidden="true" />
-            Search citations
+            {busy ? "Searching…" : "Search citations"}
           </button>
         </article>
         <article>
@@ -91,7 +91,7 @@ export function EvidenceCopilotPanel({
           </select>
           <button type="button" className="secondary wide" onClick={onRunEvidenceSynthesis} disabled={busy}>
             <Sparkles size={16} aria-hidden="true" />
-            Generate synthesis
+            {busy ? "Generating…" : "Generate synthesis"}
           </button>
         </article>
         <article>
@@ -104,7 +104,7 @@ export function EvidenceCopilotPanel({
           />
           <button type="button" className="secondary wide" onClick={onRunMetricQuery} disabled={busy}>
             <Database size={16} aria-hidden="true" />
-            Compile metric
+            {busy ? "Compiling…" : "Compile metric"}
           </button>
         </article>
         <article>
@@ -132,7 +132,7 @@ export function EvidenceCopilotPanel({
           />
           <button type="button" className="secondary wide" onClick={onAnalyzeDocumentInput} disabled={busy}>
             <FileSearch size={16} aria-hidden="true" />
-            Analyze document
+            {busy ? "Analyzing…" : "Analyze document"}
           </button>
         </article>
       </div>
