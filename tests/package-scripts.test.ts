@@ -32,8 +32,8 @@ describe("package verification scripts", () => {
   it("keeps Vitest temp files in an ignored repo-local directory", () => {
     expect(runVitestScript).toContain('join(process.cwd(), ".tmp", "vitest")');
     expect(runVitestScript).toContain("process.env.TMPDIR = testTempDir");
-    expect(runVitestScript).toContain("--testTimeout=30000");
-    expect(runVitestScript).toContain("--hookTimeout=30000");
+    expect(runVitestScript).toContain("--testTimeout=60000");
+    expect(runVitestScript).toContain("--hookTimeout=60000");
     expect(readFileSync(join(process.cwd(), ".gitignore"), "utf8")).toContain(".tmp/");
   });
 });
